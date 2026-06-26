@@ -19,8 +19,18 @@ namespace PropHunt.Config
         private static MelonPreferences_Entry<int> _playersPerHunter;
         private static MelonPreferences_Entry<int> _roundsBeforeSwap;
         private static MelonPreferences_Entry<float> _tagRange;
+        private static MelonPreferences_Entry<int> _hitsToCatch;
+        private static MelonPreferences_Entry<int> _maxPropChanges;
+        private static MelonPreferences_Entry<int> _maxDecoys;
+        private static MelonPreferences_Entry<int> _concussCharges;
+        private static MelonPreferences_Entry<float> _concussRadius;
         private static MelonPreferences_Entry<int> _tauntIntervalSeconds;
         private static MelonPreferences_Entry<float> _playAreaRadius;
+        private static MelonPreferences_Entry<string> _caughtBehavior;
+        private static MelonPreferences_Entry<string> _roundStructure;
+        private static MelonPreferences_Entry<int> _timeOfDay;
+        private static MelonPreferences_Entry<string> _hunterWeapon;
+        private static MelonPreferences_Entry<bool> _friendlyFire;
 #if DEBUG
         private static MelonPreferences_Entry<bool> _startRoundDebug;
         private static MelonPreferences_Entry<bool> _netPingDebug;
@@ -48,10 +58,30 @@ namespace PropHunt.Config
                 "How many rounds to play before rotating who hunts (round-robin).");
             _tagRange = CreateEntry("TagRange", 4f, "Catch range (metres)",
                 "How close a hunter must be, looking at a hider, to catch them.");
+            _hitsToCatch = CreateEntry("HitsToCatch", 2, "Prop HP per metre",
+                "Disguise HP scales with prop size: a prop needs round(largest dimension * this) hits to catch (clamped 1-25). Bigger props tank far more shots.");
+            _maxPropChanges = CreateEntry("MaxPropChanges", 5, "Max prop changes per round",
+                "How many times a hider may (re)pick a prop each round. Each change resets their HP. 0 = unlimited.");
+            _maxDecoys = CreateEntry("MaxDecoys", 4, "Decoys per prop",
+                "How many decoys ([Q]) a hider may drop per prop (refills when they change prop) - static copies to mislead hunters. 0 = disabled.");
+            _concussCharges = CreateEntry("ConcussCharges", 1, "Concussions per prop",
+                "How many concussions ([G]) a hider may use per prop (refills when they change prop, like CoD Prop Hunt) - stuns nearby hunters. 0 = disabled.");
+            _concussRadius = CreateEntry("ConcussRadius", 7f, "Concussion radius (metres)",
+                "Hunters within this distance of the hider when they trigger a concussion get stunned.");
             _tauntIntervalSeconds = CreateEntry("TauntIntervalSeconds", 30, "Taunt interval (seconds)",
                 "During hunting, every hider is forced to emit a reveal sound this often. 0 disables taunts.");
             _playAreaRadius = CreateEntry("PlayAreaRadius", 75f, "Play-area radius (metres)",
                 "Radius of the round's play area around the host's position. Leaving it warns, then eliminates.");
+            _caughtBehavior = CreateEntry("CaughtBehavior", "Spectator", "Caught behavior (default)",
+                "Default for the host setup screen. Spectator = a caught hider sits out till the round ends. Infection = a caught hider becomes a hunter.");
+            _roundStructure = CreateEntry("RoundStructure", "Continuous", "Round structure (default)",
+                "Default for the host setup screen. Continuous = auto-start the next round with swapped roles. Single = one round, then back to the hub.");
+            _timeOfDay = CreateEntry("TimeOfDay", 1200, "Time of day (HHMM)",
+                "World time locked during a round (progression frozen). 1200 = noon/day, 0100 = night.");
+            _hunterWeapon = CreateEntry("HunterWeapon", "m1911", "Hunter weapon",
+                "Item id given to each hunter at hunt start (e.g. m1911, revolver, machete). Empty = none.");
+            _friendlyFire = CreateEntry("FriendlyFire", true, "Friendly fire (hunters)",
+                "Whether hunters can damage each other.");
 #if DEBUG
             _startRoundDebug = CreateEntry("StartRoundDebug", false, "Start round (debug, one-shot)",
                 "Toggle ON (as host, in a co-op session) to force-start a PropHunt round now. Auto-resets to OFF.");
@@ -74,8 +104,44 @@ namespace PropHunt.Config
         internal static int PlayersPerHunter => Mathf.Max(1, _playersPerHunter?.Value ?? 5);
         internal static int RoundsBeforeSwap => Mathf.Max(1, _roundsBeforeSwap?.Value ?? 1);
         internal static float TagRange => Mathf.Max(0.5f, _tagRange?.Value ?? 4f);
+        internal static int HitsToCatch => Mathf.Max(1, _hitsToCatch?.Value ?? 2);
+        internal static int MaxPropChanges => Mathf.Max(0, _maxPropChanges?.Value ?? 5);
+        internal static int MaxDecoys => Mathf.Max(0, _maxDecoys?.Value ?? 4);
+        internal static int ConcussCharges => Mathf.Max(0, _concussCharges?.Value ?? 1);
+        internal static float ConcussRadius => Mathf.Max(1f, _concussRadius?.Value ?? 7f);
         internal static int TauntIntervalSeconds => Mathf.Max(0, _tauntIntervalSeconds?.Value ?? 30);
         internal static float PlayAreaRadius => Mathf.Max(5f, _playAreaRadius?.Value ?? 75f);
+        internal static string CaughtBehaviorRaw => _caughtBehavior?.Value ?? "Spectator";
+        internal static string RoundStructureRaw => _roundStructure?.Value ?? "Continuous";
+        internal static int TimeOfDay => _timeOfDay?.Value ?? 1200;
+        internal static string HunterWeapon => _hunterWeapon?.Value ?? "m1911";
+        internal static bool FriendlyFire => _friendlyFire?.Value ?? true;
+
+        /// <summary>Build the default RoundSettings (host side) from these preferences.</summary>
+        internal static PropHunt.Game.RoundSettings BuildRoundSettings()
+        {
+            return new PropHunt.Game.RoundSettings
+            {
+                HideSeconds = HideSeconds,
+                HuntSeconds = HuntSeconds,
+                RoundEndSeconds = RoundEndSeconds,
+                PlayersPerHunter = PlayersPerHunter,
+                RoundsBeforeSwap = RoundsBeforeSwap,
+                TagRange = TagRange,
+                HitsToCatch = HitsToCatch,
+                MaxPropChanges = MaxPropChanges,
+                MaxDecoys = MaxDecoys,
+                ConcussCharges = ConcussCharges,
+                ConcussRadius = ConcussRadius,
+                TauntIntervalSeconds = TauntIntervalSeconds,
+                PlayAreaRadius = PlayAreaRadius,
+                Caught = PropHunt.Game.RoundSettings.ParseCaught(CaughtBehaviorRaw),
+                Structure = PropHunt.Game.RoundSettings.ParseStructure(RoundStructureRaw),
+                TimeOfDay = TimeOfDay,
+                HunterWeapon = HunterWeapon,
+                FriendlyFire = FriendlyFire
+            };
+        }
 
 #if DEBUG
         /// <summary>One-shot: true once if the debug "Start round" toggle is on, then resets it (in-memory, to avoid a save -> OnPreferencesSaved recursion).</summary>

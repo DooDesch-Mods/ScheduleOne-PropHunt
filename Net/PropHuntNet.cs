@@ -24,6 +24,14 @@ namespace PropHunt.Net
         /// <summary>True once the SteamNetworkLib client has initialized (Steam available).</summary>
         internal static bool Ready => _ready;
 
+        /// <summary>The underlying SteamNetworkLib client (null until <see cref="Initialize"/> succeeds). The
+        /// gamemode controller uses it to create the state HostSyncVar, register P2P handlers, broadcast
+        /// messages, and read lobby members. Guard calls with <see cref="Ready"/>.</summary>
+        internal static SteamNetworkClient Client => _client;
+
+        /// <summary>The local player's 64-bit Steam id, or 0 when not ready/in a lobby.</summary>
+        internal static ulong LocalSteamId { get { try { return _ready ? _client.LocalPlayerId64 : 0UL; } catch { return 0UL; } } }
+
         /// <summary>True while attached to a Steam lobby (the game's co-op lobby once joined).</summary>
         internal static bool InLobby { get { try { return _ready && _client.IsInLobby; } catch { return false; } } }
 

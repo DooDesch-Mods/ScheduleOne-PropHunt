@@ -130,8 +130,29 @@
       <HintPath>$(WorkspaceLibPath)/il2cpp/steamnetworklib/SteamNetworkLib-IL2Cpp.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- Side Hustle gamemode hub: PropHunt registers itself as a gamemode and is launched from its menu.
+         Reference-only (not redistributed); the player installs Side Hustle separately. -->
+    <Reference Include="SideHustle">
+      <HintPath>$(WorkspaceLibPath)/il2cpp/sidehustle/SideHustle.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
 
-    <!-- Added incrementally as more systems land: IMGUIModule (HUD), PhysicsModule (catch raycast). -->
+    <Reference Include="UnityEngine.PhysicsModule">
+      <HintPath>$(GameManagedPath)/UnityEngine.PhysicsModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(GameManagedPath)/UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(GameManagedPath)/UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(GameManagedPath)/UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
   </ItemGroup>
 
   <Target Name="PostBuild" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
