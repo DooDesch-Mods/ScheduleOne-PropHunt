@@ -28,6 +28,9 @@ namespace PropHunt.Game
     {
         internal float X, Y, Z, Yaw;
         internal int PropId;
+        internal int Hits;
+        internal int MaxHits;
+        internal bool Destroyed;
     }
 
     /// <summary>
@@ -45,6 +48,9 @@ namespace PropHunt.Game
         internal float AreaX, AreaY, AreaZ, AreaRadius; // play-area centre + radius (world units)
         internal int Winner = -1;               // -1 none, 0 hunters won, 1 hiders won (RoundEnd display)
         internal string SettingsBlob = "";      // RoundSettings.Serialize()
+        internal string SafehouseCode = "";     // property code of the between-rounds safehouse ("" = none / not in Safehouse)
+        internal bool SafehouseReady;           // host pressed "start next round" -> doors about to open
+        internal int SafehouseSeed;             // host-rolled seed -> all clients shuffle the spawn points the same way
         internal readonly Dictionary<ulong, PlayerState> Players = new Dictionary<ulong, PlayerState>();
         internal readonly List<DecoyState> Decoys = new List<DecoyState>();
 
@@ -62,7 +68,9 @@ namespace PropHunt.Game
               .Append(RoundNumber.ToString(ci)).Append('|').Append(CatalogHash.ToString(ci)).Append('|')
               .Append(AreaX.ToString(ci)).Append('|').Append(AreaZ.ToString(ci)).Append('|')
               .Append(AreaRadius.ToString(ci)).Append('|').Append(Winner.ToString(ci))
-              .Append('|').Append(AreaY.ToString(ci));
+              .Append('|').Append(AreaY.ToString(ci))
+              .Append('|').Append(SafehouseCode ?? "").Append('|').Append(SafehouseReady ? '1' : '0')
+              .Append('|').Append(SafehouseSeed.ToString(ci));
             sb.Append('\n').Append(SettingsBlob ?? "");
             foreach (var p in Players.Values)
             {
@@ -83,7 +91,9 @@ namespace PropHunt.Game
             {
                 sb.Append('\n').Append("D|")
                   .Append(d.X.ToString(ci)).Append('|').Append(d.Y.ToString(ci)).Append('|').Append(d.Z.ToString(ci)).Append('|')
-                  .Append(d.Yaw.ToString(ci)).Append('|').Append(d.PropId.ToString(ci));
+                  .Append(d.Yaw.ToString(ci)).Append('|').Append(d.PropId.ToString(ci)).Append('|')
+                  .Append(d.Hits.ToString(ci)).Append('|').Append(d.MaxHits.ToString(ci)).Append('|')
+                  .Append(d.Destroyed ? '1' : '0');
             }
             return sb.ToString();
         }
@@ -106,6 +116,9 @@ namespace PropHunt.Game
                     gs.AreaX = SafeFloat(h[4]); gs.AreaZ = SafeFloat(h[5]); gs.AreaRadius = SafeFloat(h[6]);
                     gs.Winner = SafeInt(h[7]);
                     if (h.Length >= 9) gs.AreaY = SafeFloat(h[8]);
+                    if (h.Length >= 10) gs.SafehouseCode = h[9] ?? "";
+                    if (h.Length >= 11) gs.SafehouseReady = h[10] == "1";
+                    if (h.Length >= 12) gs.SafehouseSeed = SafeInt(h[11]);
                 }
             }
             if (lines.Length > 1) gs.SettingsBlob = lines[1];
@@ -115,7 +128,18 @@ namespace PropHunt.Game
                 if (f.Length >= 1 && f[0] == "D")    // decoy row
                 {
                     if (f.Length >= 6)
-                        gs.Decoys.Add(new DecoyState { X = SafeFloat(f[1]), Y = SafeFloat(f[2]), Z = SafeFloat(f[3]), Yaw = SafeFloat(f[4]), PropId = SafeInt(f[5]) });
+                    {
+                        var d = new DecoyState
+                        {
+                            X = SafeFloat(f[1]), Y = SafeFloat(f[2]), Z = SafeFloat(f[3]),
+                            Yaw = SafeFloat(f[4]), PropId = SafeInt(f[5]),
+                            // fields 6/7/8 only present in newer snapshots; older rows default to 0/0/false
+                            Hits      = f.Length >= 7 ? SafeInt(f[6])   : 0,
+                            MaxHits   = f.Length >= 8 ? SafeInt(f[7])   : 0,
+                            Destroyed = f.Length >= 9 && f[8] == "1",
+                        };
+                        gs.Decoys.Add(d);
+                    }
                     continue;
                 }
                 if (f.Length < 5) continue;

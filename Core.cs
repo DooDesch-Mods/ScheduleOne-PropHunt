@@ -58,6 +58,13 @@ namespace PropHunt
                     OnJoinMultiplayer = OnJoinMultiplayer,
                     OnExitToHub = OnExitToHub,
                     HostSettings = Config.PropHuntSettingsSpec.Build(),   // the round settings, shown + chosen on the host form
+                    Presets = Config.RoundPresets.Build(),                // one-click presets (cascade into the form; still tweakable)
+                    // Gamemode hygiene: a fresh world auto-starts tutorial/dealer quests + the intro cutscene, which
+                    // create phone prompts, overlays + NPC waypoints that fight a PropHunt round and can drop players
+                    // into a scripted RV sequence instead of the map. Opt out of all three (Side Hustle applies them).
+                    BlockVanillaQuests = true,
+                    SkipIntro = true,
+                    ForceNewGame = true,
                     // Keep PropHunt's session clean: disable unrelated gameplay/world mods that could interfere,
                     // but allow a few harmless ones to stay. PropHunt's own mod, S1API and the Side Hustle hub are
                     // always kept (essentials); SteamNetworkLib is a UserLib that is never disabled; and BiggerLobbies
@@ -131,7 +138,19 @@ namespace PropHunt
         /// </summary>
         public override void OnSceneWasInitialized(int buildIndex, string sceneName)
         {
-            if (sceneName == "Main" && !_patched) { _patched = true; HarmonyInstance.PatchAll(); }
+            if (sceneName == "Main" && !_patched)
+            {
+                _patched = true;
+                try { HarmonyInstance.PatchAll(); Log.Msg("[PropHunt] PatchAll completed."); }
+                catch (Exception e) { Log.Error("[PropHunt] PatchAll FAILED (later patches skipped): " + e); }
+                try
+                {
+                    int n = 0;
+                    foreach (var m in HarmonyInstance.GetPatchedMethods()) { n++; LogDebug($"[PropHunt] patched: {m.DeclaringType?.Name}.{m.Name}"); }
+                    Log.Msg($"[PropHunt] patched method count: {n}");
+                }
+                catch { }
+            }
 
             if (sceneName == "Menu" || sceneName == "Main")
             {
@@ -167,6 +186,14 @@ namespace PropHunt
             Net.PropHuntNet.Tick();
             _controller?.Tick(UnityEngine.Time.deltaTime);
 #endif
+#if DEBUG
+            Disguise.PropCurator.Tick();   // prop curation tool (toggled by the phcurate console command)
+            PropHunt.Debug.DebugOverlay.Tick();   // F3 toggles the visual diagnostics overlay
+            PropHunt.Debug.DebugViz.Tick();        // in-world collision boxes (only while the overlay is on)
+            PropHunt.Debug.SoundBrowser.Tick();    // sound audition browser (toggled by the phsounds command)
+            PropHunt.Debug.MeshVaultBrowser.Tick();   // MeshVault prop browser (toggled by the phmesh command)
+            PropHunt.Debug.SpawnEditor.Tick();     // safehouse spawn-point authoring (toggled by the phspawn command)
+#endif
         }
 
         public override void OnLateUpdate()
@@ -178,7 +205,14 @@ namespace PropHunt
 
         public override void OnGUI()
         {
-            if (_controller != null) UI.PropHuntHud.Draw(_controller);
+            if (_controller != null) { UI.PropHuntHud.Draw(_controller); _controller.DrawGui(); }
+#if DEBUG
+            Disguise.PropCurator.DrawGui();
+            PropHunt.Debug.DebugOverlay.DrawGui();
+            PropHunt.Debug.SoundBrowser.DrawGui();
+            PropHunt.Debug.MeshVaultBrowser.DrawGui();
+            PropHunt.Debug.SpawnEditor.DrawGui();
+#endif
         }
 
 #if DEBUG

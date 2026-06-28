@@ -29,17 +29,27 @@ namespace PropHunt.Disguise
 
         internal void Tick()
         {
-            // hiders can pick (and re-pick) a prop during hiding AND hunting
-            bool canPick = (_ctl.Phase == RoundPhase.Hiding || _ctl.Phase == RoundPhase.Hunting) && _ctl.LocalRole == PlayerRole.Hider;
-            if (!canPick)
+            // run the becomable-target raycast during the round for BOTH roles: it powers the world-interaction
+            // suppression (a becomable prop must not be pickup-able by anyone) AND the hider's "[E] become" prompt.
+            bool inRound = _ctl.Phase == RoundPhase.Hiding || _ctl.Phase == RoundPhase.Hunting;
+            if (!inRound)
             {
                 CurrentTargetId = -1; CurrentTargetName = null;
                 if (_rotating) StopRotating();
+                Patches.SlowWalk.Restore();
                 return;
             }
             try
             {
                 UpdateTarget();
+
+                // the become / decoy / rotate tooling itself is hider-only
+                bool canPick = _ctl.LocalRole == PlayerRole.Hider;
+                if (!canPick) { if (_rotating) StopRotating(); Patches.SlowWalk.Restore(); return; }
+
+                // [Ctrl] held = slow-walk at half speed (replaces the blocked crouch); only while disguised
+                Patches.SlowWalk.Set(_ctl.LocalPropId >= 0 && Input.GetKey(KeyCode.LeftControl));
+                // [1] manual taunt + the hold-to-pick wheel is handled by TauntWheel (ticked by the controller).
 #if DEBUG
                 if (CurrentTargetId != _lastLoggedId)
                 {
@@ -108,6 +118,7 @@ namespace PropHunt.Disguise
                 for (int i = 0; i < hits.Length; i++)
                 {
                     var hit = hits[i];
+                    if (IsOurs(hit.transform)) continue;   // our own disguise/decoy clones are not becomable props
                     MeshFilter mf = null;
                     if (hit.collider != null)
                     {
@@ -124,6 +135,19 @@ namespace PropHunt.Disguise
             if (foundId >= 0) { CurrentTargetId = foundId; CurrentTargetName = foundName; _holdUntil = Time.time + HoldTime; }
             else if (Time.time >= _holdUntil) { CurrentTargetId = -1; CurrentTargetName = null; }
             // else: keep the latched target a moment longer so [E] lands even between flickering frames
+        }
+
+        /// <summary>True if the transform belongs to one of OUR runtime clones (disguise "ph_prop_*" or decoy
+        /// "ph_decoy_*"); these use real prop meshes but must never count as becomable world props.</summary>
+        private static bool IsOurs(Transform t)
+        {
+            for (int d = 0; d < 8 && t != null; d++)
+            {
+                var n = t.name;
+                if (!string.IsNullOrEmpty(n) && n.StartsWith("ph_")) return true;
+                t = t.parent;
+            }
+            return false;
         }
     }
 }

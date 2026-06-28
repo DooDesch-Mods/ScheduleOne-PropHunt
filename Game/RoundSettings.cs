@@ -18,6 +18,7 @@ namespace PropHunt.Game
         internal int RoundsBeforeSwap = 1;
         internal float TagRange = 4f;
         internal int TauntIntervalSeconds = 30;
+        internal float WhistleStaggerSeconds = 0.3f;   // gap between each hider's sound in the global whistle sweep (CoD WWII style)
         internal float PlayAreaRadius = 75f;
         internal int HitsToCatch = 2;           // prop HP per metre of size: MaxHits = round(maxDimension * this), clamped
         internal int MaxPropChanges = 5;        // how many times a hider may (re)pick a prop per round (0 = unlimited); each change resets HP
@@ -29,6 +30,7 @@ namespace PropHunt.Game
         internal int TimeOfDay = 1200;          // HHMM; world locked here during a round (1200 = noon/day, 0100 = night)
         internal string HunterWeapon = "m1911"; // item id given to each hunter at hunt start ("" = none)
         internal bool FriendlyFire = true;      // hunters can damage each other (enforcement = testing-phase)
+        internal bool RemoveDecoysBetweenRounds = true;   // clear dropped decoys at round end (false = they persist into the next round)
 
         internal static CaughtBehavior ParseCaught(string s) =>
             string.Equals(s, "Infection", StringComparison.OrdinalIgnoreCase) ? CaughtBehavior.Infection : CaughtBehavior.Spectator;
@@ -49,6 +51,7 @@ namespace PropHunt.Game
                 "swap=" + RoundsBeforeSwap.ToString(ci),
                 "tag=" + TagRange.ToString(ci),
                 "taunt=" + TauntIntervalSeconds.ToString(ci),
+                "wstag=" + WhistleStaggerSeconds.ToString(ci),
                 "area=" + PlayAreaRadius.ToString(ci),
                 "hits=" + HitsToCatch.ToString(ci),
                 "chg=" + MaxPropChanges.ToString(ci),
@@ -59,7 +62,8 @@ namespace PropHunt.Game
                 "round=" + Structure,
                 "time=" + TimeOfDay.ToString(ci),
                 "weapon=" + (HunterWeapon ?? ""),
-                "ff=" + (FriendlyFire ? "1" : "0")
+                "ff=" + (FriendlyFire ? "1" : "0"),
+                "rmdecoy=" + (RemoveDecoysBetweenRounds ? "1" : "0")
             });
         }
 
@@ -87,6 +91,7 @@ namespace PropHunt.Game
                     case "swap": if (int.TryParse(v, NumberStyles.Integer, ci, out var sw)) s.RoundsBeforeSwap = sw; break;
                     case "tag": if (float.TryParse(v, NumberStyles.Float, ci, out var tg)) s.TagRange = tg; break;
                     case "taunt": if (int.TryParse(v, NumberStyles.Integer, ci, out var ta)) s.TauntIntervalSeconds = ta; break;
+                    case "wstag": if (float.TryParse(v, NumberStyles.Float, ci, out var wst)) s.WhistleStaggerSeconds = wst; break;
                     case "area": if (float.TryParse(v, NumberStyles.Float, ci, out var ar)) s.PlayAreaRadius = ar; break;
                     case "hits": if (int.TryParse(v, NumberStyles.Integer, ci, out var ht)) s.HitsToCatch = ht; break;
                     case "chg": if (int.TryParse(v, NumberStyles.Integer, ci, out var cg)) s.MaxPropChanges = cg; break;
@@ -98,6 +103,7 @@ namespace PropHunt.Game
                     case "time": if (int.TryParse(v, NumberStyles.Integer, ci, out var tm)) s.TimeOfDay = tm; break;
                     case "weapon": s.HunterWeapon = v; break;
                     case "ff": s.FriendlyFire = v == "1"; break;
+                    case "rmdecoy": s.RemoveDecoysBetweenRounds = v == "1"; break;
                 }
             }
             return s;

@@ -18,7 +18,12 @@ namespace PropHunt.UI
 
             string status = "PropHunt - " + phase;
             if (phase == RoundPhase.Hiding || phase == RoundPhase.Hunting)
+            {
                 status += $"   |   {ctl.SecondsLeft}s   |   Hiders left: {ctl.AliveHiderCount}   |   You: {ctl.LocalRole}";
+                // global whistle countdown - shown to everyone (hiders need to know when the next reveal hits)
+                int ws = ctl.SecondsToWhistle;
+                if (ws >= 0) status += $"   |   whistle in {ws}s";
+            }
             Center(status, 8, 22, Color.white);
 
             string view = ctl.ThirdPersonOn ? "[V] 1st-person" : "[V] 3rd-person";
@@ -41,7 +46,8 @@ namespace PropHunt.UI
                 }
             }
             else if (phase == RoundPhase.Hiding && ctl.LocalRole == PlayerRole.Hunter) hint = "Get ready... (blinded until the hunt begins)";
-            else if (phase == RoundPhase.Hunting && ctl.LocalRole == PlayerRole.Hunter) hint = $"Find the props - [Left click] to catch (big props take more hits)     {view}";
+            // hunters are first-person only - no [V] hint for them
+            else if (phase == RoundPhase.Hunting && ctl.LocalRole == PlayerRole.Hunter) hint = "Find the props - [Left click] to catch (big props take more hits)";
             if (hint != null) Center(hint, 34, 18, hiderHit ? Color.red : Color.cyan);
 
             // crosshair-anchored "become" prompt - the top hint is easy to miss while aiming at the centre,
@@ -70,11 +76,6 @@ namespace PropHunt.UI
 
             if (ctl.LocalOutside) Center($"RETURN TO THE PLAY AREA!  {Mathf.CeilToInt(ctl.OobGrace)}s", 90, 26, Color.red);
 
-#if DEBUG
-            if (phase == RoundPhase.Hiding || phase == RoundPhase.Hunting)
-                Center($"[4/5] ground: {RoundEnvironment.GroundModeName}   [6/7] feet drop: {RoundEnvironment.FixedFeetDrop:F2}", Screen.height - 26, 14, Color.gray);
-#endif
-
             if (phase == RoundPhase.RoundEnd)
             {
                 string w = ctl.State.Winner == 0 ? "HUNTERS WIN" : ctl.State.Winner == 1 ? "HIDERS WIN" : "ROUND OVER";
@@ -86,6 +87,57 @@ namespace PropHunt.UI
                 if (ctl.IsHost) DrawHostSetup(ctl);
                 else Center("Waiting for the host to start the match...", Screen.height / 2, 22, Color.white);
             }
+
+            if (phase == RoundPhase.Safehouse)
+            {
+                if (ctl.IsHost) DrawSafehouseSetup(ctl);
+                else Center("Safehouse - waiting for the host to start the next round...", Screen.height / 2, 22, Color.white);
+                if (ctl.State.SafehouseReady) Center("Doors opening - get ready!", Screen.height / 2 + 70, 20, Color.green);
+            }
+        }
+
+        // Between-rounds lobby setup, shown to the host while everyone waits in the safehouse interior. Mirrors
+        // DrawHostSetup: a read-only summary when configured via the Side Hustle form, a full inline editor otherwise.
+        private static void DrawSafehouseSetup(GameModeController ctl)
+        {
+            var s = ctl.Settings;
+            bool fromForm = ctl.ConfiguredByHostForm;
+            float w = 380, h = fromForm ? 280 : 450;
+            var box = new Rect((Screen.width - w) / 2, (Screen.height - h) / 2, w, h);
+            GUI.Box(box, $"PropHunt - Between Rounds (next: round {ctl.State.RoundNumber + 1})");
+            GUILayout.BeginArea(new Rect(box.x + 14, box.y + 28, w - 28, h - 42));
+            GUILayout.Label("Players in lobby: " + ctl.State.Players.Count);
+            GUILayout.Space(4);
+
+            // safehouse / map switch (only maps big enough for the lobby are offered)
+            GUILayout.Label($"Map: {ctl.SafehouseName(ctl.State.SafehouseCode)}   ({ctl.SafehouseOptionCount} fit {ctl.State.Players.Count} players)");
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("< Prev")) ctl.SwitchSafehouse(-1);
+            if (GUILayout.Button("Switch map >")) ctl.SwitchSafehouse(1);
+            GUILayout.EndHorizontal();
+            GUILayout.Space(6);
+
+            if (fromForm)
+            {
+                GUILayout.Label($"Hide {s.HideSeconds}s   .   Hunt {s.HuntSeconds}s");
+                GUILayout.Label($"1 hunter / {s.PlayersPerHunter} players   .   Prop HP/m {s.HitsToCatch}");
+                GUILayout.Label($"Caught: {s.Caught}   .   Rounds: {s.Structure}");
+            }
+            else
+            {
+                if (GUILayout.Button("Caught: " + s.Caught + "   (toggle)"))
+                    s.Caught = s.Caught == CaughtBehavior.Spectator ? CaughtBehavior.Infection : CaughtBehavior.Spectator;
+                s.HideSeconds = IntRow("Hide seconds", s.HideSeconds, 5);
+                s.HuntSeconds = IntRow("Hunt seconds", s.HuntSeconds, 15);
+                s.PlayersPerHunter = Mathf.Max(1, IntRow("Players / hunter", s.PlayersPerHunter, 1));
+                s.HitsToCatch = Mathf.Max(1, IntRow("Prop HP per metre", s.HitsToCatch, 1));
+                s.MaxDecoys = Mathf.Max(0, IntRow("Decoys / round", s.MaxDecoys, 1));
+                s.ConcussCharges = Mathf.Max(0, IntRow("Concussions / round", s.ConcussCharges, 1));
+            }
+
+            GUILayout.Space(6);
+            if (GUILayout.Button("START NEXT ROUND", GUILayout.Height(30))) ctl.BeginNextRound();
+            GUILayout.EndArea();
         }
 
         private static void DrawHostSetup(GameModeController ctl)

@@ -31,6 +31,7 @@ namespace PropHunt.Config
         private static MelonPreferences_Entry<int> _timeOfDay;
         private static MelonPreferences_Entry<string> _hunterWeapon;
         private static MelonPreferences_Entry<bool> _friendlyFire;
+        private static MelonPreferences_Entry<bool> _removeDecoysBetweenRounds;
 #if DEBUG
         private static MelonPreferences_Entry<bool> _startRoundDebug;
         private static MelonPreferences_Entry<bool> _netPingDebug;
@@ -82,6 +83,8 @@ namespace PropHunt.Config
                 "Item id given to each hunter at hunt start (e.g. m1911, revolver, machete). Empty = none.");
             _friendlyFire = CreateEntry("FriendlyFire", true, "Friendly fire (hunters)",
                 "Whether hunters can damage each other.");
+            _removeDecoysBetweenRounds = CreateEntry("RemoveDecoysBetweenRounds", true, "Clear decoys between rounds",
+                "Remove every dropped decoy at the end of a round. Off = decoys carry over into the next round.");
 #if DEBUG
             _startRoundDebug = CreateEntry("StartRoundDebug", false, "Start round (debug, one-shot)",
                 "Toggle ON (as host, in a co-op session) to force-start a PropHunt round now. Auto-resets to OFF.");
@@ -116,6 +119,7 @@ namespace PropHunt.Config
         internal static int TimeOfDay => _timeOfDay?.Value ?? 1200;
         internal static string HunterWeapon => _hunterWeapon?.Value ?? "m1911";
         internal static bool FriendlyFire => _friendlyFire?.Value ?? true;
+        internal static bool RemoveDecoysBetweenRounds => _removeDecoysBetweenRounds?.Value ?? true;
 
         /// <summary>Build the default RoundSettings (host side) from these preferences.</summary>
         internal static PropHunt.Game.RoundSettings BuildRoundSettings()
@@ -139,7 +143,8 @@ namespace PropHunt.Config
                 Structure = PropHunt.Game.RoundSettings.ParseStructure(RoundStructureRaw),
                 TimeOfDay = TimeOfDay,
                 HunterWeapon = HunterWeapon,
-                FriendlyFire = FriendlyFire
+                FriendlyFire = FriendlyFire,
+                RemoveDecoysBetweenRounds = RemoveDecoysBetweenRounds
             };
         }
 

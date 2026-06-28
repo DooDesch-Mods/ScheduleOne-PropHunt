@@ -49,6 +49,38 @@ namespace PropHunt.Patches
                         if (Core.Session != null) Core.Session.DumpPropDebug();
                         else Core.Log.Warning("[PropHunt] phprops: no active session.");
                         return false;
+                    case "phcurate":  // toggle the becomable-prop curation tool (step through every mesh, Keep/Skip)
+                        Disguise.PropCurator.Toggle();
+                        return false;
+                    case "phdebug":   // toggle the visual diagnostics overlay (also F3)
+                        PropHunt.Debug.DebugOverlay.ToggleFromConsole();
+                        return false;
+                    case "phcuratelist":  // dump the full candidate list to the log (index, name, LOD, size, verts, mats, decision)
+                        Disguise.PropCatalog.DumpCandidates();
+                        return false;
+                    case "phcurateseed":  // seed the allowlist from the heuristic (Keep heuristic-accepted, Skip the rest) to refine
+                    {
+                        int kept = Disguise.PropCatalog.SeedCurationFromHeuristic();
+                        Core.Log.Msg($"[PropHunt] phcurateseed: allowlist seeded - {kept} kept (heuristic baseline), rest skipped. " +
+                                     "Run phcurate to refine, then start a new round to rebuild the catalog.");
+                        return false;
+                    }
+                    case "phsounds":   // toggle the in-game sound browser: scroll + HEAR every loaded clip, pick a taunt
+                        PropHunt.Debug.SoundBrowser.Toggle();
+                        return false;
+                    case "phmesh":     // toggle the MeshVault prop browser (turntable iterate, needs MeshVault installed)
+                        PropHunt.Debug.MeshVaultBrowser.Toggle();
+                        return false;
+                    case "phsafehouse":  // dump every loaded property (code/name/size/spawn) to calibrate the safehouse selector
+                        Game.SafehouseSelector.DumpProperties();
+                        return false;
+                    case "phspawn":      // toggle the in-game safehouse spawn-point authoring editor (doors forced open)
+                        PropHunt.Debug.SpawnEditor.Toggle();
+                        return false;
+                    case "phnextround":  // host: from the Safehouse lobby, start the next round (stand-in for the UI button)
+                        if (Core.Session != null) Core.Session.BeginNextRound();
+                        else Core.Log.Warning("[PropHunt] phnextround: no active session.");
+                        return false;
                     case "phstate":   // dump the local view of the round state
                         if (Core.Session != null)
                         {

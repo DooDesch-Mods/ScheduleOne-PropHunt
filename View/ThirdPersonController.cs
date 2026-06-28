@@ -19,7 +19,11 @@ namespace PropHunt.View
 
         internal ThirdPersonController(GameModeController ctl) { _ctl = ctl; }
 
-        internal bool IsOn => _on && _ctl.RoundActive;
+        // hunters aim catch raycasts from the camera, so they are locked to first person; only hiders may use
+        // the third-person inspection view (to see their own prop disguise).
+        private bool Allowed => _ctl.RoundActive && _ctl.LocalRole != PlayerRole.Hunter;
+
+        internal bool IsOn => _on && Allowed;
 
         /// <summary>Reset to first person (called on a role flip so a new hunter is not stuck pulled-back); the
         /// next Tick applies it. The player can re-toggle with V.</summary>
@@ -29,14 +33,33 @@ namespace PropHunt.View
         {
             try
             {
-                if (Input.GetKeyDown(KeyCode.V) && _ctl.RoundActive) _on = !_on;
-                bool active = _on && _ctl.RoundActive;
+                if (Input.GetKeyDown(KeyCode.V) && Allowed) _on = !_on;
+                bool active = _on && Allowed;
                 ThirdPersonView.Active = active;
+                if (active) UpdateCameraForProp();
                 SetArmsVisible(!active);
                 // Show your OWN body to your camera only in third person AND when not disguised (a disguised hider
                 // should see their prop, not their body). First person / disguised -> hidden (no floating head).
                 // Re-applied EVERY frame (not change-tracked) because the game resets local visibility each frame.
                 SetOwnBodyVisible(active && _ctl.LocalPropId < 0);
+            }
+            catch { }
+        }
+
+        // Scale the third-person pull-back to the disguise prop's largest dimension so the player frames their prop:
+        // a tiny prop pulls the camera in close, a big prop pulls it far back (instead of a fixed distance that's
+        // too far for small props and clips into big ones). Undisguised falls back to the default offset.
+        private void UpdateCameraForProp()
+        {
+            try
+            {
+                float size = _ctl.LocalPropId >= 0 ? PropHunt.Disguise.PropCatalog.SizeOf(_ctl.LocalPropId) : 0f;
+                if (size > 0f)
+                {
+                    ThirdPersonView.Distance = Mathf.Clamp(size * 1.7f + 1.0f, 1.6f, 9f);
+                    ThirdPersonView.Height = Mathf.Clamp(size * 0.4f, 0.2f, 2f);
+                }
+                else { ThirdPersonView.Distance = 2.8f; ThirdPersonView.Height = 0.4f; }
             }
             catch { }
         }

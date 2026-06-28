@@ -11,7 +11,7 @@ namespace PropHunt.PlayArea
     /// </summary>
     internal sealed class PlayAreaController
     {
-        private const float GraceSeconds = 8f;
+        private const float GraceSeconds = 10f;
         private readonly GameModeController _ctl;
         private float _outsideSince = -1f;
 
@@ -41,7 +41,15 @@ namespace PropHunt.PlayArea
                     LocalOutside = true;
                     if (_outsideSince < 0f) _outsideSince = Time.time;
                     GraceLeft = Mathf.Max(0f, GraceSeconds - (Time.time - _outsideSince));
-                    if (GraceLeft <= 0f) { _ctl.ReportOutOfBounds(); _outsideSince = Time.time; }   // reset to avoid spamming
+                    if (GraceLeft <= 0f)
+                    {
+                        // hunters who glitch out are teleported back to the area centre; hiders are eliminated.
+                        if (role == PlayerRole.Hunter)
+                            RoundEnvironment.TeleportLocalInto(s.AreaX, s.AreaY, s.AreaZ, _ctl.LocalId);
+                        else
+                            _ctl.ReportOutOfBounds();
+                        _outsideSince = Time.time;   // reset to avoid spamming
+                    }
                 }
                 else { _outsideSince = -1f; }
             }

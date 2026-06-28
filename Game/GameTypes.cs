@@ -7,6 +7,7 @@ namespace PropHunt.Game
         Hiding,     // hiders pick + lock a prop while hunters are frozen + blinded
         Hunting,    // hunters search; taunts fire; catches happen
         RoundEnd,   // result shown briefly
+        Safehouse,  // between-rounds lobby inside a property interior: doors locked, host reconfigures + starts next round
         MatchEnd    // whole match over -> return to the Side Hustle hub
     }
 

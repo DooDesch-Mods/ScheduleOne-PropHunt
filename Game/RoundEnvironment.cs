@@ -36,6 +36,21 @@ namespace PropHunt.Game
             _suppressedOfficers.Clear();
         }
 
+        /// <summary>Dev/curation: lock the world to a bright time of day (HHMM) and freeze progression so props
+        /// are clearly lit for review. Host-authoritative; no-op/safe off-host.</summary>
+        internal static void LockTimeOfDay(int hhmm)
+        {
+            try { var tm = NetworkSingleton<TimeManager>.Instance; if (tm != null) { tm.SetTimeAndSync(hhmm); tm.SetTimeSpeedMultiplier(0f); } }
+            catch (Exception e) { Core.LogDebug("[PropHunt] LockTimeOfDay failed: " + e.Message); }
+        }
+
+        /// <summary>Resume normal time progression (pair with <see cref="LockTimeOfDay"/>).</summary>
+        internal static void RestoreTimeProgression()
+        {
+            try { var tm = NetworkSingleton<TimeManager>.Instance; if (tm != null) tm.SetTimeSpeedMultiplier(1f); }
+            catch (Exception e) { Core.LogDebug("[PropHunt] RestoreTimeProgression failed: " + e.Message); }
+        }
+
         /// <summary>Host: make police ignore players (applied once per officer; cheap to call each tick).</summary>
         internal static void SuppressPolice()
         {
@@ -71,13 +86,19 @@ namespace PropHunt.Game
         /// <summary>Local: teleport the local player into the play area, spread on a small deterministic ring.</summary>
         internal static void TeleportLocalInto(float x, float y, float z, ulong steamId)
         {
+            float ang = (steamId % 360UL) * UnityEngine.Mathf.Deg2Rad;
+            float r = 3f + (steamId % 4UL);
+            TeleportLocalTo(new UnityEngine.Vector3(x + UnityEngine.Mathf.Cos(ang) * r, y, z + UnityEngine.Mathf.Sin(ang) * r));
+        }
+
+        /// <summary>Local: teleport the local player to a world position via the game's PlayerTeleporter (the proven
+        /// path that keeps the CharacterController/network position consistent), with a transform fallback.</summary>
+        internal static void TeleportLocalTo(UnityEngine.Vector3 pos)
+        {
             try
             {
                 var p = Player.Local;
                 if (p == null) return;
-                float ang = (steamId % 360UL) * UnityEngine.Mathf.Deg2Rad;
-                float r = 3f + (steamId % 4UL);
-                var pos = new UnityEngine.Vector3(x + UnityEngine.Mathf.Cos(ang) * r, y, z + UnityEngine.Mathf.Sin(ang) * r);
                 var tp = p.GetComponent<PlayerTeleporter>();
                 if (tp != null)
                 {
@@ -90,7 +111,7 @@ namespace PropHunt.Game
                 {
                     p.transform.position = pos;   // fallback if the teleporter component isn't present
                 }
-                Core.LogDebug($"[PropHunt] teleported local player into the area ({pos.x:F0},{pos.z:F0}).");
+                Core.LogDebug($"[PropHunt] teleported local player to ({pos.x:F0},{pos.y:F0},{pos.z:F0}).");
             }
             catch (Exception e) { Core.LogDebug("[PropHunt] teleport failed: " + e.Message); }
         }

@@ -21,7 +21,6 @@ namespace PropHunt.Config
                 IntSlider("end",   "Round-end display",   "Seconds the result shows before the next round.",       3,  30,  1, "s", PropHuntPreferences.RoundEndSeconds),
                 IntSlider("pph",   "Players per hunter",  "Roughly one hunter is assigned per this many players.", 2,  10,  1, null, PropHuntPreferences.PlayersPerHunter),
                 IntSlider("swap",  "Rounds before swap",  "Rounds to play before roles rotate.",                   1,  10,  1, null, PropHuntPreferences.RoundsBeforeSwap),
-                FloatSlider("tag", "Catch range",         "How close a hunter must be, looking at a hider, to catch.", 1f, 10f, 0.5f, "m", PropHuntPreferences.TagRange),
                 IntSlider("taunt", "Taunt interval",      "How often hiders are forced to make a sound (0 = off).", 0, 120,  5, "s", PropHuntPreferences.TauntIntervalSeconds),
                 IntSlider("area",  "Play-area radius",    "Radius of the round's play area around the host.",     20, 200,  5, "m", (int)PropHuntPreferences.PlayAreaRadius),
                 IntSlider("hits",  "Prop HP per metre",   "Disguise HP scales with prop size by this (clamped).",  1,  10,  1, null, PropHuntPreferences.HitsToCatch),
@@ -34,6 +33,7 @@ namespace PropHunt.Config
                 IntSlider("time",  "Time of day",         "World time locked during a round (HHMM; 1200 = noon).", 0, 2300, 100, null, PropHuntPreferences.TimeOfDay),
                 Text("weapon",     "Hunter weapon",       "Item id given to each hunter (e.g. m1911, revolver; empty = none).", PropHuntPreferences.HunterWeapon),
                 Toggle("ff",       "Friendly fire",       "Hunters can damage each other.",                        PropHuntPreferences.FriendlyFire),
+                Toggle("rmdecoy",  "Clear decoys between rounds", "Remove dropped decoys at round end (off = they carry over).", PropHuntPreferences.RemoveDecoysBetweenRounds),
             };
         }
 

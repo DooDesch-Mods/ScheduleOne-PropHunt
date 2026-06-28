@@ -96,16 +96,50 @@ namespace PropHunt.Net
     public class OutOfBoundsMessage : P2PMessage
     {
         public override string MessageType => "PH_OOB";
-        public override byte[] Serialize() => Array.Empty<byte>();
+        // non-empty payload: SteamNetworkLib drops empty-body messages (see the note above), which would mean
+        // the out-of-bounds intent never reaches the host and the player is never warned/eliminated.
+        public override byte[] Serialize() => MsgCodec.Bytes("1");
         public override void Deserialize(byte[] data) { }
     }
 
-    /// <summary>Host -> all: force a reveal taunt on the given hider (transient one-shot effect).</summary>
+    /// <summary>Client -> host: a hunter hit a decoy at the given index in the synced Decoys list.
+    /// The index is the payload (non-empty: SteamNetworkLib drops empty-body messages).</summary>
+    public class DecoyHitMessage : P2PMessage
+    {
+        public override string MessageType => "PH_DECOY_HIT";
+        public int DecoyIndex { get; set; }
+        public override byte[] Serialize() => MsgCodec.Bytes(MsgCodec.Of(DecoyIndex));
+        public override void Deserialize(byte[] data) => DecoyIndex = MsgCodec.I(MsgCodec.Str(data));
+    }
+
+    /// <summary>Client -> host: the sender wants to manually taunt ([1]) with a chosen sound. The host broadcasts a
+    /// TauntMessage for them. Payload = the clip name, or "*" for "use a default" (never empty - SteamNetworkLib
+    /// drops empty-body messages).</summary>
+    public class ManualTauntMessage : P2PMessage
+    {
+        public override string MessageType => "PH_TAUNT_REQ";
+        public string Sound { get; set; }
+        public override byte[] Serialize() => MsgCodec.Bytes(string.IsNullOrEmpty(Sound) ? "*" : Sound);
+        public override void Deserialize(byte[] data) { var s = MsgCodec.Str(data); Sound = s == "*" ? null : s; }
+    }
+
+    /// <summary>Host -> all: force a reveal taunt on the given hider, playing the named sound at their position.
+    /// Payload = "steamId;clipName;isWhistle" (clipName may be empty -> the receiver picks a default; isWhistle "1"
+    /// = part of the global whistle sweep -> played at reduced volume). The Split cap of 3 means a clip name with a
+    /// ';' can't corrupt the parse; an old 2-part payload deserializes fine with IsWhistle defaulting to false.</summary>
     public class TauntMessage : P2PMessage
     {
         public override string MessageType => "PH_TAUNT";
         public ulong SteamId { get; set; }
-        public override byte[] Serialize() => MsgCodec.Bytes(MsgCodec.Of(SteamId));
-        public override void Deserialize(byte[] data) => SteamId = MsgCodec.U(MsgCodec.Str(data));
+        public string Sound { get; set; }
+        public bool IsWhistle { get; set; }
+        public override byte[] Serialize() => MsgCodec.Bytes(MsgCodec.Of(SteamId) + ";" + (Sound ?? "") + ";" + (IsWhistle ? "1" : "0"));
+        public override void Deserialize(byte[] data)
+        {
+            var p = MsgCodec.Str(data).Split(new[] { ';' }, 3);
+            SteamId = MsgCodec.U(p[0]);
+            Sound = p.Length >= 2 ? p[1] : "";
+            IsWhistle = p.Length >= 3 && p[2] == "1";
+        }
     }
 }

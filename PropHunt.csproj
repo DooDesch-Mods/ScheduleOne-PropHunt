@@ -62,6 +62,43 @@
     <MelonLoaderPath>$(WorkspaceLibPath)/$(Backend)/melonloader</MelonLoaderPath>
   </PropertyGroup>
 
+  <!-- The one shipped asset: the precompiled outline-shader AssetBundle, embedded into the DLL when present
+       (resource name = PropHunt.Assets.Bundles.propoutline, loaded by Disguise/OutlineShader.cs). Exists-guarded
+       so the build still works before the bundle is built in a 2022.3 editor - the highlighter then falls back
+       to the glow overlay. Build recipe: Assets/Shaders/PropOutline.shader -> propoutline. -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)Assets/Bundles/propoutline')">
+    <EmbeddedResource Include="Assets/Bundles/propoutline">
+      <LogicalName>PropHunt.Assets.Bundles.propoutline</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- Assets/Bundles/propborder: precompiled play-area border-wall shader AssetBundle (PlayArea/BorderShader.cs).
+       Built in a 2022.3 editor from Assets/Shaders/Border.shader -> bundle name "propborder", same as propoutline.
+       Exists-guarded so the mod still builds before the bundle is built - the wall is then invisible. -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)Assets/Bundles/propborder')">
+    <EmbeddedResource Include="Assets/Bundles/propborder">
+      <LogicalName>PropHunt.Assets.Bundles.propborder</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- The shipped becomable-prop allowlist (curated source of truth). Loaded by Disguise/PropCatalog.cs as the
+       default when the player has no UserData/PropHunt/prop_curation.txt of their own, so every install gets the
+       same deterministic prop set. Exists-guarded so the build still works if the file is absent. -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)Assets/prop_curation.txt')">
+    <EmbeddedResource Include="Assets/prop_curation.txt">
+      <LogicalName>PropHunt.Assets.prop_curation.txt</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- The shipped safehouse spawn points (source of truth for all players). Authored with the phspawn DEBUG
+       editor and copied to Assets/spawns.txt once finalized. Loaded by Game/SpawnStore.cs as the default when
+       the player has no UserData/PropHunt/spawns.txt. Exists-guarded so the build works before any are authored. -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)Assets/spawns.txt')">
+    <EmbeddedResource Include="Assets/spawns.txt">
+      <LogicalName>PropHunt.Assets.spawns.txt</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
   <!-- Backend-specific GlobalUsings: keep only the active backend's file -->
   <ItemGroup>
     <Compile Remove="Compat/GlobalUsings.Il2Cpp.cs" Condition="'$(Backend)' != 'il2cpp'" />
@@ -139,6 +176,10 @@
 
     <Reference Include="UnityEngine.PhysicsModule">
       <HintPath>$(GameManagedPath)/UnityEngine.PhysicsModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.AssetBundleModule">
+      <HintPath>$(GameManagedPath)/UnityEngine.AssetBundleModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.InputLegacyModule">

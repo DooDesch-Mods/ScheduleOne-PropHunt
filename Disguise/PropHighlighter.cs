@@ -16,7 +16,7 @@ namespace PropHunt.Disguise
     /// </summary>
     internal sealed class PropHighlighter
     {
-        private sealed class Hl { internal GameObject Go; internal Material Mat; }
+        private sealed class Hl { internal GameObject Go; internal Material Mat; internal bool Outline; }
 
         private readonly GameModeController _ctl;
         private readonly Dictionary<int, Hl> _shells = new Dictionary<int, Hl>();   // prop instanceID -> highlight shell
@@ -51,6 +51,19 @@ namespace PropHunt.Disguise
             catch (System.Exception e) { Fail("highlighter tick failed: " + e.Message); }
         }
 
+        /// <summary>True if this transform or any ancestor is one of our spawned clones (ph_prop_/ph_decoy/ph_hl),
+        /// so the highlighter never paints a shell on a disguise/decoy/shell (which carry becomable prop meshes).</summary>
+        private static bool IsOurClone(Transform t)
+        {
+            while (t != null)
+            {
+                var n = t.name;
+                if (!string.IsNullOrEmpty(n) && n.StartsWith("ph_")) return true;
+                t = t.parent;
+            }
+            return false;
+        }
+
         private void Rescan()
         {
             var lp = Player.Local;
@@ -71,6 +84,8 @@ namespace PropHunt.Disguise
                     if (mf == null) mf = col.GetComponentInChildren<MeshFilter>();
                     if (mf == null || mf.sharedMesh == null) continue;
                     if (mf.GetComponent<MeshRenderer>() == null) continue;
+                    if (mf.GetComponentInParent<Player>() != null) continue;    // a disguise riding a player, not a world prop
+                    if (IsOurClone(mf.transform)) continue;                     // our own decoy/disguise/shell clones
                     if (PropCatalog.IdForMesh(mf.sharedMesh) < 0) continue;     // not a becomable prop
                     if (!seen.Add(mf.gameObject.GetInstanceID())) continue;
                     _candidates.Add(mf);
@@ -106,6 +121,24 @@ namespace PropHunt.Disguise
         {
             try
             {
+                // Preferred: the premium "selectable prop" highlight from the shipped shader bundle - a
+                // fresnel rim GLOW + a screen-space-constant outline + a faint through-walls ghost. It does
+                // all geometry work in object space, so it can never drift off the pivot the way a scaled
+                // halo did, and the outline width is in PIXELS so it stays crisp at any distance (no speckle).
+                // _OutlineColor.a drives body-fill alpha (via _CoreAlpha) -> 0.55 gives a visible
+                // translucent cyan tint over the prop body even in direct daylight.
+                // _RimColor.a drives the silhouette rim alpha -> 0.90 = near-opaque bright rim.
+                // rimIntensity: 3.5 means at the grazing edge the rim contribution is 3.5x the rim alpha
+                // -> saturates to a clean solid rim. Alpha-blend (not additive) ensures it reads in sun.
+                var core = new Color(0.10f, 0.85f, 1f, 0.55f);   // cyan body tint, 55% opaque
+                var rim  = new Color(0.50f, 1.00f, 1f, 0.90f);    // bright cyan rim, 90% opaque
+                var outline = OutlineShader.TryCreateMaterial(
+                    core, widthPixels: 0f, rimColor: rim,
+                    rimPower: 2.2f, rimIntensity: 3.5f, pulseSpeed: 2.2f, pulseAmount: 0.25f, fillAlpha: 0.20f);
+                if (outline != null) { AddShellGo(gid, mf, outline, true); return; }
+
+                // ponytail: fallback when the bundle is absent/unbuilt - the scale-1.0 glow-tint overlay
+                // (no drift, just not a true outline). Zero regression before the bundle is built/shipped.
                 Material mat = null;
                 var src = srcRend.sharedMaterial;
                 if (src != null) { try { mat = new Material(src); } catch { mat = null; } }
@@ -135,25 +168,28 @@ namespace PropHunt.Disguise
                 try { mat.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always); } catch { }   // see-through-walls (if supported)
                 mat.renderQueue = 3100;
 
-                const float scale = 1.05f;
-                var go = new GameObject("ph_hl");
-                go.transform.SetParent(mf.transform, false);
-                // a 1:1 copy of the prop, enlarged 1.05x in every direction - pure uniform scale about the
-                // prop's own pivot, identity position/rotation. No reposition: shifting toward a computed
-                // centre pushed the shell off one face on asymmetric/posed props.
-                go.transform.localPosition = Vector3.zero;
-                go.transform.localRotation = Quaternion.identity;
-                go.transform.localScale = Vector3.one * scale;
-                var cmf = go.AddComponent<MeshFilter>();
-                cmf.sharedMesh = mf.sharedMesh;
-                var cmr = go.AddComponent<MeshRenderer>();
-                cmr.sharedMaterial = mat;
-                cmr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                cmr.receiveShadows = false;
-
-                _shells[gid] = new Hl { Go = go, Mat = mat };
+                AddShellGo(gid, mf, mat, false);
             }
             catch (System.Exception e) { Fail("AddShell failed: " + e.Message); }
+        }
+
+        // Builds the render-only child mesh (identity transform = exact 1:1 overlay, scale 1.0 -> no pivot
+        // drift) and registers the shell. Shared by the outline and the glow-fallback paths.
+        private void AddShellGo(int gid, MeshFilter mf, Material mat, bool outline)
+        {
+            var go = new GameObject("ph_hl");
+            go.transform.SetParent(mf.transform, false);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            go.transform.localScale = Vector3.one;
+            var cmf = go.AddComponent<MeshFilter>();
+            cmf.sharedMesh = mf.sharedMesh;
+            var cmr = go.AddComponent<MeshRenderer>();
+            cmr.sharedMaterial = mat;
+            cmr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            cmr.receiveShadows = false;
+
+            _shells[gid] = new Hl { Go = go, Mat = mat, Outline = outline };
         }
 
         private void RemoveShell(int gid)
@@ -169,10 +205,17 @@ namespace PropHunt.Disguise
         private void Pulse()
         {
             if (_shells.Count == 0) return;
+            // The premium outline shader runs its OWN time-based pulse (fresnel rim + outline), so the
+            // outline shells need no per-frame CPU drive - touching _OutlineColor here would only clobber
+            // the cyan tint. The pulse remains for the GLOW-FALLBACK material (no internal animation).
             float a = 0.55f + 0.45f * Mathf.PingPong(Time.time * 1.6f, 1f);   // never fully fades -> steady, visible
             var emis = Color.white * a;
             foreach (var h in _shells.Values)
-                if (h.Mat != null) { try { h.Mat.SetColor("_EmissionColor", emis); } catch { } }
+            {
+                if (h.Mat == null || h.Outline) continue;
+                try { h.Mat.SetColor("_EmissionColor", emis); }
+                catch { }
+            }
         }
 
         private void ClearAll()

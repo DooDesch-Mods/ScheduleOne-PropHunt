@@ -65,7 +65,7 @@ namespace PropHunt.Game
         {
             foreach (var p in s.Players.Values)
                 if (p.Role == PlayerRole.Hider) { p.PropId = -1; p.Locked = false; p.Eliminated = false; p.Hits = 0; p.MaxHits = 1; p.Changes = 0; p.PropYaw = 0f; p.DecoysUsed = 0; p.ConcussUsed = 0; }
-            s.Decoys.Clear();   // decoys are per-round
+            if (set.RemoveDecoysBetweenRounds) s.Decoys.Clear();   // host setting (default on); false = decoys carry over
             s.Winner = -1;
             s.Phase = RoundPhase.Hiding;
             s.PhaseEndsAtUnix = now + Math.Max(1, set.HideSeconds);
@@ -84,23 +84,59 @@ namespace PropHunt.Game
             s.PhaseEndsAtUnix = now + Math.Max(1, set.RoundEndSeconds);
         }
 
-        /// <summary>Begin a fresh match: roster -> round 1 -> roles -> hiding.</summary>
+        /// <summary>Begin a fresh match. Like every later round it starts in the SAFEHOUSE lobby (host picks the
+        /// map + presses start, which opens the doors into the round) - the first Safehouse -> Hiding transition
+        /// bumps the round counter to 1 and assigns roles. Falls back to a direct round 1 if no safehouse is
+        /// available (the controller pre-fills <see cref="GameState.SafehouseCode"/> before this runs).</summary>
         internal static void BeginMatch(GameState s, RoundSettings set, long now, IEnumerable<ulong> memberIds)
         {
             SyncRoster(s, memberIds);
-            s.RoundNumber = 1;
-            AssignRoles(s, set, s.RoundNumber);
-            EnterHiding(s, set, now);
+            if (!string.IsNullOrEmpty(s.SafehouseCode))
+            {
+                s.RoundNumber = 0;        // first Safehouse -> Hiding bumps it to 1
+                EnterSafehouse(s, now);
+            }
+            else
+            {
+                s.RoundNumber = 1;
+                AssignRoles(s, set, s.RoundNumber);
+                EnterHiding(s, set, now);
+            }
         }
 
-        /// <summary>At RoundEnd expiry: Single -> MatchEnd (returns true); Continuous -> next round + role swap.</summary>
+        /// <summary>At RoundEnd expiry: Single -> MatchEnd; Continuous -> the Safehouse inter-round lobby (if the
+        /// host pre-selected a property into <see cref="GameState.SafehouseCode"/>), else straight to the next round
+        /// (fallback when no property is available). Always returns true (state changed).</summary>
         internal static bool AfterRoundEnd(GameState s, RoundSettings set, long now)
         {
+            // clear the round's dropped decoys at round end (default) so they don't linger through the safehouse
+            // lobby / into the next round; the host can turn this off to let decoys persist across rounds.
+            if (set.RemoveDecoysBetweenRounds) s.Decoys.Clear();
             if (set.Structure == RoundStructure.Single) { s.Phase = RoundPhase.MatchEnd; return true; }
+            if (!string.IsNullOrEmpty(s.SafehouseCode)) { EnterSafehouse(s, now); return true; }
             s.RoundNumber++;
             AssignRoles(s, set, s.RoundNumber);
             EnterHiding(s, set, now);
-            return false;
+            return true;
+        }
+
+        /// <summary>Host: park players in the Safehouse inter-round lobby. The property code was chosen by the
+        /// controller (size-based) and stored in <see cref="GameState.SafehouseCode"/> before this runs. No
+        /// auto-timer: the host advances out manually via <see cref="ConfirmSafehouseReady"/>.</summary>
+        internal static void EnterSafehouse(GameState s, long now)
+        {
+            s.Phase = RoundPhase.Safehouse;
+            s.SafehouseReady = false;
+            s.PhaseEndsAtUnix = 0;
+            s.Winner = -1;
+        }
+
+        /// <summary>Host confirmed the next-round settings - open the doors after a short broadcast window so every
+        /// client has the "ready" state before the round starts.</summary>
+        internal static void ConfirmSafehouseReady(GameState s, long now)
+        {
+            s.SafehouseReady = true;
+            s.PhaseEndsAtUnix = now + 3;
         }
 
         /// <summary>Advance the round machine one tick. Returns true if the state changed (re-publish).</summary>
@@ -117,6 +153,16 @@ namespace PropHunt.Game
                     break;
                 case RoundPhase.RoundEnd:
                     if (now >= s.PhaseEndsAtUnix) { AfterRoundEnd(s, set, now); return true; }
+                    break;
+                case RoundPhase.Safehouse:
+                    // advance only once the host confirmed (SafehouseReady) and the short broadcast window elapsed
+                    if (s.SafehouseReady && s.PhaseEndsAtUnix > 0 && now >= s.PhaseEndsAtUnix)
+                    {
+                        s.RoundNumber++;
+                        AssignRoles(s, set, s.RoundNumber);
+                        EnterHiding(s, set, now);
+                        return true;
+                    }
                     break;
             }
             return false;
@@ -185,14 +231,30 @@ namespace PropHunt.Game
         }
 
         /// <summary>Hider dropped a decoy of their current prop at the given world spot ([Q]). Honoured up to
-        /// <c>MaxDecoys</c> per round. Returns true if added.</summary>
-        internal static bool ApplyDropDecoy(GameState s, RoundSettings set, ulong sender, float x, float y, float z, float yaw)
+        /// <c>MaxDecoys</c> per round. <paramref name="maxHits"/> is the same size-based HP as the hider's own
+        /// prop (so a hunter needs the same number of hits to destroy the decoy as to catch the real hider).
+        /// Returns true if added.</summary>
+        internal static bool ApplyDropDecoy(GameState s, RoundSettings set, ulong sender, float x, float y, float z, float yaw, int maxHits)
         {
             if (s.Phase != RoundPhase.Hiding && s.Phase != RoundPhase.Hunting) return false;
             if (!s.Players.TryGetValue(sender, out var p) || p.Role != PlayerRole.Hider || p.Eliminated || p.PropId < 0) return false;
             if (set.MaxDecoys > 0 && p.DecoysUsed >= set.MaxDecoys) return false;
-            s.Decoys.Add(new DecoyState { X = x, Y = y, Z = z, Yaw = yaw, PropId = p.PropId });
+            s.Decoys.Add(new DecoyState { X = x, Y = y, Z = z, Yaw = yaw, PropId = p.PropId, MaxHits = Math.Max(1, maxHits) });
             p.DecoysUsed++;
+            return true;
+        }
+
+        /// <summary>Host: a hunter hit a decoy. Only valid during Hunting; bounds-checked; a destroyed decoy
+        /// ignores further hits. Returns true if state changed (Hits incremented or Destroyed newly set).</summary>
+        internal static bool ApplyHitDecoy(GameState s, int decoyIndex)
+        {
+            if (s.Phase != RoundPhase.Hunting) return false;
+            if (decoyIndex < 0 || decoyIndex >= s.Decoys.Count) return false;
+            var d = s.Decoys[decoyIndex];
+            if (d.Destroyed) return false;
+            d.Hits++;
+            if (d.Hits >= Math.Max(1, d.MaxHits))
+                d.Destroyed = true;
             return true;
         }
 
