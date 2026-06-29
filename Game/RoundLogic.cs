@@ -58,6 +58,7 @@ namespace PropHunt.Game
                 p.Role = hunterSet.Contains(id) ? PlayerRole.Hunter : PlayerRole.Hider;
                 p.PropId = -1; p.Locked = false; p.Eliminated = false; p.Hits = 0; p.MaxHits = 1; p.Changes = 0;
                 p.PropYaw = 0f; p.DecoysUsed = 0; p.ConcussUsed = 0;
+                p.CatchesMade = 0; p.HitsDealt = 0; p.DecoyBaits = 0; p.StunsLanded = 0; p.SurvivedSeconds = 0;   // per-round stats (SessScore persists)
             }
         }
 
@@ -75,13 +76,31 @@ namespace PropHunt.Game
         {
             s.Phase = RoundPhase.Hunting;
             s.PhaseEndsAtUnix = now + Math.Max(1, set.HuntSeconds);
+            s.HuntStartUnix = now;   // baseline for hider survival-time stats
         }
 
         internal static void EndRound(GameState s, RoundSettings set, long now, bool winnerHunters)
         {
+            // finalize survival time for hiders still alive (caught hiders got theirs at catch time), then roll each
+            // player's round performance into their cumulative session score (the leaderboard).
+            foreach (var p in s.Players.Values)
+                if (p.Role == PlayerRole.Hider && !p.Eliminated && s.HuntStartUnix > 0)
+                    p.SurvivedSeconds = (int)Math.Max(0, now - s.HuntStartUnix);
+            foreach (var p in s.Players.Values)
+                p.SessScore += RoundScore(p, winnerHunters);
             s.Phase = RoundPhase.RoundEnd;
             s.Winner = winnerHunters ? 0 : 1;
             s.PhaseEndsAtUnix = now + Math.Max(1, set.RoundEndSeconds);
+        }
+
+        /// <summary>This round's score for one player: catches + hits + decoy baits + stuns + survival time, plus a
+        /// bonus for being on the winning side (and not caught). Pure + deterministic so it is unit-testable.</summary>
+        internal static int RoundScore(PlayerState p, bool huntersWon)
+        {
+            int s = p.CatchesMade * 10 + p.HitsDealt + p.DecoyBaits * 5 + p.StunsLanded * 5 + p.SurvivedSeconds / 5;
+            bool onWinningSide = huntersWon ? p.Role == PlayerRole.Hunter : p.Role == PlayerRole.Hider;
+            if (onWinningSide && !p.Eliminated) s += 15;
+            return s;
         }
 
         /// <summary>Begin a fresh match. Like every later round it starts in the SAFEHOUSE lobby (host picks the
@@ -207,7 +226,10 @@ namespace PropHunt.Game
             if (!s.Players.TryGetValue(hunter, out var h) || h.Role != PlayerRole.Hunter || h.Eliminated) return false;
             if (!s.Players.TryGetValue(victim, out var v) || v.Role != PlayerRole.Hider || v.Eliminated) return false;
             v.Hits++;
+            h.HitsDealt++;
             if (v.Hits < Math.Max(1, v.MaxHits)) return true;   // a hit landed - not caught yet (bigger prop = more HP)
+            h.CatchesMade++;
+            if (s.HuntStartUnix > 0) v.SurvivedSeconds = (int)Math.Max(0, now - s.HuntStartUnix);
             if (set.Caught == CaughtBehavior.Infection)
             {
                 // mirror the full per-round reset AssignRoles does, so no stale per-prop state (MaxHits, prop
@@ -239,7 +261,7 @@ namespace PropHunt.Game
             if (s.Phase != RoundPhase.Hiding && s.Phase != RoundPhase.Hunting) return false;
             if (!s.Players.TryGetValue(sender, out var p) || p.Role != PlayerRole.Hider || p.Eliminated || p.PropId < 0) return false;
             if (set.MaxDecoys > 0 && p.DecoysUsed >= set.MaxDecoys) return false;
-            s.Decoys.Add(new DecoyState { X = x, Y = y, Z = z, Yaw = yaw, PropId = p.PropId, MaxHits = Math.Max(1, maxHits) });
+            s.Decoys.Add(new DecoyState { X = x, Y = y, Z = z, Yaw = yaw, PropId = p.PropId, MaxHits = Math.Max(1, maxHits), OwnerSteamId = sender });
             p.DecoysUsed++;
             return true;
         }
@@ -253,6 +275,9 @@ namespace PropHunt.Game
             var d = s.Decoys[decoyIndex];
             if (d.Destroyed) return false;
             d.Hits++;
+            // credit the decoy's owner with a "bait" - a hunter wasted a shot on their fake
+            if (d.OwnerSteamId != 0 && s.Players.TryGetValue(d.OwnerSteamId, out var owner) && owner.Role == PlayerRole.Hider)
+                owner.DecoyBaits++;
             if (d.Hits >= Math.Max(1, d.MaxHits))
                 d.Destroyed = true;
             return true;

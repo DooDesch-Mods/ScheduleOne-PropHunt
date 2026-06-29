@@ -128,28 +128,18 @@ namespace PropHunt.Disguise
                         string key = MeshKey(mesh);
                         if (key == null || !seen.Add(key)) continue;   // one entry per distinct mesh
 
-                        if (curated)
-                        {
-                            // allowlist: only meshes the curator explicitly approved (a cheap dictionary lookup -
-                            // rejects ~all of the world's meshes before any hierarchy walk).
-                            if (!(_curation.TryGetValue(key, out var keep) && keep)) continue;
-                        }
-                        else
-                        {
-                            // pre-curation heuristic: name blocklist + hide-able size band. Size from the mesh
-                            // asset bounds * world scale (deterministic + valid even when the renderer is disabled,
-                            // unlike rend.bounds which can be stale on a batched-away renderer).
-                            if (!IsUsablePropName(name)) continue;
-                            Vector3 b = Vector3.Scale(mesh.bounds.size, mf.transform.lossyScale);
-                            float maxd = Mathf.Max(b.x, Mathf.Max(b.y, b.z));
-                            float mind = Mathf.Min(b.x, Mathf.Min(b.y, b.z));
-                            if (maxd < 0.3f || maxd > 4f) continue;   // only hide-able-sized props
-                            if (mind < 0.08f) continue;               // skip flat planes/decals
-                        }
+                        // STRICT allowlist: a prop is becomable ONLY if it was explicitly reviewed and KEPT in the
+                        // curation. Unreviewed meshes (no decision) and skipped ones NEVER enter the pool - on host
+                        // OR client (every machine reads the same curation source, so the set is identical). When no
+                        // curation exists at all the pool ends up empty and the primitive fallback below kicks in, so
+                        // hiders always have SOMETHING to become but never an un-vetted world mesh. (The heuristic
+                        // size/name filter is no longer an inclusion path - it only survives as the DEBUG seed tool.)
+                        if (!(_curation.TryGetValue(key, out var keep) && keep)) continue;
 
                         // survivors only (a few hundred) -> the expensive hierarchy walks: reject NPC/player
-                        // avatar body parts + doors (kept interactable), then resolve the LOD root for cloning.
-                        if (IsCharacterMesh(mf) || IsDoorMesh(mf)) continue;
+                        // avatar body parts, doors (kept interactable) + vehicle parts (broken standalone), then
+                        // resolve the LOD root for cloning.
+                        if (IsCharacterMesh(mf) || IsDoorMesh(mf) || IsVehicleMesh(mf)) continue;
                         survivors++;
                         var lg = mf.GetComponentInParent<LODGroup>();
                         tmp.Add(new PropEntry
@@ -185,9 +175,17 @@ namespace PropHunt.Disguise
         }
 
         /// <summary>
-        /// ALL reviewable candidate props in the loaded world (for the phcurate tool): one scan, deduped per
-        /// distinct mesh (LOD props deduped per type via LodTypeKey so each LOD prop shows once). No curation or
-        /// heuristic size/name filter; structural guards (junk/character/vertex/material) still apply.
+        /// ALL reviewable candidate props in memory (for the phcurate tool): one scan, deduped per distinct mesh
+        /// (LOD props deduped per type via LodTypeKey so each LOD prop shows once). No curation or heuristic
+        /// size/name filter; structural guards (junk/character/vertex/material) still apply.
+        ///
+        /// Uses Resources.FindObjectsOfTypeAll (NOT FindObjectsOfType): the curator must see every prop the dev
+        /// could possibly review, including ones that are loaded but currently INACTIVE (closed interiors,
+        /// distance-deactivated props) and prop prefab/asset templates held in memory but not placed in the scene.
+        /// FindObjectsOfType would only return active scene objects, so the candidate list varied by where the dev
+        /// stood. This is curation-authoring only: the runtime catalog Build() still scans active objects so the
+        /// becomable set stays identical on host + client (FindObjectsOfTypeAll is load-timing-dependent and would
+        /// desync). Curation keys are content signatures, so a decision made here matches the world instance later.
         /// </summary>
         internal static List<PropEntry> EnumerateAllCandidates()
         {
@@ -196,7 +194,7 @@ namespace PropHunt.Disguise
             var list = new List<PropEntry>();
             try
             {
-                var filters = UnityEngine.Object.FindObjectsOfType<MeshFilter>();
+                var filters = Resources.FindObjectsOfTypeAll<MeshFilter>();
                 if (filters != null)
                 {
                     for (int i = 0; i < filters.Length; i++)
@@ -205,6 +203,11 @@ namespace PropHunt.Disguise
                         if (mf == null) continue;
                         var mesh = mf.sharedMesh;
                         if (mesh == null) continue;
+                        // Only real world-scene objects (active OR inactive). FindObjectsOfTypeAll also returns
+                        // prefab/asset meshes held in memory (deployable-furniture prefabs, menu prefabs) that have
+                        // no scene and can never be a becomable world prop - skip them so the curator lists only
+                        // props that actually exist in the map. Inactive map interiors stay (they ARE in the scene).
+                        if (!mf.gameObject.scene.IsValid()) continue;
                         string name = mesh.name;
                         if (IsJunkMeshName(name)) continue;
                         if (mesh.vertexCount < 8) continue;
@@ -212,7 +215,7 @@ namespace PropHunt.Disguise
                         // enabled flag deliberately NOT checked - see Build(): keying on it makes the candidate
                         // set timing-dependent (batching) and thus different per machine.
                         if (rend == null || rend.sharedMaterial == null) continue;
-                        if (IsCharacterMesh(mf) || IsDoorMesh(mf)) continue;   // never offer doors as disguises
+                        if (IsCharacterMesh(mf) || IsDoorMesh(mf) || IsVehicleMesh(mf)) continue;   // never offer doors or vehicle parts
 
                         var lg = mf.GetComponentInParent<LODGroup>();
                         string entryKey;
@@ -285,6 +288,16 @@ namespace PropHunt.Disguise
         private static bool IsDoorMesh(MeshFilter mf)
         {
             try { return mf.GetComponentInParent<Il2CppScheduleOne.Doors.DoorController>() != null; }
+            catch { return false; }
+        }
+
+        /// <summary>True when the mesh belongs to a vehicle (any mesh under a LandVehicle). Vehicle PART meshes
+        /// (TailLight, Trunk, Body, indicators, ...) make broken standalone disguises - they only read as props in
+        /// the context of the whole car - so the ENTIRE vehicle hierarchy is excluded, on host + client alike
+        /// (the LandVehicle component is present identically on both, so the exclusion is deterministic).</summary>
+        private static bool IsVehicleMesh(MeshFilter mf)
+        {
+            try { return mf.GetComponentInParent<Il2CppScheduleOne.Vehicles.LandVehicle>() != null; }
             catch { return false; }
         }
 
@@ -522,10 +535,24 @@ namespace PropHunt.Disguise
         {
             var e = ById(id);
             if (e == null) return 0f;
+            // Use the actual mesh ASSET bounds * the prop's world scale. This is the prop's real world size and
+            // matches the disguise clone + its hitbox. LODGroup.size is NOT used: it reports the group's authoring
+            // size, which for some props is far larger than the rendered mesh - that gave a tiny bottle ~14 HP and
+            // an absurd camera pull-back even though its collision box was correctly small.
+            if (e.Source != null && e.Source.sharedMesh != null)
+            {
+                var b = Vector3.Scale(e.Source.sharedMesh.bounds.size, e.Source.transform.lossyScale);
+                float m = Mathf.Max(b.x, Mathf.Max(b.y, b.z));
+                if (m > 0.001f) return m;
+            }
+            if (e.SourceRenderer != null)
+            {
+                var sz = e.SourceRenderer.bounds.size;
+                float m = Mathf.Max(sz.x, Mathf.Max(sz.y, sz.z));
+                if (m > 0.001f) return m;
+            }
             if (e.SourceLodGroup != null) { try { float s = e.SourceLodGroup.size; if (s > 0f) return s; } catch { } }
-            if (e.SourceRenderer == null) return 0f;
-            var sz = e.SourceRenderer.bounds.size;
-            return Mathf.Max(sz.x, Mathf.Max(sz.y, sz.z));
+            return 0f;
         }
 
         /// <summary>All distinct LOD MeshKeys under a LODGroup (LOD0/LOD1/LOD2...). Used by the curator so a

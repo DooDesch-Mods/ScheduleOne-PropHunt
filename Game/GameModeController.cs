@@ -46,6 +46,8 @@ namespace PropHunt.Game
         private PlayAreaBorder _border;
         private TauntController _taunt;
         private Taunt.TauntWheel _tauntWheel;
+        private UI.Onboarding _onboarding;
+        private PropHunt.View.SpectatorController _spectator;
         private float _lastTauntTime;
         private RoundPhase _loggedPhase = (RoundPhase)(-1);
         private bool _matchStarted;
@@ -102,6 +104,8 @@ namespace PropHunt.Game
         /// hider, [E] becomes it). Aiming at a door / non-prop leaves this false, so doors still open for both.</summary>
         internal bool LocalAimingBecomable => _picker != null && _picker.CurrentTargetId >= 0;
         internal bool ThirdPersonOn => _thirdPerson != null && _thirdPerson.IsOn;
+        internal bool LocalSpectating => _spectator != null && _spectator.Active;
+        internal string SpectatorHudText => _spectator != null ? _spectator.HudText : null;
         internal bool RoundActive => _state.Phase == RoundPhase.Hiding || _state.Phase == RoundPhase.Hunting || _state.Phase == RoundPhase.RoundEnd || _state.Phase == RoundPhase.Safehouse;
 
         internal PlayerRole LocalRole => RoleOf(LocalId);
@@ -176,8 +180,56 @@ namespace PropHunt.Game
             catch (Exception e) { Core.LogDebug("[PropHunt] taunt sound failed: " + e.Message); }
         }
 
+        // ---- action feedback (catch / stun / decoy pop): a 3D SFX + a brief screen flash so outcomes read
+        // clearly. The host emits these where it validates the action; clients receive them via P2P. Best-effort
+        // clip names (resolved against the game's audio library at runtime; silent if none match). ----
+        private static readonly string[] HitClips   = { "bullet_impact", "impact", "flesh", "thud" };
+        private static readonly string[] CatchClips = { "bullet_impact", "impact", "thud", "hit" };
+        private static readonly string[] StunClips  = { "taze", "electric", "shock", "zap", "stun" };
+        private static readonly string[] DecoyClips = { "glass", "shatter", "break", "pop" };
+
+        private string _fxText;
+        private Color _fxColor = Color.white;
+        private float _fxUntil;
+        private void SetFx(string text, Color color) { _fxText = text; _fxColor = color; _fxUntil = Time.time + 1.2f; }
+        internal bool FxActive => Time.time < _fxUntil && !string.IsNullOrEmpty(_fxText);
+        internal string FxText => _fxText;
+        internal Color FxColor => _fxColor;
+
+        private static void BroadcastFx(P2PMessage msg) { try { PropHuntNet.Client?.BroadcastMessage(msg); } catch { } }
+
+        /// <summary>A hunter landed a hit/catch on a hider: play an impact at the victim; flash the hunter and the
+        /// victim. Runs on every client (host calls it directly; clients via the P2P handler).</summary>
+        internal void NotifyCatchFx(ulong hunterId, ulong victimId, bool caught, Vector3 pos)
+        {
+            try { Taunt.TauntSounds.PlayFx(caught ? CatchClips : HitClips, pos, 0.8f); } catch { }
+            ulong me = LocalId;
+            if (me == hunterId) SetFx(caught ? "CATCH!" : "HIT", new Color(0.3f, 1f, 0.5f));
+            else if (me == victimId) SetFx(caught ? "CAUGHT!" : "HIT!", Color.red);
+        }
+
+        /// <summary>A concussion went off: play a stun SFX at the centre; the thrower gets confirmation, a local
+        /// hunter inside the blast radius flashes STUNNED.</summary>
+        internal void NotifyStunFx(ulong throwerId, Vector3 pos)
+        {
+            try { Taunt.TauntSounds.PlayFx(StunClips, pos, 0.85f); } catch { }
+            if (LocalId == throwerId) { SetFx("STUN!", Color.cyan); return; }
+            if (LocalRole == PlayerRole.Hunter)
+            {
+                try { var lp = Player.Local; if (lp != null && Vector3.Distance(lp.transform.position, pos) <= _settings.ConcussRadius + 1f) SetFx("STUNNED!", new Color(1f, 0.4f, 1f)); }
+                catch { }
+            }
+        }
+
+        /// <summary>A decoy was revealed as fake: play a pop at its position; the hunter who shot it flashes DECOY.</summary>
+        internal void NotifyDecoyFx(ulong hunterId, Vector3 pos)
+        {
+            try { Taunt.TauntSounds.PlayFx(DecoyClips, pos, 0.8f); } catch { }
+            if (LocalId == hunterId) SetFx("DECOY!", Color.yellow);
+        }
+
         /// <summary>IMGUI hook (called from Core.OnGUI): the taunt selection wheel.</summary>
-        internal void DrawGui() { try { _tauntWheel?.DrawGui(); } catch { } }
+        internal void DrawGui() { try { _tauntWheel?.DrawGui(); } catch { } try { _onboarding?.DrawGui(); } catch { } }
 
         /// <summary>Debug: dump the prop pipeline state - catalog size/hash, crosshair target, highlight count,
         /// and a live count of becomable objects within reach of the local player.</summary>
@@ -229,6 +281,8 @@ namespace PropHunt.Game
             _border = new PlayAreaBorder(this);
             _taunt = new TauntController(this);
             _tauntWheel = new Taunt.TauntWheel(this);
+            _onboarding = new UI.Onboarding(this);
+            _spectator = new PropHunt.View.SpectatorController(this);
             _state = new GameState { Phase = RoundPhase.Lobby, SettingsBlob = _settings.Serialize(), CatalogHash = PropCatalog.Hash };
             RoundLogic.SyncRoster(_state, GetMemberIds());
             PushState();
@@ -262,6 +316,8 @@ namespace PropHunt.Game
             _border = new PlayAreaBorder(this);
             _taunt = new TauntController(this);
             _tauntWheel = new Taunt.TauntWheel(this);
+            _onboarding = new UI.Onboarding(this);
+            _spectator = new PropHunt.View.SpectatorController(this);
             try { var cur = _stateVar?.Value; if (!string.IsNullOrEmpty(cur)) ApplyStateString(cur); } catch { }
             Core.Log.Msg("[PropHunt] client session started; waiting for host state.");
         }
@@ -581,6 +637,9 @@ namespace PropHunt.Game
                         RoundEnvironment.TeleportLocalInto(_state.AreaX, _state.AreaY, _state.AreaZ, LocalId);
                     if (LocalRole == PlayerRole.Hider) DumpPropDebug();
                 }
+                // back in the safehouse / between rounds -> reset everyone to first person (a pulled-back
+                // third-person view from the last round must not carry into the lobby).
+                if (_state.Phase == RoundPhase.Safehouse || _state.Phase == RoundPhase.RoundEnd) _thirdPerson?.ForceOff();
                 // arming/disarming the local hunter is role-driven, not phase-edge driven -> ApplyLocalEffects
             }
 
@@ -594,11 +653,13 @@ namespace PropHunt.Game
             ApplyLocalEffects();
             _picker?.Tick();
             _highlighter?.Tick();
+            _spectator?.Tick();
             _thirdPerson?.Tick();
             _catch?.Tick();
             _passthrough?.Tick();
             _border?.Tick();
             _tauntWheel?.Tick();
+            _onboarding?.Tick();
             _playArea?.Tick();
             _taunt?.Tick();
             _disguise?.Apply(_state);
@@ -639,6 +700,7 @@ namespace PropHunt.Game
             try { _decoy?.Dispose(); } catch { }
             try { _highlighter?.Dispose(); } catch { }
             try { _thirdPerson?.Dispose(); } catch { }
+            try { _spectator?.ForceExit(); } catch { }   // restore camera + movement if caught/spectating on teardown
             try { _passthrough?.Dispose(); } catch { }   // restore any obstacle collisions we ignored
             try { _border?.Dispose(); } catch { }
             try { _tauntWheel?.Dispose(); } catch { }
@@ -653,6 +715,8 @@ namespace PropHunt.Game
             _border = null;
             _taunt = null;
             _tauntWheel = null;
+            _onboarding = null;
+            _spectator = null;
             try { _stateVar?.Dispose(); } catch { }
             _stateVar = null;
             Core.Log.Msg("[PropHunt] session disposed.");
@@ -714,6 +778,9 @@ namespace PropHunt.Game
                 c.RegisterMessageHandler<TauntMessage>((m, s) => Active?.NotifyTaunt(m.SteamId, m.Sound, m.IsWhistle));
                 c.RegisterMessageHandler<ManualTauntMessage>((m, s) => Active?.HandleManualTaunt(s.m_SteamID, m.Sound));
                 c.RegisterMessageHandler<DecoyHitMessage>((m, s) => Active?.HandleDecoyHit(s.m_SteamID, m.DecoyIndex));
+                c.RegisterMessageHandler<CatchFxMessage>((m, s) => Active?.NotifyCatchFx(m.HunterId, m.VictimId, m.Caught, new Vector3(m.X, m.Y, m.Z)));
+                c.RegisterMessageHandler<StunFxMessage>((m, s) => Active?.NotifyStunFx(m.ThrowerId, new Vector3(m.X, m.Y, m.Z)));
+                c.RegisterMessageHandler<DecoyFxMessage>((m, s) => Active?.NotifyDecoyFx(m.HunterId, new Vector3(m.X, m.Y, m.Z)));
                 c.RegisterMessageHandler<SafehouseDoorLockMessage>((m, s) => Active?.HandleSafehouseDoorLock(m.PropertyCode, m.Locked));
                 _handlersRegistered = true;
                 Core.LogDebug("[PropHunt] P2P handlers registered.");
@@ -867,7 +934,10 @@ namespace PropHunt.Game
             if (!_isHost) return;
             if (RoundLogic.ApplyConcuss(_state, _settings, sender))
             {
-                ApplyConcussionEffect(new UnityEngine.Vector3(x, y, z), sender);
+                var center = new Vector3(x, y, z);
+                ApplyConcussionEffect(center, sender);
+                BroadcastFx(new StunFxMessage { ThrowerId = sender, X = x, Y = y, Z = z });
+                NotifyStunFx(sender, center);
                 PushState();
             }
             else
@@ -895,6 +965,7 @@ namespace PropHunt.Game
                     if (UnityEngine.Vector3.Distance(center, pl.transform.position) > r) continue;
                     try { pl.Taze(); hit++; } catch { }
                 }
+                if (hit > 0 && _state.Players.TryGetValue(hiderId, out var hs)) hs.StunsLanded += hit;   // credit the hider (synced by HandleConcuss' PushState)
                 Core.Log.Msg($"[PropHunt] concussion by {hiderId} - tazed {hit} hunter(s) within {r}m.");
             }
             catch (Exception e) { Core.Log.Warning("[PropHunt] concussion effect failed: " + e.Message); }
@@ -930,8 +1001,12 @@ namespace PropHunt.Game
             }
             if (RoundLogic.ApplyCatch(_state, _settings, hunter, victim, NowUnix()))
             {
-                if (RoundLogic.IsCaught(_state, victim)) Core.Log.Msg($"[PropHunt] {hunter} CAUGHT {victim} ({_settings.Caught}).");
+                bool caught = RoundLogic.IsCaught(_state, victim);
+                if (caught) Core.Log.Msg($"[PropHunt] {hunter} CAUGHT {victim} ({_settings.Caught}).");
                 else Core.Log.Msg($"[PropHunt] {hunter} hit {victim} ({_state.Players[victim].Hits}/{_settings.HitsToCatch}).");
+                var vpos = vp != null ? vp.transform.position : (hp != null ? hp.transform.position : Vector3.zero);
+                BroadcastFx(new CatchFxMessage { HunterId = hunter, VictimId = victim, Caught = caught, X = vpos.x, Y = vpos.y, Z = vpos.z });
+                NotifyCatchFx(hunter, victim, caught, vpos);
                 PushState();
             }
         }
@@ -1017,7 +1092,12 @@ namespace PropHunt.Game
             {
                 var dAfter = _state.Decoys[decoyIndex];
                 if (dAfter.Destroyed)
+                {
                     Core.Log.Msg($"[PropHunt] hunter {hunter} DESTROYED decoy {decoyIndex} (FAKE!) hits={dAfter.Hits}/{dAfter.MaxHits}.");
+                    var dpos = new Vector3(dAfter.X, dAfter.Y, dAfter.Z);
+                    BroadcastFx(new DecoyFxMessage { HunterId = hunter, X = dpos.x, Y = dpos.y, Z = dpos.z });
+                    NotifyDecoyFx(hunter, dpos);
+                }
                 else
                     Core.Log.Msg($"[PropHunt] hunter {hunter} hit decoy {decoyIndex} ({dAfter.Hits}/{dAfter.MaxHits}).");
                 PushState();

@@ -188,6 +188,7 @@ namespace PropHunt
 #endif
 #if DEBUG
             Disguise.PropCurator.Tick();   // prop curation tool (toggled by the phcurate console command)
+            Disguise.CuratePreview.Tick();   // live on-player preview of the curated prop on other clients
             PropHunt.Debug.DebugOverlay.Tick();   // F3 toggles the visual diagnostics overlay
             PropHunt.Debug.DebugViz.Tick();        // in-world collision boxes (only while the overlay is on)
             PropHunt.Debug.SoundBrowser.Tick();    // sound audition browser (toggled by the phsounds command)

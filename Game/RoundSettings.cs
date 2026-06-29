@@ -13,7 +13,7 @@ namespace PropHunt.Game
     {
         internal int HideSeconds = 30;
         internal int HuntSeconds = 300;
-        internal int RoundEndSeconds = 8;
+        internal int RoundEndSeconds = 15;
         internal int PlayersPerHunter = 5;
         internal int RoundsBeforeSwap = 1;
         internal float TagRange = 4f;

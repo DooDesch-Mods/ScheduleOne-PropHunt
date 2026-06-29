@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using PropHunt.Game;
+using PropHunt.Config;
 
 namespace PropHunt.Taunt
 {
@@ -42,14 +43,14 @@ namespace PropHunt.Taunt
 
             try
             {
-                if (Input.GetKeyDown(KeyCode.Alpha1)) _downAt = Time.time;
+                if (Input.GetKeyDown(KeyBinds.Taunt)) _downAt = Time.time;
 
-                if (!_open && _downAt >= 0f && Input.GetKey(KeyCode.Alpha1) && Time.time - _downAt >= HoldThreshold)
+                if (!_open && _downAt >= 0f && Input.GetKey(KeyBinds.Taunt) && Time.time - _downAt >= HoldThreshold)
                     Open();
 
                 if (_open) UpdateAim();
 
-                if (Input.GetKeyUp(KeyCode.Alpha1))
+                if (Input.GetKeyUp(KeyBinds.Taunt))
                 {
                     if (_open) Close(true);                                       // commit highlighted
                     else if (_downAt >= 0f) _ctl.RequestManualTaunt(_selectedSound);   // tap -> play selected (null = default)

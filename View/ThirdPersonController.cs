@@ -1,6 +1,7 @@
 using UnityEngine;
 using Il2CppScheduleOne.PlayerScripts;
 using PropHunt.Game;
+using PropHunt.Config;
 
 namespace PropHunt.View
 {
@@ -21,7 +22,7 @@ namespace PropHunt.View
 
         // hunters aim catch raycasts from the camera, so they are locked to first person; only hiders may use
         // the third-person inspection view (to see their own prop disguise).
-        private bool Allowed => _ctl.RoundActive && _ctl.LocalRole != PlayerRole.Hunter;
+        private bool Allowed => _ctl.RoundActive && _ctl.LocalRole != PlayerRole.Hunter && !_ctl.LocalSpectating;
 
         internal bool IsOn => _on && Allowed;
 
@@ -33,7 +34,7 @@ namespace PropHunt.View
         {
             try
             {
-                if (Input.GetKeyDown(KeyCode.V) && Allowed) _on = !_on;
+                if (Input.GetKeyDown(KeyBinds.ThirdPerson) && Allowed) _on = !_on;
                 bool active = _on && Allowed;
                 ThirdPersonView.Active = active;
                 if (active) UpdateCameraForProp();

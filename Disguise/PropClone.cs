@@ -29,6 +29,43 @@ namespace PropHunt.Disguise
             catch (System.Exception ex) { Core.LogDebug("[PropHunt] PropClone.Build failed: " + ex.Message); return null; }
         }
 
+        /// <summary>World AABB from the clone's MESH ASSET bounds (every MeshFilter's sharedMesh.bounds corners,
+        /// taken through the CURRENT transform matrices). Used for per-frame re-centring: unlike
+        /// <see cref="TryGetWorldBounds"/> (Renderer.bounds) it is never a frame stale (Renderer.bounds is refreshed
+        /// during render culling, AFTER LateUpdate) and is LOD-active-independent (it does not include zeroed bounds
+        /// from disabled LOD renderers) - both of which otherwise left the prop off-centre / trailing. Same basis as
+        /// the hitbox (<see cref="TryGetLocalBounds"/>), so the visible prop and its hitbox stay aligned.</summary>
+        internal static bool TryGetWorldMeshBounds(GameObject go, out Bounds bounds)
+        {
+            bounds = default;
+            if (go == null) return false;
+            var mfs = go.GetComponentsInChildren<MeshFilter>(true);
+            if (mfs == null) return false;
+            bool any = false;
+            for (int i = 0; i < mfs.Length; i++)
+            {
+                var mf = mfs[i];
+                if (mf == null || mf.sharedMesh == null) continue;
+                // ONLY the currently-VISIBLE meshes: a mesh with no MeshRenderer (collision/culling proxy) or whose
+                // renderer is disabled (an inactive LOD level) must be skipped - those carry huge or stale bounds
+                // that blew the union up to hundreds of metres and flung the prop off-screen.
+                var mr = mf.GetComponent<MeshRenderer>();
+                if (mr == null || !mr.enabled || !mr.gameObject.activeInHierarchy) continue;
+                var mt = mf.transform;
+                var mb = mf.sharedMesh.bounds;
+                Vector3 c = mb.center, e = mb.extents;
+                for (int sx = -1; sx <= 1; sx += 2)
+                    for (int sy = -1; sy <= 1; sy += 2)
+                        for (int sz = -1; sz <= 1; sz += 2)
+                        {
+                            Vector3 w = mt.TransformPoint(c + new Vector3(sx * e.x, sy * e.y, sz * e.z));
+                            if (!any) { bounds = new Bounds(w, Vector3.zero); any = true; }
+                            else bounds.Encapsulate(w);
+                        }
+            }
+            return any;
+        }
+
         /// <summary>World AABB of a built clone: the root MeshRenderer for a single-mesh clone, else the union of
         /// the LOD clone's child renderers. False if it has no renderers.</summary>
         internal static bool TryGetWorldBounds(GameObject go, out Bounds bounds)
@@ -58,7 +95,7 @@ namespace PropHunt.Disguise
             if (go == null) return null;
             try
             {
-                if (!TryGetLocalBounds(go, out Bounds lb)) return null;
+                if (!TryGetPropLocalBounds(go, out Bounds lb)) return null;
                 var bc = go.AddComponent<BoxCollider>();
                 bc.isTrigger = true;
                 bc.center = lb.center;   // already in the clone root's local space
@@ -71,7 +108,7 @@ namespace PropHunt.Disguise
         /// <summary>Bounds of the clone's meshes expressed in the ROOT's local space (every mesh corner taken to
         /// world, then back into root-local). A BoxCollider built from this is oriented along the prop's own axes,
         /// so a rotated or flat prop gets a matching box instead of a twisted world-AABB one.</summary>
-        private static bool TryGetLocalBounds(GameObject root, out Bounds local)
+        internal static bool TryGetLocalBounds(GameObject root, out Bounds local)
         {
             local = default;
             if (root == null) return false;
@@ -83,6 +120,10 @@ namespace PropHunt.Disguise
             {
                 var mf = mfs[i];
                 if (mf == null || mf.sharedMesh == null) continue;
+                // only currently-visible meshes (skip non-rendered proxy meshes + inactive LOD levels, whose mesh
+                // bounds otherwise blow the box up to hundreds of metres)
+                var mr = mf.GetComponent<MeshRenderer>();
+                if (mr == null || !mr.enabled || !mr.gameObject.activeInHierarchy) continue;
                 var mt = mf.transform;
                 var mb = mf.sharedMesh.bounds;   // local to the mesh's own transform
                 Vector3 c = mb.center, e = mb.extents;
@@ -97,6 +138,162 @@ namespace PropHunt.Disguise
                         }
             }
             return any;
+        }
+
+        /// <summary>World AABB of a fixed ROOT-LOCAL <paramref name="local"/> box under <paramref name="t"/>'s current
+        /// pose (its 8 corners through t.TransformPoint). Lets the disguise positioner reuse a bounds captured ONCE at
+        /// build time (when correct) instead of re-querying renderer/mesh bounds every frame (which a LOD hierarchy
+        /// reports as a huge, fluctuating box once it evaluates).</summary>
+        internal static Bounds LocalToWorldBounds(Transform t, Bounds local)
+        {
+            Vector3 c = local.center, e = local.extents;
+            Bounds w = default; bool any = false;
+            for (int sx = -1; sx <= 1; sx += 2)
+                for (int sy = -1; sy <= 1; sy += 2)
+                    for (int sz = -1; sz <= 1; sz += 2)
+                    {
+                        Vector3 p = t.TransformPoint(c + new Vector3(sx * e.x, sy * e.y, sz * e.z));
+                        if (!any) { w = new Bounds(p, Vector3.zero); any = true; }
+                        else w.Encapsulate(p);
+                    }
+            return w;
+        }
+
+        /// <summary>Root-local bounds of JUST THE PROP - the meshes that are actually part of the LODGroup's LOD
+        /// levels (via <c>GetLODs()</c>), not whatever else got cloned alongside. A prop's LODGroup hierarchy can
+        /// contain an unrelated sibling mesh (huge/far) that <see cref="TryGetLocalBounds"/> would wrongly include,
+        /// blowing the box up to hundreds of metres. Falls back to the all-visible-mesh bounds for non-LOD clones.</summary>
+        internal static bool TryGetPropLocalBounds(GameObject root, out Bounds local)
+        {
+            local = default;
+            if (root == null) return false;
+            var rt = root.transform;
+            bool any = false;
+
+            // Mirror TryGetWorldBounds' ROOT short-circuit: if the root itself carries the (enabled) mesh, use ONLY
+            // it. A prop's cloned hierarchy can contain an unrelated FAR sibling mesh that DOES have an enabled
+            // renderer (so it survives every "visible mesh" filter) - including it blew the box up to ~269m and
+            // flung the prop. Renderer.bounds short-circuits on the root for exactly this reason; we match it.
+            var rootMr = root.GetComponent<MeshRenderer>();
+            var rootMf = root.GetComponent<MeshFilter>();
+            if (rootMr != null && rootMr.enabled && rootMr.gameObject.activeInHierarchy && rootMf != null && rootMf.sharedMesh != null)
+            {
+                EncapsulateMeshLocal(rootMf, rt, ref local, ref any);
+                if (any) return true;
+            }
+
+            // True multi-LOD-on-children clone (no root mesh): only the currently-VISIBLE child renderers (the
+            // active LOD), skipping disabled/stale LOD levels and non-rendered proxy meshes.
+            var mrs = root.GetComponentsInChildren<MeshRenderer>(true);
+            if (mrs != null)
+                for (int i = 0; i < mrs.Length; i++)
+                {
+                    var mr = mrs[i];
+                    if (mr == null || !mr.enabled || !mr.gameObject.activeInHierarchy) continue;
+                    var mf = mr.GetComponent<MeshFilter>();
+                    if (mf == null || mf.sharedMesh == null) continue;
+                    EncapsulateMeshLocal(mf, rt, ref local, ref any);
+                }
+            return any;
+        }
+
+        /// <summary>Root-local bounds of JUST THIS PROP'S source mesh, computed from the SOURCE asset (never the
+        /// cloned hierarchy). Maps the source mesh's local bounds into the source root's local space (= the clone
+        /// root's local space, since the clone replicates the source hierarchy 1:1). This uses only the one mesh,
+        /// so an unrelated sibling mesh in the prop's prefab can never pollute it (the bug that gave a 269m box).</summary>
+        internal static bool TryGetSourceLocalBounds(PropEntry e, out Bounds local)
+        {
+            local = default;
+            if (e == null || e.Source == null) return false;
+            var mesh = e.Source.sharedMesh;
+            if (mesh == null) return false;
+            var rootT = (e.SourceLodGroup != null) ? e.SourceLodGroup.transform : e.Source.transform;
+            if (rootT == null) return false;
+            try
+            {
+                Matrix4x4 m = rootT.worldToLocalMatrix * e.Source.transform.localToWorldMatrix;   // mesh-local -> root-local
+                var mb = mesh.bounds;
+                Vector3 c = mb.center, ex = mb.extents;
+                bool any = false;
+                for (int sx = -1; sx <= 1; sx += 2)
+                    for (int sy = -1; sy <= 1; sy += 2)
+                        for (int sz = -1; sz <= 1; sz += 2)
+                        {
+                            Vector3 p = m.MultiplyPoint3x4(c + new Vector3(sx * ex.x, sy * ex.y, sz * ex.z));
+                            if (!any) { local = new Bounds(p, Vector3.zero); any = true; }
+                            else local.Encapsulate(p);
+                        }
+                return any;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>Root-local bounds of the WHOLE prop (all its meshes), computed from the SOURCE assets, but
+        /// distance-culled around the LODGroup's reference point so an unrelated FAR sibling mesh in the prefab is
+        /// excluded. This fixes multi-mesh props (e.g. Cash-for-Trash = panel + body + chute): TryGetSourceLocalBounds
+        /// bounds only the ONE matched mesh, so the rest hung through the floor; this bounds every part of the prop
+        /// while still ignoring the stray 100m+ sibling. Falls back to the single matched mesh.</summary>
+        internal static bool TryGetPropBoundsFromSource(PropEntry e, out Bounds local)
+        {
+            local = default;
+            if (e == null || e.Source == null || e.Source.sharedMesh == null) return false;
+            if (e.SourceLodGroup == null) return TryGetSourceLocalBounds(e, out local);   // single-mesh prop
+            try
+            {
+                var lg = e.SourceLodGroup;
+                var rootT = lg.transform;
+                Vector3 refP = lg.localReferencePoint;
+                float size = lg.size; if (size < 0.01f) size = 4f;
+                float cull = Mathf.Max(size * 2f + 2f, 5f);   // a mesh beyond this from the LOD reference point is an unrelated sibling
+                float cull2 = cull * cull;
+                var mfs = lg.GetComponentsInChildren<MeshFilter>(true);
+                bool any = false;
+                if (mfs != null)
+                    for (int i = 0; i < mfs.Length; i++)
+                    {
+                        var mf = mfs[i];
+                        if (mf == null || mf.sharedMesh == null) continue;
+                        if (mf.GetComponent<MeshRenderer>() == null) continue;                 // skip non-rendered proxies
+                        if (PropCatalog.IsJunkMeshName(mf.sharedMesh.name)) continue;
+                        Vector3 cl = rootT.InverseTransformPoint(mf.transform.TransformPoint(mf.sharedMesh.bounds.center));
+                        if ((cl - refP).sqrMagnitude > cull2) continue;                        // far sibling -> exclude
+                        EncapsulateMeshLocal(mf, rootT, ref local, ref any);
+                    }
+                if (any) return true;
+            }
+            catch (System.Exception ex) { Core.LogDebug("[PropHunt] prop bounds (source) failed: " + ex.Message); }
+            return TryGetSourceLocalBounds(e, out local);
+        }
+
+        /// <summary>Add a trigger hitbox from a pre-computed ROOT-LOCAL bounds (so the hitbox matches the disguise's
+        /// positioning bounds exactly).</summary>
+        internal static BoxCollider AddTriggerHitbox(GameObject go, Bounds localBounds)
+        {
+            if (go == null) return null;
+            try
+            {
+                var bc = go.AddComponent<BoxCollider>();
+                bc.isTrigger = true;
+                bc.center = localBounds.center;
+                bc.size = localBounds.size;
+                return bc;
+            }
+            catch (System.Exception e) { Core.LogDebug("[PropHunt] AddTriggerHitbox(bounds) failed: " + e.Message); return null; }
+        }
+
+        private static void EncapsulateMeshLocal(MeshFilter mf, Transform rt, ref Bounds local, ref bool any)
+        {
+            var mt = mf.transform;
+            var mb = mf.sharedMesh.bounds;
+            Vector3 c = mb.center, e = mb.extents;
+            for (int sx = -1; sx <= 1; sx += 2)
+                for (int sy = -1; sy <= 1; sy += 2)
+                    for (int sz = -1; sz <= 1; sz += 2)
+                    {
+                        Vector3 rl = rt.InverseTransformPoint(mt.TransformPoint(c + new Vector3(sx * e.x, sy * e.y, sz * e.z)));
+                        if (!any) { local = new Bounds(rl, Vector3.zero); any = true; }
+                        else local.Encapsulate(rl);
+                    }
         }
 
         /// <summary>

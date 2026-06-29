@@ -1,5 +1,6 @@
 using UnityEngine;
 using PropHunt.Game;
+using PropHunt.Taunt;
 
 namespace PropHunt.PlayArea
 {
@@ -12,8 +13,10 @@ namespace PropHunt.PlayArea
     internal sealed class PlayAreaController
     {
         private const float GraceSeconds = 10f;
+        private static readonly string[] OobClips = { "beep", "alarm", "warning", "alert" };
         private readonly GameModeController _ctl;
         private float _outsideSince = -1f;
+        private float _nextBeep;
 
         internal bool LocalOutside { get; private set; }
         internal float GraceLeft { get; private set; }
@@ -41,6 +44,12 @@ namespace PropHunt.PlayArea
                     LocalOutside = true;
                     if (_outsideSince < 0f) _outsideSince = Time.time;
                     GraceLeft = Mathf.Max(0f, GraceSeconds - (Time.time - _outsideSince));
+                    // audible warning while outside - beeps faster as the grace window runs out
+                    if (Time.time >= _nextBeep)
+                    {
+                        _nextBeep = Time.time + Mathf.Lerp(0.3f, 1f, Mathf.Clamp01(GraceLeft / GraceSeconds));
+                        try { TauntSounds.PlayFx(OobClips, p, 0.6f); } catch { }
+                    }
                     if (GraceLeft <= 0f)
                     {
                         // hunters who glitch out are teleported back to the area centre; hiders are eliminated.

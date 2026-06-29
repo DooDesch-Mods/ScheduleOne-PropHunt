@@ -41,15 +41,22 @@ namespace PropHunt.Disguise
                     if (go == null) { _decoys.Add(null); continue; }
                     go.transform.localScale = e.SourceRoot.transform.lossyScale;
                     go.transform.rotation = Quaternion.Euler(0f, d.Yaw, 0f) * e.SourceRoot.transform.rotation;
-                    // place by world bounds: centred on the drop spot (xz), base at the stored ground y
                     go.transform.position = new Vector3(d.X, d.Y, d.Z);
-                    if (PropClone.TryGetWorldBounds(go, out Bounds wb))
+                    // place by SOURCE-mesh bounds (centred on the drop spot xz, base at the stored ground y), the
+                    // same approach the disguise uses - so a prop whose prefab carries an unrelated sibling mesh
+                    // does not get a bogus huge box that flings the decoy across the map.
+                    if (PropClone.TryGetPropBoundsFromSource(e, out var lb))
+                    {
+                        Bounds wb = PropClone.LocalToWorldBounds(go.transform, lb);
                         go.transform.position += new Vector3(d.X - wb.center.x, d.Y - wb.min.y, d.Z - wb.center.z);
-
-                    // add a prop-oriented trigger BoxCollider (shared with the disguise hitbox) so the hunter's
-                    // catch ray can detect the decoy. Trigger = no movement obstruction; rays hit triggers by
-                    // default. Local-space bounds keep the box aligned with a rotated/flat decoy.
-                    PropClone.AddTriggerHitbox(go);
+                        PropClone.AddTriggerHitbox(go, lb);   // trigger hitbox from the same bounds
+                    }
+                    else
+                    {
+                        if (PropClone.TryGetWorldBounds(go, out Bounds wb2))
+                            go.transform.position += new Vector3(d.X - wb2.center.x, d.Y - wb2.min.y, d.Z - wb2.center.z);
+                        PropClone.AddTriggerHitbox(go);
+                    }
 
                     _decoys.Add(go);
                 }

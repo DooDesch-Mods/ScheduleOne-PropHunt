@@ -1,0 +1,138 @@
+#if DEBUG
+using System.Collections.Generic;
+using UnityEngine;
+using Object = UnityEngine.Object;
+using PropHunt.Game;
+using PropHunt.Net;
+
+namespace PropHunt.Disguise
+{
+    /// <summary>
+    /// DEBUG-only LIVE on-player preview for the prop curator: while one client steps through props with phcurate,
+    /// every OTHER player wears the currently-previewed prop, so the curator sees how it looks on a real player.
+    /// The curator broadcasts the prop's content key; each client renders that prop on the OTHER players it sees
+    /// (hiding their body) using the same source-mesh bounds + grounding as the real disguise. Purely local +
+    /// cosmetic per client; needs no PropHunt round, just a shared lobby.
+    /// </summary>
+    internal static class CuratePreview
+    {
+        private static bool _active;
+        private static PropEntry _entry;
+        private static readonly Dictionary<ulong, GameObject> _clones = new Dictionary<ulong, GameObject>();
+        private static readonly Dictionary<ulong, Bounds> _lb = new Dictionary<ulong, Bounds>();
+        private static readonly Dictionary<ulong, Quaternion> _rot = new Dictionary<ulong, Quaternion>();
+        private static Dictionary<string, PropEntry> _byKey;
+        private static bool _handlerReg;
+
+        /// <summary>Curator: broadcast the prop being previewed (null/empty = stop). Also applied locally so the
+        /// curator itself sees the prop on the other players.</summary>
+        internal static void Set(string key)
+        {
+            try { PropHuntNet.Client?.BroadcastMessage(new CuratePreviewMessage { Key = key ?? "" }); } catch { }
+            Apply(key);
+        }
+
+        internal static void Tick()
+        {
+            EnsureHandler();
+            if (!_active || _entry == null) return;
+            try
+            {
+                PlayerRegistry.Refresh();
+                ulong localId = PropHuntNet.LocalSteamId;
+                var list = Player.PlayerList;
+                var present = new HashSet<ulong>();
+                if (list != null)
+                    for (int i = 0; i < list.Count; i++)
+                    {
+                        var p = list[i];
+                        if (p == null) continue;
+                        ulong id = PlayerRegistry.IdForPlayer(p);
+                        if (id == 0 || id == localId) continue;   // render on the OTHER players only
+                        present.Add(id);
+                        Ensure(id, p);
+                        Position(id, p);
+                    }
+                List<ulong> gone = null;
+                foreach (var kid in _clones.Keys) if (!present.Contains(kid)) (gone ??= new List<ulong>()).Add(kid);
+                if (gone != null) foreach (var kid in gone) Remove(kid);
+            }
+            catch { }
+        }
+
+        /// <summary>Stop + restore everything (called on phcurate exit + on the clear message).</summary>
+        internal static void Clear() => Apply(null);
+
+        private static void Apply(string key)
+        {
+            ClearClones();
+            _entry = string.IsNullOrEmpty(key) ? null : Resolve(key);
+            _active = _entry != null;
+        }
+
+        private static void Ensure(ulong id, Player p)
+        {
+            if (_clones.ContainsKey(id)) return;
+            var go = PropClone.Build(_entry, "ph_preview_" + id);
+            if (go == null) return;
+            go.transform.SetParent(null, false);
+            go.transform.localScale = _entry.SourceRoot.transform.lossyScale;
+            _rot[id] = _entry.SourceRoot.transform.rotation;
+            go.transform.rotation = _rot[id];
+            if (PropClone.TryGetPropBoundsFromSource(_entry, out var lb)) _lb[id] = lb;
+            try { p.SetThirdPersonMeshesVisibility(false); p.SetVisibleToLocalPlayer(false); } catch { }
+            _clones[id] = go;
+        }
+
+        private static void Position(ulong id, Player p)
+        {
+            if (!_clones.TryGetValue(id, out var go) || go == null) return;
+            go.transform.rotation = _rot.TryGetValue(id, out var r) ? r : Quaternion.identity;
+            if (!_lb.TryGetValue(id, out var lb)) return;
+            var wb = PropClone.LocalToWorldBounds(go.transform, lb);
+            var a = p.transform.position;
+            float feetY = RoundEnvironment.FeetY(p);
+            go.transform.position += new Vector3(a.x - wb.center.x, feetY - wb.min.y, a.z - wb.center.z);
+        }
+
+        private static void Remove(ulong id)
+        {
+            if (_clones.TryGetValue(id, out var go) && go != null) { try { Object.Destroy(go); } catch { } }
+            _clones.Remove(id); _lb.Remove(id); _rot.Remove(id);
+            var p = PlayerRegistry.Get(id);
+            if (p != null) try { p.SetThirdPersonMeshesVisibility(true); p.SetVisibleToLocalPlayer(true); } catch { }
+        }
+
+        private static void ClearClones()
+        {
+            if (_clones.Count == 0) return;
+            var ids = new List<ulong>(_clones.Keys);
+            foreach (var id in ids) Remove(id);
+        }
+
+        private static PropEntry Resolve(string key)
+        {
+            try
+            {
+                if (_byKey == null || !_byKey.ContainsKey(key))
+                {
+                    _byKey = new Dictionary<string, PropEntry>();
+                    foreach (var e in PropCatalog.EnumerateAllCandidates())
+                        if (e != null && !string.IsNullOrEmpty(e.Key)) _byKey[e.Key] = e;
+                }
+            }
+            catch { }
+            return (_byKey != null && _byKey.TryGetValue(key, out var pe)) ? pe : null;
+        }
+
+        private static void EnsureHandler()
+        {
+            if (_handlerReg) return;
+            var c = PropHuntNet.Client;
+            if (c == null) return;
+            try { c.RegisterMessageHandler<CuratePreviewMessage>((m, s) => Apply(m.Key)); _handlerReg = true; }
+            catch { }
+        }
+    }
+}
+#endif

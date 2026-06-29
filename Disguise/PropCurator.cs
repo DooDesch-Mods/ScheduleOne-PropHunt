@@ -29,6 +29,13 @@ namespace PropHunt.Disguise
         private static float _lastToggle = -999f;
         private static bool _warnedNoCam;
 
+        // Captured Property content-culling state, restored on phcurate exit. While curating we un-cull every
+        // property interior so the distance-deactivated props (the bulk of the world's furniture/decor, hidden by
+        // SetContentCulled at >50m) are active + renderer-enabled and thus reviewable AND previewable from a single
+        // spot. The cull path is purely local (SetActive / MeshRenderer.enabled), so this is MP-safe per client.
+        private struct PropCullState { internal Il2CppScheduleOne.Property.Property Prop; internal bool WasEnabled; internal bool WasCulled; }
+        private static readonly List<PropCullState> _cullState = new List<PropCullState>();
+
         // cached per-prop info (recomputed on index change, displayed by the HUD)
         private static string _infoObj = "";
         private static string _infoStats = "";
@@ -41,7 +48,20 @@ namespace PropHunt.Disguise
 
         internal static bool Active => _active;
 
-        internal static void Toggle()
+        private enum CurateFilter { All, Unreviewed, Kept }
+
+        /// <summary>phcurate: review EVERY candidate mesh.</summary>
+        internal static void Toggle() => Enter(CurateFilter.All);
+
+        /// <summary>phcurateu: review ONLY the still-UNREVIEWED candidates (no keep/skip decision yet) - so you can
+        /// finish off newly-appeared props without scrolling past the hundreds already decided.</summary>
+        internal static void ToggleUnreviewed() => Enter(CurateFilter.Unreviewed);
+
+        /// <summary>phcuratekeep: re-review ONLY the currently-KEPT candidates (the ones in the becomable pool) - to
+        /// weed out auto-seeded keeps you never verified. Press [N] on a bad one to drop it from the pool.</summary>
+        internal static void ToggleKept() => Enter(CurateFilter.Kept);
+
+        private static void Enter(CurateFilter filter)
         {
             // The game's Console.SubmitCommand fires the command TWICE per entry; without this guard a single
             // "phcurate" would toggle on then immediately off again. Ignore a 2nd toggle within a short window.
@@ -52,29 +72,78 @@ namespace PropHunt.Disguise
             if (_active) { Exit(); return; }
             try
             {
-                _candidates = PropCatalog.EnumerateAllCandidates();
+                UncullAllProperties();   // force every distance-culled interior active so its props can be reviewed
                 PropCatalog.LoadCuration();
+                var all = PropCatalog.EnumerateAllCandidates();
+                if (filter == CurateFilter.All) _candidates = all;
+                else
+                {
+                    var filtered = new List<PropEntry>();
+                    for (int i = 0; i < all.Count; i++)
+                    {
+                        bool match = filter == CurateFilter.Unreviewed ? IsUnreviewed(all[i]) : IsKept(all[i]);
+                        if (match) filtered.Add(all[i]);
+                    }
+                    _candidates = filtered;
+                }
+
                 if (_candidates == null || _candidates.Count == 0)
                 {
-                    Core.Log.Warning("[PropHunt] phcurate: no candidate meshes in this world (load a world first).");
+                    string why = filter == CurateFilter.Unreviewed ? "no UNREVIEWED candidates - everything in this world is already reviewed."
+                               : filter == CurateFilter.Kept       ? "no KEPT candidates in this world yet (nothing to re-review)."
+                               :                                      "no candidate meshes in this world (load a world first).";
+                    Core.Log.Warning("[PropHunt] phcurate: " + why);
                     return;
                 }
                 _index = 0;
                 BuildPreview();
                 Game.RoundEnvironment.LockTimeOfDay(1200);   // bright daylight so props are clearly visible
                 _active = true;
-                Core.Log.Msg($"[PropHunt] prop curation ON: {_candidates.Count} candidate meshes. " +
+                string tag = filter == CurateFilter.Unreviewed ? " (UNREVIEWED only)" : filter == CurateFilter.Kept ? " (KEPT only)" : "";
+                Core.Log.Msg($"[PropHunt] prop curation ON{tag}: {_candidates.Count} meshes. " +
                              "[Y]=keep  [N]=skip  Left/Right=prev/next  PgUp/PgDn=+-10  phcurate=save+exit.");
                 ShowCurrent();
             }
             catch (System.Exception e) { Core.Log.Warning("[PropHunt] phcurate enter failed: " + e.Message); Exit(); }
         }
 
+        /// <summary>True when a candidate is currently KEPT (becomable). For a LOD prop, kept = ANY of its LOD meshes
+        /// is kept (that is what puts it in the pool).</summary>
+        private static bool IsKept(PropEntry e)
+        {
+            if (e == null) return false;
+            if (e.SourceLodGroup != null)
+            {
+                var keys = PropCatalog.LodMeshKeys(e.SourceLodGroup);
+                if (keys.Count == 0) return PropCatalog.DecisionOf(e.Key) == true;
+                for (int i = 0; i < keys.Count; i++) if (PropCatalog.DecisionOf(keys[i]) == true) return true;
+                return false;
+            }
+            return PropCatalog.DecisionOf(e.Key) == true;
+        }
+
+        /// <summary>True when a candidate has no keep/skip decision yet. For a LOD prop, unreviewed = NONE of its
+        /// LOD meshes has a decision (any decided LOD key means the prop was already reviewed).</summary>
+        private static bool IsUnreviewed(PropEntry e)
+        {
+            if (e == null) return false;
+            if (e.SourceLodGroup != null)
+            {
+                var keys = PropCatalog.LodMeshKeys(e.SourceLodGroup);
+                if (keys.Count == 0) return PropCatalog.DecisionOf(e.Key) == null;
+                for (int i = 0; i < keys.Count; i++) if (PropCatalog.DecisionOf(keys[i]) != null) return false;
+                return true;
+            }
+            return PropCatalog.DecisionOf(e.Key) == null;
+        }
+
         private static void Exit()
         {
             bool was = _active;
             _active = false;
+            try { CuratePreview.Clear(); } catch { }   // stop the on-player preview on all clients
             try { PropCatalog.SaveCuration(); } catch { }
+            try { RestorePropertyCulling(); } catch { }   // resume normal distance culling of interiors
             try { Game.RoundEnvironment.RestoreTimeProgression(); } catch { }
             if (_meshGo != null) { try { Object.Destroy(_meshGo); } catch { } }
             if (_lightGo != null) { try { Object.Destroy(_lightGo); } catch { } }
@@ -89,6 +158,53 @@ namespace PropHunt.Disguise
             if (!_active) return;
             try { HandleKeys(); UpdatePreview(); }
             catch (System.Exception e) { Core.Log.Warning("[PropHunt] phcurate tick failed: " + e.Message); Exit(); }
+        }
+
+        /// <summary>Un-cull every <see cref="Il2CppScheduleOne.Property.Property"/> so its distance-deactivated
+        /// interior props become active + renderer-enabled and thus reviewable/previewable from one spot. The
+        /// previous per-property state is captured for <see cref="RestorePropertyCulling"/>. Local-only (SetActive /
+        /// MeshRenderer.enabled - the same op the game runs when you walk up to a property), so MP-safe per client.</summary>
+        private static void UncullAllProperties()
+        {
+            _cullState.Clear();
+            try
+            {
+                var props = Resources.FindObjectsOfTypeAll<Il2CppScheduleOne.Property.Property>();
+                if (props == null) return;
+                int n = 0;
+                for (int i = 0; i < props.Length; i++)
+                {
+                    var p = props[i];
+                    if (p == null) continue;
+                    try
+                    {
+                        _cullState.Add(new PropCullState { Prop = p, WasEnabled = p.ContentCullingEnabled, WasCulled = p.IsContentCulled });
+                        p.ContentCullingEnabled = false;   // stop it re-culling itself while we move around
+                        p.SetContentCulled(false);         // activate the interior NOW
+                        n++;
+                    }
+                    catch { }
+                }
+                Core.LogDebug($"[PropHunt] phcurate: un-culled {n} properties (interiors forced active for review).");
+            }
+            catch (System.Exception e) { Core.Log.Warning("[PropHunt] phcurate un-cull failed: " + e.Message); }
+        }
+
+        /// <summary>Restore each property to the content-culling state captured by <see cref="UncullAllProperties"/>,
+        /// so normal distance culling resumes when the curator exits.</summary>
+        private static void RestorePropertyCulling()
+        {
+            try
+            {
+                for (int i = 0; i < _cullState.Count; i++)
+                {
+                    var s = _cullState[i];
+                    if (s.Prop == null) continue;
+                    try { s.Prop.ContentCullingEnabled = s.WasEnabled; s.Prop.SetContentCulled(s.WasCulled); } catch { }
+                }
+            }
+            catch { }
+            _cullState.Clear();
         }
 
         private static void HandleKeys()
@@ -269,6 +385,7 @@ namespace PropHunt.Disguise
         {
             var e = Current; if (e == null) return;
             Core.LogDebug($"[PropHunt] curate [{_index + 1}/{_candidates.Count}] '{e.Name}' ({e.Key}) -> {DecisionText(e.Key)}  ({_infoFlags})");
+            try { CuratePreview.Set(e.Key); } catch { }   // live on-player preview on the OTHER clients
         }
 
         private static string DecisionText(string key)

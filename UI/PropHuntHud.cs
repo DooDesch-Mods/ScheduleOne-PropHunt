@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using PropHunt.Game;
 
@@ -29,7 +31,7 @@ namespace PropHunt.UI
             string view = ctl.ThirdPersonOn ? "[V] 1st-person" : "[V] 3rd-person";
             string hint = null;
             bool hiderHit = false;
-            if (ctl.LocalRole == PlayerRole.Hider && (phase == RoundPhase.Hiding || phase == RoundPhase.Hunting))
+            if (ctl.LocalRole == PlayerRole.Hider && !ctl.LocalSpectating && (phase == RoundPhase.Hiding || phase == RoundPhase.Hunting))
             {
                 if (phase == RoundPhase.Hunting && ctl.LocalHits > 0)
                 {
@@ -52,14 +54,14 @@ namespace PropHunt.UI
 
             // crosshair-anchored "become" prompt - the top hint is easy to miss while aiming at the centre,
             // so mirror the game's own interaction prompt location (just under the crosshair).
-            if (ctl.LocalRole == PlayerRole.Hider && (phase == RoundPhase.Hiding || phase == RoundPhase.Hunting))
+            if (ctl.LocalRole == PlayerRole.Hider && !ctl.LocalSpectating && (phase == RoundPhase.Hiding || phase == RoundPhase.Hunting))
             {
                 string tn = ctl.LookTargetName;
                 if (tn != null) Center($"[E] become {tn}", Screen.height / 2 + 28, 22, Color.cyan);
             }
 
             // explicit "you transformed" confirmation + abilities, independent of whether the camera sees the prop
-            if (ctl.LocalRole == PlayerRole.Hider && ctl.LocalPropId >= 0)
+            if (ctl.LocalRole == PlayerRole.Hider && !ctl.LocalSpectating && ctl.LocalPropId >= 0)
             {
                 var s = ctl.Settings;
                 string pn = ctl.LocalPropName ?? "a prop";
@@ -74,13 +76,15 @@ namespace PropHunt.UI
 
             if (Time.time - ctl.LastTauntTime < 1.5f) Center("! TAUNT !", 60, 24, Color.yellow);
 
+            // action feedback flash (catch / stun / decoy) - punchy, centred, brief
+            if (ctl.FxActive) Center(ctl.FxText, Screen.height / 2 - 64, 32, ctl.FxColor);
+
+            // spectator banner (caught players + late joiners)
+            if (!string.IsNullOrEmpty(ctl.SpectatorHudText)) Center(ctl.SpectatorHudText, Screen.height - 72f, 20, new Color(0.5f, 0.9f, 1f));
+
             if (ctl.LocalOutside) Center($"RETURN TO THE PLAY AREA!  {Mathf.CeilToInt(ctl.OobGrace)}s", 90, 26, Color.red);
 
-            if (phase == RoundPhase.RoundEnd)
-            {
-                string w = ctl.State.Winner == 0 ? "HUNTERS WIN" : ctl.State.Winner == 1 ? "HIDERS WIN" : "ROUND OVER";
-                Center(w, Screen.height / 2 - 24, 40, Color.white);
-            }
+            if (phase == RoundPhase.RoundEnd) DrawScoreboard(ctl);
 
             if (phase == RoundPhase.Lobby)
             {
@@ -203,6 +207,85 @@ namespace PropHunt.UI
             };
             style.normal.textColor = color;
             GUI.Label(new Rect(0, y, Screen.width, size + 10), text, style);
+        }
+
+        // ---- round-end scoreboard: winner + 2-4 awards + a per-player session leaderboard ----
+        private static void DrawScoreboard(GameModeController ctl)
+        {
+            var st = ctl.State;
+            try { PlayerRegistry.Refresh(); } catch { }
+            var players = new List<PlayerState>(st.Players.Values);
+            players.Sort((a, b) => b.SessScore.CompareTo(a.SessScore));
+
+            string headline = st.Winner == 0 ? "HUNTERS WIN" : st.Winner == 1 ? "HIDERS WIN" : "ROUND OVER";
+            Color hc = st.Winner == 0 ? new Color(1f, 0.5f, 0.4f) : st.Winner == 1 ? new Color(0.4f, 1f, 0.6f) : Color.white;
+            var awards = BuildAwards(players);
+
+            float w = 620f;
+            float h = Mathf.Min(Screen.height - 40f, 64f + awards.Count * 20f + 10f + 24f + players.Count * 20f + 22f);
+            var box = new Rect((Screen.width - w) / 2f, (Screen.height - h) / 2f, w, h);
+            var prev = GUI.color; GUI.color = new Color(0.05f, 0.06f, 0.09f, 0.9f);
+            GUI.Box(box, GUIContent.none); GUI.color = prev;
+
+            Center(headline, box.y + 12f, 30, hc);
+
+            GUILayout.BeginArea(new Rect(box.x + 22f, box.y + 54f, w - 44f, h - 64f));
+            foreach (var a in awards) GUILayout.Label(a, Style(14, new Color(1f, 0.86f, 0.42f), FontStyle.Bold));
+            if (awards.Count > 0) GUILayout.Space(8f);
+            Row("Player", "Role", "Catches", "Survived", "Score", true);
+            foreach (var p in players)
+                Row(NameOf(p), RoleShort(p), p.CatchesMade.ToString(), p.SurvivedSeconds + "s", p.SessScore.ToString(), false);
+            GUILayout.EndArea();
+        }
+
+        private static List<string> BuildAwards(List<PlayerState> players)
+        {
+            var list = new List<string>();
+            AddAward(list, players, "Top Hunter", p => p.CatchesMade, (p, v) => $"{NameOf(p)} - {v} catches");
+            AddAward(list, players, "Survivor", p => p.Role == PlayerRole.Hider ? p.SurvivedSeconds : 0, (p, v) => $"{NameOf(p)} - {v}s alive");
+            AddAward(list, players, "Trickster", p => p.DecoyBaits, (p, v) => $"{NameOf(p)} - {v} decoy baits");
+            AddAward(list, players, "Shocker", p => p.StunsLanded, (p, v) => $"{NameOf(p)} - {v} stuns");
+            return list;
+        }
+
+        private static void AddAward(List<string> list, List<PlayerState> players, string title, Func<PlayerState, int> sel, Func<PlayerState, int, string> fmt)
+        {
+            PlayerState best = null; int bv = 0;
+            foreach (var p in players) { int v = sel(p); if (v > bv) { bv = v; best = p; } }
+            if (best != null && bv > 0) list.Add($"{title}: {fmt(best, bv)}");
+        }
+
+        private static void Row(string c0, string c1, string c2, string c3, string c4, bool header)
+        {
+            var s = header ? Style(13, new Color(0.7f, 0.8f, 1f), FontStyle.Bold) : Style(13, Color.white, FontStyle.Normal);
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(c0, s, GUILayout.Width(240));
+            GUILayout.Label(c1, s, GUILayout.Width(90));
+            GUILayout.Label(c2, s, GUILayout.Width(80));
+            GUILayout.Label(c3, s, GUILayout.Width(90));
+            GUILayout.Label(c4, s, GUILayout.Width(70));
+            GUILayout.EndHorizontal();
+        }
+
+        private static GUIStyle Style(int size, Color color, FontStyle fs)
+        {
+            var s = new GUIStyle(GUI.skin.label) { fontSize = size, fontStyle = fs };
+            s.normal.textColor = color;
+            return s;
+        }
+
+        private static string NameOf(PlayerState p)
+        {
+            try { var gp = PlayerRegistry.Get(p.SteamId); if (gp != null) { var n = gp.PlayerName; if (!string.IsNullOrEmpty(n)) return n; } }
+            catch { }
+            return "Player " + (p.SteamId % 10000);
+        }
+
+        private static string RoleShort(PlayerState p)
+        {
+            if (p.Role == PlayerRole.Hunter) return "Hunter";
+            if (p.Role == PlayerRole.Hider) return p.Eliminated ? "Caught" : "Hider";
+            return "Spectator";
         }
     }
 }

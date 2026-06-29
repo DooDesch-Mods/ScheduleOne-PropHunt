@@ -17,19 +17,37 @@ namespace PropHunt.Patches
     {
         private static void Postfix(PlayerCamera __instance)
         {
-            if (!ThirdPersonView.Active) return;
+            if (!SpectatorCam.Active && !ThirdPersonView.Active) return;
             try
             {
                 var cam = __instance.Camera;
                 if (cam == null) return;
                 var t = cam.transform;
+
+                // Spectator follow-cam takes priority: place the camera behind the followed player and look at
+                // them (mouse-look is locked while spectating, so we set the rotation ourselves).
+                if (SpectatorCam.Active && SpectatorCam.Target != null)
+                {
+                    Vector3 aim = SpectatorCam.Target.position + Vector3.up * 1.2f;   // upper body
+                    Vector3 fwd = SpectatorCam.Target.forward;
+                    if (fwd.sqrMagnitude < 0.0001f) fwd = Vector3.forward;
+                    Vector3 camPos = aim - fwd * SpectatorCam.Distance + Vector3.up * SpectatorCam.Height;
+                    Vector3 d = camPos - aim;
+                    float dl = d.magnitude;
+                    if (dl > 0.01f && Physics.Raycast(aim, d / dl, out var wall, dl))
+                        camPos = wall.point - (d / dl) * 0.2f;   // pull in so we don't sit inside a wall
+                    t.position = camPos;
+                    var look = aim - camPos;
+                    if (look.sqrMagnitude > 0.0001f) t.rotation = Quaternion.LookRotation(look.normalized, Vector3.up);
+                    return;
+                }
+
+                if (!ThirdPersonView.Active) return;
                 Vector3 eye = t.position;
                 Vector3 back = -t.forward;
-
                 float dist = ThirdPersonView.Distance;
                 if (Physics.Raycast(eye, back, out var hit, dist + 0.3f))
                     dist = Mathf.Max(0.3f, hit.distance - 0.3f);   // don't push through a wall behind the player
-
                 t.position = eye + back * dist + Vector3.up * ThirdPersonView.Height;
                 // rotation is left as the game set it, so mouse-look still aims the view forward
             }

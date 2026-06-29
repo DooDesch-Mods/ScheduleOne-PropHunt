@@ -72,6 +72,38 @@ namespace PropHunt.Taunt
         {
             var clip = GetClip(clipName);
             if (clip == null) { Core.LogDebug($"[PropHunt] taunt clip not found: '{clipName}'"); return; }
+            PlayClip(clip, pos, WhistleVolume ? WhistleVolumeScale : ManualVolumeScale);
+        }
+
+        /// <summary>Action-feedback SFX (catch / stun / decoy pop): play the first clip whose name matches one of
+        /// the candidate names (exact first, then substring) at a world position. Clip names vary across game
+        /// builds, so this is best-effort - if nothing matches it is a silent no-op (the on-screen flash still
+        /// carries the feedback).</summary>
+        internal static void PlayFx(string[] candidates, Vector3 pos, float volumeScale = 0.7f)
+        {
+            var clip = ResolveAny(candidates);
+            if (clip == null) { Core.LogDebug("[PropHunt] fx clip not found: " + string.Join("/", candidates ?? Array.Empty<string>())); return; }
+            PlayClip(clip, pos, volumeScale);
+        }
+
+        private static AudioClip ResolveAny(string[] names)
+        {
+            if (names == null) return null;
+            BuildCache();
+            if (_cache == null) return null;
+            foreach (var n in names) if (!string.IsNullOrEmpty(n) && _cache.TryGetValue(n, out var c) && c != null) return c;
+            foreach (var n in names)
+            {
+                if (string.IsNullOrEmpty(n)) continue;
+                foreach (var kv in _cache)
+                    if (kv.Value != null && kv.Key.IndexOf(n, StringComparison.OrdinalIgnoreCase) >= 0) return kv.Value;
+            }
+            return null;
+        }
+
+        private static void PlayClip(AudioClip clip, Vector3 pos, float volumeScale)
+        {
+            if (clip == null) return;
             try
             {
                 var go = new GameObject("ph_taunt");
@@ -95,7 +127,7 @@ namespace PropHunt.Taunt
                     if (am != null) { src.outputAudioMixerGroup = am.MainGameMixer; fx = am.GetVolume(EAudioType.FX, true); }
                 }
                 catch { }
-                src.volume = fx * (WhistleVolume ? WhistleVolumeScale : ManualVolumeScale);
+                src.volume = fx * volumeScale;
                 src.Play();
                 UnityEngine.Object.Destroy(go, clip.length + 0.2f);
             }

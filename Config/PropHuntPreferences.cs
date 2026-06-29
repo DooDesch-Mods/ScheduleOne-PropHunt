@@ -51,8 +51,8 @@ namespace PropHunt.Config
                 "How long hiders have to find a prop and hide while hunters are frozen.");
             _huntSeconds = CreateEntry("HuntSeconds", 300, "Hunting phase (seconds)",
                 "How long hunters have to find every hider before the hiders win.");
-            _roundEndSeconds = CreateEntry("RoundEndSeconds", 8, "Round-end display (seconds)",
-                "How long the result is shown before the next round begins.");
+            _roundEndSeconds = CreateEntry("RoundEndSeconds", 15, "Scoreboard time (seconds)",
+                "How long the round-end scoreboard is shown before the safehouse (5-60).");
             _playersPerHunter = CreateEntry("PlayersPerHunter", 5, "Players per hunter",
                 "Roughly one hunter is assigned for this many players (min one hunter). e.g. 5 = 1 hunter at 2-5 players, 2 at 6-10.");
             _roundsBeforeSwap = CreateEntry("RoundsBeforeSwap", 1, "Rounds before role swap",
@@ -103,7 +103,7 @@ namespace PropHunt.Config
         internal static bool Enabled => _enabled?.Value ?? true;
         internal static int HideSeconds => Mathf.Max(1, _hideSeconds?.Value ?? 30);
         internal static int HuntSeconds => Mathf.Max(1, _huntSeconds?.Value ?? 300);
-        internal static int RoundEndSeconds => Mathf.Max(1, _roundEndSeconds?.Value ?? 8);
+        internal static int RoundEndSeconds => Mathf.Clamp(_roundEndSeconds?.Value ?? 15, 5, 60);
         internal static int PlayersPerHunter => Mathf.Max(1, _playersPerHunter?.Value ?? 5);
         internal static int RoundsBeforeSwap => Mathf.Max(1, _roundsBeforeSwap?.Value ?? 1);
         internal static float TagRange => Mathf.Max(0.5f, _tagRange?.Value ?? 4f);

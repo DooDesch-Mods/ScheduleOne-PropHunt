@@ -19,6 +19,16 @@ namespace PropHunt.Game
         internal int DecoysUsed;       // decoys dropped this round ([Q])
         internal int ConcussUsed;      // concussion grenades used this round ([G])
 
+        // ---- per-round stats (reset each round; drive the round-end scoreboard + awards) ----
+        internal int CatchesMade;      // hiders this player caught (hunter)
+        internal int HitsDealt;        // hits this player landed on hiders (hunter)
+        internal int DecoyBaits;       // hits hunters wasted on this player's decoys (hider)
+        internal int StunsLanded;      // hunters this player's concussions stunned (hider)
+        internal int SurvivedSeconds;  // seconds this hider survived the hunt (set when caught / at round end)
+
+        // ---- session stats (NOT reset per round; the leaderboard) ----
+        internal int SessScore;        // cumulative score across all rounds of this match
+
         internal PlayerState() { }
         internal PlayerState(ulong id) { SteamId = id; }
     }
@@ -31,6 +41,7 @@ namespace PropHunt.Game
         internal int Hits;
         internal int MaxHits;
         internal bool Destroyed;
+        internal ulong OwnerSteamId;   // the hider who dropped it (credited with "decoy baits" when hunters shoot it)
     }
 
     /// <summary>
@@ -51,6 +62,7 @@ namespace PropHunt.Game
         internal string SafehouseCode = "";     // property code of the between-rounds safehouse ("" = none / not in Safehouse)
         internal bool SafehouseReady;           // host pressed "start next round" -> doors about to open
         internal int SafehouseSeed;             // host-rolled seed -> all clients shuffle the spawn points the same way
+        internal long HuntStartUnix;            // unix time the current Hunting phase began (for survival-time stats)
         internal readonly Dictionary<ulong, PlayerState> Players = new Dictionary<ulong, PlayerState>();
         internal readonly List<DecoyState> Decoys = new List<DecoyState>();
 
@@ -70,7 +82,8 @@ namespace PropHunt.Game
               .Append(AreaRadius.ToString(ci)).Append('|').Append(Winner.ToString(ci))
               .Append('|').Append(AreaY.ToString(ci))
               .Append('|').Append(SafehouseCode ?? "").Append('|').Append(SafehouseReady ? '1' : '0')
-              .Append('|').Append(SafehouseSeed.ToString(ci));
+              .Append('|').Append(SafehouseSeed.ToString(ci))
+              .Append('|').Append(HuntStartUnix.ToString(ci));
             sb.Append('\n').Append(SettingsBlob ?? "");
             foreach (var p in Players.Values)
             {
@@ -85,7 +98,13 @@ namespace PropHunt.Game
                   .Append(p.Changes.ToString(ci)).Append('|')
                   .Append(p.PropYaw.ToString(ci)).Append('|')
                   .Append(p.DecoysUsed.ToString(ci)).Append('|')
-                  .Append(p.ConcussUsed.ToString(ci));
+                  .Append(p.ConcussUsed.ToString(ci)).Append('|')
+                  .Append(p.CatchesMade.ToString(ci)).Append('|')
+                  .Append(p.HitsDealt.ToString(ci)).Append('|')
+                  .Append(p.DecoyBaits.ToString(ci)).Append('|')
+                  .Append(p.StunsLanded.ToString(ci)).Append('|')
+                  .Append(p.SurvivedSeconds.ToString(ci)).Append('|')
+                  .Append(p.SessScore.ToString(ci));
             }
             foreach (var d in Decoys)
             {
@@ -93,7 +112,8 @@ namespace PropHunt.Game
                   .Append(d.X.ToString(ci)).Append('|').Append(d.Y.ToString(ci)).Append('|').Append(d.Z.ToString(ci)).Append('|')
                   .Append(d.Yaw.ToString(ci)).Append('|').Append(d.PropId.ToString(ci)).Append('|')
                   .Append(d.Hits.ToString(ci)).Append('|').Append(d.MaxHits.ToString(ci)).Append('|')
-                  .Append(d.Destroyed ? '1' : '0');
+                  .Append(d.Destroyed ? '1' : '0').Append('|')
+                  .Append(d.OwnerSteamId.ToString(ci));
             }
             return sb.ToString();
         }
@@ -119,6 +139,7 @@ namespace PropHunt.Game
                     if (h.Length >= 10) gs.SafehouseCode = h[9] ?? "";
                     if (h.Length >= 11) gs.SafehouseReady = h[10] == "1";
                     if (h.Length >= 12) gs.SafehouseSeed = SafeInt(h[11]);
+                    if (h.Length >= 13) long.TryParse(h[12], NumberStyles.Integer, ci, out gs.HuntStartUnix);
                 }
             }
             if (lines.Length > 1) gs.SettingsBlob = lines[1];
@@ -137,6 +158,7 @@ namespace PropHunt.Game
                             Hits      = f.Length >= 7 ? SafeInt(f[6])   : 0,
                             MaxHits   = f.Length >= 8 ? SafeInt(f[7])   : 0,
                             Destroyed = f.Length >= 9 && f[8] == "1",
+                            OwnerSteamId = f.Length >= 10 ? SafeULong(f[9]) : 0UL,
                         };
                         gs.Decoys.Add(d);
                     }
@@ -155,11 +177,18 @@ namespace PropHunt.Game
                 if (f.Length >= 9) p.PropYaw = SafeFloat(f[8]);
                 if (f.Length >= 10) p.DecoysUsed = SafeInt(f[9]);
                 if (f.Length >= 11) p.ConcussUsed = SafeInt(f[10]);
+                if (f.Length >= 12) p.CatchesMade = SafeInt(f[11]);
+                if (f.Length >= 13) p.HitsDealt = SafeInt(f[12]);
+                if (f.Length >= 14) p.DecoyBaits = SafeInt(f[13]);
+                if (f.Length >= 15) p.StunsLanded = SafeInt(f[14]);
+                if (f.Length >= 16) p.SurvivedSeconds = SafeInt(f[15]);
+                if (f.Length >= 17) p.SessScore = SafeInt(f[16]);
             }
             return gs;
         }
 
         private static int SafeInt(string s) => int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : 0;
+        private static ulong SafeULong(string s) => ulong.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : 0UL;
         private static float SafeFloat(string s) => float.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : 0f;
     }
 }

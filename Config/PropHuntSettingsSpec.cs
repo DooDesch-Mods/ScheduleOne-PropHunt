@@ -18,7 +18,7 @@ namespace PropHunt.Config
             {
                 IntSlider("hide",  "Hiding phase",        "Seconds hiders get before hunters are released.",       5, 120,  5, "s", PropHuntPreferences.HideSeconds),
                 IntSlider("hunt",  "Hunting phase",       "Seconds hunters have to find every hider.",            30, 900, 15, "s", PropHuntPreferences.HuntSeconds),
-                IntSlider("end",   "Round-end display",   "Seconds the result shows before the next round.",       3,  30,  1, "s", PropHuntPreferences.RoundEndSeconds),
+                IntSlider("end",   "Scoreboard time",     "Seconds the round-end scoreboard shows before the safehouse.", 5, 60, 1, "s", PropHuntPreferences.RoundEndSeconds),
                 IntSlider("pph",   "Players per hunter",  "Roughly one hunter is assigned per this many players.", 2,  10,  1, null, PropHuntPreferences.PlayersPerHunter),
                 IntSlider("swap",  "Rounds before swap",  "Rounds to play before roles rotate.",                   1,  10,  1, null, PropHuntPreferences.RoundsBeforeSwap),
                 IntSlider("taunt", "Taunt interval",      "How often hiders are forced to make a sound (0 = off).", 0, 120,  5, "s", PropHuntPreferences.TauntIntervalSeconds),

@@ -142,4 +142,71 @@ namespace PropHunt.Net
             IsWhistle = p.Length >= 3 && p[2] == "1";
         }
     }
+
+    // ---- host -> all transient FEEDBACK events (sound + screen flash). Not durable; just sensory feedback so a
+    // hit/catch/stun/decoy-pop reads clearly. The host emits them right where it validates the action. ----
+
+    /// <summary>Host -> all: a hunter landed a hit on a hider. Payload "hunterId;victimId;caught;X;Y;Z" (world pos
+    /// of the victim for 3D audio; caught "1" = the hit that eliminated/converted them).</summary>
+    public class CatchFxMessage : P2PMessage
+    {
+        public override string MessageType => "PH_FX_CATCH";
+        public ulong HunterId { get; set; }
+        public ulong VictimId { get; set; }
+        public bool Caught { get; set; }
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Z { get; set; }
+        public override byte[] Serialize() =>
+            MsgCodec.Bytes($"{MsgCodec.Of(HunterId)};{MsgCodec.Of(VictimId)};{(Caught ? "1" : "0")};{MsgCodec.Of(X)};{MsgCodec.Of(Y)};{MsgCodec.Of(Z)}");
+        public override void Deserialize(byte[] data)
+        {
+            var p = MsgCodec.Str(data).Split(';');
+            if (p.Length >= 6) { HunterId = MsgCodec.U(p[0]); VictimId = MsgCodec.U(p[1]); Caught = p[2] == "1"; X = MsgCodec.F(p[3]); Y = MsgCodec.F(p[4]); Z = MsgCodec.F(p[5]); }
+        }
+    }
+
+    /// <summary>Host -> all: a concussion went off. Payload "throwerId;X;Y;Z" (world centre for 3D audio). Clients
+    /// play a stun sound; a local hunter near the centre flashes STUNNED, the thrower gets confirmation.</summary>
+    public class StunFxMessage : P2PMessage
+    {
+        public override string MessageType => "PH_FX_STUN";
+        public ulong ThrowerId { get; set; }
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Z { get; set; }
+        public override byte[] Serialize() => MsgCodec.Bytes($"{MsgCodec.Of(ThrowerId)};{MsgCodec.Of(X)};{MsgCodec.Of(Y)};{MsgCodec.Of(Z)}");
+        public override void Deserialize(byte[] data)
+        {
+            var p = MsgCodec.Str(data).Split(';');
+            if (p.Length >= 4) { ThrowerId = MsgCodec.U(p[0]); X = MsgCodec.F(p[1]); Y = MsgCodec.F(p[2]); Z = MsgCodec.F(p[3]); }
+        }
+    }
+
+    /// <summary>Host -> all: a decoy was destroyed (revealed as fake). Payload "hunterId;X;Y;Z" (world pos for 3D
+    /// audio; the hunter who shot it flashes DECOY).</summary>
+    public class DecoyFxMessage : P2PMessage
+    {
+        public override string MessageType => "PH_FX_DECOY";
+        public ulong HunterId { get; set; }
+        public float X { get; set; }
+        public float Y { get; set; }
+        public float Z { get; set; }
+        public override byte[] Serialize() => MsgCodec.Bytes($"{MsgCodec.Of(HunterId)};{MsgCodec.Of(X)};{MsgCodec.Of(Y)};{MsgCodec.Of(Z)}");
+        public override void Deserialize(byte[] data)
+        {
+            var p = MsgCodec.Str(data).Split(';');
+            if (p.Length >= 4) { HunterId = MsgCodec.U(p[0]); X = MsgCodec.F(p[1]); Y = MsgCodec.F(p[2]); Z = MsgCodec.F(p[3]); }
+        }
+    }
+
+    /// <summary>Curator -> all (DEBUG curation): the prop KEY currently being previewed in phcurate, so every other
+    /// client wears it as a live on-player preview. "-" = stop previewing (SteamNetworkLib drops empty bodies).</summary>
+    public class CuratePreviewMessage : P2PMessage
+    {
+        public override string MessageType => "PH_CURATE_PREVIEW";
+        public string Key { get; set; }
+        public override byte[] Serialize() => MsgCodec.Bytes(string.IsNullOrEmpty(Key) ? "-" : Key);
+        public override void Deserialize(byte[] data) { var s = MsgCodec.Str(data); Key = s == "-" ? "" : s; }
+    }
 }

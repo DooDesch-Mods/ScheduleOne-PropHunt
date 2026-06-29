@@ -52,6 +52,12 @@ namespace PropHunt.Patches
                     case "phcurate":  // toggle the becomable-prop curation tool (step through every mesh, Keep/Skip)
                         Disguise.PropCurator.Toggle();
                         return false;
+                    case "phcurateu":  // toggle curation over ONLY the still-unreviewed candidates
+                        Disguise.PropCurator.ToggleUnreviewed();
+                        return false;
+                    case "phcuratekeep":  // re-review ONLY the currently-kept candidates (prune auto-seeded keeps)
+                        Disguise.PropCurator.ToggleKept();
+                        return false;
                     case "phdebug":   // toggle the visual diagnostics overlay (also F3)
                         PropHunt.Debug.DebugOverlay.ToggleFromConsole();
                         return false;
