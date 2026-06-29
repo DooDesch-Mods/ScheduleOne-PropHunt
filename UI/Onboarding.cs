@@ -49,8 +49,10 @@ namespace PropHunt.UI
             if (Time.time - _cardShownAt > CardMaxSeconds) { _cardActive = false; return; }
             var phase = _ctl.Phase;
             if (phase != RoundPhase.Hiding && phase != RoundPhase.Hunting) { _cardActive = false; return; }   // round ended
-            // hunters are frozen + blinded through Hiding; clear their card the moment the hunt starts (un-blinded).
-            if (_ctl.LocalRole == PlayerRole.Hunter) { if (phase == RoundPhase.Hunting) _cardActive = false; return; }
+            // Once the hunt begins the hide window is over: hunters are un-blinded and the "leave the safehouse"
+            // guidance no longer applies, so clear the card for BOTH roles the moment Hunting starts. During Hiding
+            // a hider keeps it until they first walk out of the safehouse (below).
+            if (phase == RoundPhase.Hunting) { _cardActive = false; return; }
             // hiders keep it until they first walk out of the safehouse this round
             var lp = Player.Local;
             if (lp == null) return;
@@ -62,12 +64,12 @@ namespace PropHunt.UI
 
         internal void Reset() { _cardActive = false; _spawnCaptured = false; _helpOpen = false; _lastPhase = RoundPhase.Lobby; }
 
-        internal void DrawGui()
+        internal void DrawGui(bool suppressCard = false)
         {
             try
             {
                 if (_helpOpen) DrawHelp();
-                else if (_cardActive) DrawRoleCard();
+                else if (_cardActive && !suppressCard) DrawRoleCard();   // hidden while the taunt wheel is open
 
                 if (_ctl.RoundActive && !_helpOpen)
                     Hint($"[{KeyBinds.Name(KeyBinds.Help)}] Controls", Screen.height - 26f);

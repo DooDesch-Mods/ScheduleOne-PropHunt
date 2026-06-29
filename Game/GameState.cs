@@ -156,7 +156,7 @@ namespace PropHunt.Game
                             Yaw = SafeFloat(f[4]), PropId = SafeInt(f[5]),
                             // fields 6/7/8 only present in newer snapshots; older rows default to 0/0/false
                             Hits      = f.Length >= 7 ? SafeInt(f[6])   : 0,
-                            MaxHits   = f.Length >= 8 ? SafeInt(f[7])   : 0,
+                            MaxHits   = f.Length >= 8 ? SafeInt(f[7])   : 1,   // match the live >=1 invariant for old snapshots
                             Destroyed = f.Length >= 9 && f[8] == "1",
                             OwnerSteamId = f.Length >= 10 ? SafeULong(f[9]) : 0UL,
                         };

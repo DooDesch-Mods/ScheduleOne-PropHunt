@@ -164,6 +164,9 @@ namespace PropHunt.Game
             switch (s.Phase)
             {
                 case RoundPhase.Hiding:
+                    // every hider left during the hide window -> end the dead round now instead of waiting out the
+                    // timer (guard on roles-assigned so this never fires in the brief pre-assignment window).
+                    if (CountRole(s, PlayerRole.Hunter) > 0 && AliveHiders(s) == 0) { EndRound(s, set, now, true); return true; }
                     if (now >= s.PhaseEndsAtUnix) { EnterHunting(s, set, now); return true; }
                     break;
                 case RoundPhase.Hunting:
@@ -303,7 +306,9 @@ namespace PropHunt.Game
         {
             if (s.Phase != RoundPhase.Hiding && s.Phase != RoundPhase.Hunting) return false;
             if (!s.Players.TryGetValue(id, out var p) || p.Eliminated) return false;
-            if (p.Role != PlayerRole.Hider && p.Role != PlayerRole.Hunter) return false;
+            // Only hiders are eliminated for leaving the area; hunters are teleported back by PlayAreaController and
+            // never eliminated - an eliminated hunter would be a broken half-state (still armed, but unable to catch).
+            if (p.Role != PlayerRole.Hider) return false;
             p.Eliminated = true;
             if (s.Phase == RoundPhase.Hunting && AliveHiders(s) == 0) EndRound(s, set, now, true);
             return true;

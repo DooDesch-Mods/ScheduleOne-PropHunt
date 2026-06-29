@@ -9,7 +9,7 @@ namespace PropHunt.Disguise
     /// it raycasts from the player camera, takes the nearest BECOMABLE hit and latches it briefly, exposing its
     /// name for the HUD ("[E] become &lt;name&gt;"). [E] selects (re-selectable any time); [F] freezes/unfreezes the
     /// current prop's world rotation (so you can look around without the prop spinning). Sends intents through
-    /// the controller (host validates). TODO(testing): rebindable keys.
+    /// the controller (host validates).
     /// </summary>
     internal sealed class PropPicker
     {

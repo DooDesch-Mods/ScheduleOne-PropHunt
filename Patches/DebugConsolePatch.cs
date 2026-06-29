@@ -5,10 +5,10 @@ using HarmonyLib;
 namespace PropHunt.Patches
 {
     /// <summary>
-    /// DEBUG-only console commands so the Phase-0 gates can be driven headlessly via the schedule1 MCP
+    /// DEBUG-only console commands so PropHunt can be driven headlessly via the schedule1 MCP
     /// (run_console_command) in the local MP test harness, without the in-game settings UI:
     ///   phping    - broadcast a PHUNT_PING to all lobby members (watch the OTHER instance's log for "[Net] &lt;- PHUNT_PING")
-    ///   phhide    - toggle every remote player's third-person body locally (disguise probe, gate 3)
+    ///   phhide    - toggle every remote player's third-person body locally (disguise probe)
     ///   phstatus  - log networking status (Ready / InLobby / IsHost / member count)
     /// Mirrors RVRepairVan's DebugConsolePatch. Compiled out of Release.
     /// </summary>

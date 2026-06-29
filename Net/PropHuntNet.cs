@@ -9,7 +9,7 @@ using Steamworks;
 namespace PropHunt.Net
 {
     /// <summary>
-    /// Phase 0 networking spike. Wraps a single SteamNetworkLib client. SteamNetworkLib registers a global
+    /// Wraps a single SteamNetworkLib client. SteamNetworkLib registers a global
     /// LobbyEnter_t Steam callback in its constructor, so once <see cref="Initialize"/> has run it
     /// AUTO-ATTACHES to whatever Steam lobby the game itself joins/creates - no explicit JoinLobby needed.
     /// We just initialize early and pump <see cref="Tick"/> every frame.
@@ -18,7 +18,9 @@ namespace PropHunt.Net
     {
         private static SteamNetworkClient _client;
         private static bool _ready;
-        private static int _pingCounter;
+#if DEBUG
+        private static int _pingCounter;   // DEBUG-only: P2P round-trip probe (phping)
+#endif
         private static int _idlePump;   // frame counter used to throttle the P2P pump while outside a lobby
 
         /// <summary>True once the SteamNetworkLib client has initialized (Steam available).</summary>
@@ -46,7 +48,9 @@ namespace PropHunt.Net
                 _client = new SteamNetworkClient();
                 if (_client.TryInitialize(out var err))
                 {
-                    _client.RegisterMessageHandler<PingMessage>(OnPing);
+#if DEBUG
+                    _client.RegisterMessageHandler<PingMessage>(OnPing);   // DEBUG-only P2P round-trip probe
+#endif
                     _ready = true;
                     Core.Log.Msg("[Net] SteamNetworkLib ready (auto-attaches to the game's Steam lobby).");
                 }
@@ -77,7 +81,8 @@ namespace PropHunt.Net
             catch (Exception e) { Core.LogDebug("[Net] tick error: " + e.Message); }
         }
 
-        /// <summary>Phase 0 gate 1+2: broadcast a ping to all lobby members.</summary>
+#if DEBUG
+        /// <summary>DEBUG-only: broadcast a P2P round-trip probe ping to all lobby members (phping).</summary>
         internal static void SendPing()
         {
             if (!_ready) { Core.Log.Warning("[Net] not ready; ping skipped."); return; }
@@ -90,13 +95,16 @@ namespace PropHunt.Net
             }
             catch (Exception e) { Core.Log.Warning("[Net] ping send failed: " + e.Message); }
         }
+#endif
 
         internal static int MemberCount() { try { return _client.GetLobbyMembers().Count; } catch { return -1; } }
 
+#if DEBUG
         private static void OnPing(PingMessage msg, CSteamID sender)
         {
             Core.Log.Msg($"[Net] <- PHUNT_PING #{msg.Counter} from {sender.m_SteamID} ({msg.Note}). " +
-                         "Seeing this on the OTHER machine means gates 1+2 (BiggerLobbies join + SteamNetworkLib round-trip) pass.");
+                         "Receiving this on the other machine confirms the SteamNetworkLib P2P round-trip works.");
         }
+#endif
     }
 }

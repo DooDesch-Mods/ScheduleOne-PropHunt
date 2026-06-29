@@ -94,6 +94,14 @@ namespace PropHunt.PlayArea
             _mf = null; _mr = null;
         }
 
-        internal void Dispose() { Destroy(); _builtSig = null; }
+        internal void Dispose()
+        {
+            Destroy();
+            // The wall material is DontDestroyOnLoad and cached for this border's lifetime (reused across Build
+            // rebuilds via EnsureMat), so it is destroyed ONLY here on teardown - not in Destroy() - otherwise
+            // every rebuild would leak a fresh Material.
+            if (_mat != null) { try { UnityEngine.Object.Destroy(_mat); } catch { } _mat = null; }
+            _builtSig = null;
+        }
     }
 }

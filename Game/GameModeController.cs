@@ -229,9 +229,10 @@ namespace PropHunt.Game
         }
 
         /// <summary>IMGUI hook (called from Core.OnGUI): the taunt selection wheel.</summary>
-        internal void DrawGui() { try { _tauntWheel?.DrawGui(); } catch { } try { _onboarding?.DrawGui(); } catch { } }
+        internal void DrawGui() { try { _tauntWheel?.DrawGui(); } catch { } try { _onboarding?.DrawGui(_tauntWheel != null && _tauntWheel.MenuOpen); } catch { } }
 
-        /// <summary>Debug: dump the prop pipeline state - catalog size/hash, crosshair target, highlight count,
+#if DEBUG
+        /// <summary>DEBUG-only: dump the prop pipeline state - catalog size/hash, crosshair target, highlight count,
         /// and a live count of becomable objects within reach of the local player.</summary>
         internal void DumpPropDebug()
         {
@@ -258,6 +259,7 @@ namespace PropHunt.Game
             }
             catch (Exception e) { Core.Log.Warning("[PropHunt] DumpPropDebug scan failed: " + e.Message); }
         }
+#endif
 
         // ---- lifecycle ----
 
@@ -326,6 +328,9 @@ namespace PropHunt.Game
         internal void BeginMatch()
         {
             if (!_isHost) { Core.Log.Warning("[PropHunt] BeginMatch ignored - not host."); return; }
+            // A prop hunt needs at least one hunter AND one hider; with a single player a round would assign the
+            // lone player as hunter, leave zero hiders, and end the instant it starts. Wait for a second player.
+            if (GetMemberIds().Count < 2) { Core.Log.Msg("[PropHunt] need at least 2 players to start - waiting for more to join."); return; }
             if (_matchStarted && _state.Phase != RoundPhase.Lobby) { Core.Log.Msg("[PropHunt] match already running."); return; }
             _matchStarted = true;
             _state.SettingsBlob = _settings.Serialize();
@@ -635,7 +640,9 @@ namespace PropHunt.Game
                     // everyone at the area centre.
                     if (prevPhase != RoundPhase.Safehouse)
                         RoundEnvironment.TeleportLocalInto(_state.AreaX, _state.AreaY, _state.AreaZ, LocalId);
+#if DEBUG
                     if (LocalRole == PlayerRole.Hider) DumpPropDebug();
+#endif
                 }
                 // back in the safehouse / between rounds -> reset everyone to first person (a pulled-back
                 // third-person view from the last round must not carry into the lobby).
@@ -875,6 +882,9 @@ namespace PropHunt.Game
         {
             if (!_isHost) return;
             if (sender == 0 || !_state.Players.TryGetValue(sender, out var p) || p.Eliminated) return;
+            // Resolve a default clip on the host so every machine plays the SAME sound. An empty sound would
+            // otherwise make each receiver pick its own random default; the whistle path already resolves on host.
+            if (string.IsNullOrEmpty(sound)) sound = Taunt.TauntSounds.PickDefault();
             try { PropHuntNet.Client?.BroadcastMessage(new TauntMessage { SteamId = sender, Sound = sound }); } catch { }
             NotifyTaunt(sender, sound);   // host also hears it (BroadcastMessage doesn't self-send)
         }
@@ -1003,7 +1013,7 @@ namespace PropHunt.Game
             {
                 bool caught = RoundLogic.IsCaught(_state, victim);
                 if (caught) Core.Log.Msg($"[PropHunt] {hunter} CAUGHT {victim} ({_settings.Caught}).");
-                else Core.Log.Msg($"[PropHunt] {hunter} hit {victim} ({_state.Players[victim].Hits}/{_settings.HitsToCatch}).");
+                else Core.Log.Msg($"[PropHunt] {hunter} hit {victim} ({_state.Players[victim].Hits}/{_state.Players[victim].MaxHits}).");
                 var vpos = vp != null ? vp.transform.position : (hp != null ? hp.transform.position : Vector3.zero);
                 BroadcastFx(new CatchFxMessage { HunterId = hunter, VictimId = victim, Caught = caught, X = vpos.x, Y = vpos.y, Z = vpos.z });
                 NotifyCatchFx(hunter, victim, caught, vpos);

@@ -8,7 +8,7 @@ namespace PropHunt.PlayArea
     /// LOCAL play-area enforcement. Each client checks its own player's distance from the synced area centre;
     /// once outside for a grace period it reports out-of-bounds to the host, which re-validates and eliminates.
     /// The HUD reads <see cref="LocalOutside"/>/<see cref="GraceLeft"/> for the warning. Centre+radius are set
-    /// by the host at round start (host position). TODO(testing): a visible boundary, and a snap-back option.
+    /// by the host at round start (host position).
     /// </summary>
     internal sealed class PlayAreaController
     {

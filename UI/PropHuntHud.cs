@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using PropHunt.Game;
+using PropHunt.Config;
 
 namespace PropHunt.UI
 {
@@ -9,7 +10,7 @@ namespace PropHunt.UI
     /// Functional in-round HUD + host pre-round setup screen, drawn via IMGUI from Core.OnGUI. Shows role,
     /// phase, timer, hiders-remaining, action hints, taunt flash, out-of-bounds warning, and the round-end
     /// banner. On the host in Lobby it draws the setup screen (configure the match, then "START MATCH").
-    /// TODO(testing): re-skin with the DooDesch.UI design system (Banner/Toast/Slider/Segmented).
+    /// TODO: re-skin with the DooDesch.UI design system (Banner/Toast/Slider/Segmented).
     /// </summary>
     internal static class PropHuntHud
     {
@@ -28,7 +29,7 @@ namespace PropHunt.UI
             }
             Center(status, 8, 22, Color.white);
 
-            string view = ctl.ThirdPersonOn ? "[V] 1st-person" : "[V] 3rd-person";
+            string view = ctl.ThirdPersonOn ? $"[{KeyBinds.Name(KeyBinds.ThirdPerson)}] 1st-person" : $"[{KeyBinds.Name(KeyBinds.ThirdPerson)}] 3rd-person";
             string hint = null;
             bool hiderHit = false;
             if (ctl.LocalRole == PlayerRole.Hider && !ctl.LocalSpectating && (phase == RoundPhase.Hiding || phase == RoundPhase.Hunting))
@@ -41,15 +42,15 @@ namespace PropHunt.UI
                 else
                 {
                     string tn = ctl.LookTargetName;
-                    string become = tn != null ? $"[E] become {tn}" : "Look at a highlighted object to become it";
+                    string become = tn != null ? $"[{KeyBinds.Name(KeyBinds.Become)}] become {tn}" : "Look at a highlighted object to become it";
                     string lead = phase == RoundPhase.Hunting ? "Stay hidden!  " : "";
-                    string rot = ctl.LocalPropId >= 0 ? "  [F]+mouse rotate" : "";
-                    hint = $"{lead}{become}  [2] random{rot}   {view}";
+                    string rot = ctl.LocalPropId >= 0 ? $"  [{KeyBinds.Name(KeyBinds.Rotate)}]+mouse rotate" : "";
+                    hint = $"{lead}{become}  [{KeyBinds.Name(KeyBinds.RandomProp)}] random{rot}   {view}";
                 }
             }
             else if (phase == RoundPhase.Hiding && ctl.LocalRole == PlayerRole.Hunter) hint = "Get ready... (blinded until the hunt begins)";
             // hunters are first-person only - no [V] hint for them
-            else if (phase == RoundPhase.Hunting && ctl.LocalRole == PlayerRole.Hunter) hint = "Find the props - [Left click] to catch (big props take more hits)";
+            else if (phase == RoundPhase.Hunting && ctl.LocalRole == PlayerRole.Hunter) hint = $"Find the props - [{KeyBinds.Name(KeyBinds.Catch)}] to catch (big props take more hits)";
             if (hint != null) Center(hint, 34, 18, hiderHit ? Color.red : Color.cyan);
 
             // crosshair-anchored "become" prompt - the top hint is easy to miss while aiming at the centre,
@@ -57,7 +58,7 @@ namespace PropHunt.UI
             if (ctl.LocalRole == PlayerRole.Hider && !ctl.LocalSpectating && (phase == RoundPhase.Hiding || phase == RoundPhase.Hunting))
             {
                 string tn = ctl.LookTargetName;
-                if (tn != null) Center($"[E] become {tn}", Screen.height / 2 + 28, 22, Color.cyan);
+                if (tn != null) Center($"[{KeyBinds.Name(KeyBinds.Become)}] become {tn}", Screen.height / 2 + 28, 22, Color.cyan);
             }
 
             // explicit "you transformed" confirmation + abilities, independent of whether the camera sees the prop
@@ -68,8 +69,8 @@ namespace PropHunt.UI
                 string chg = s.MaxPropChanges > 0 ? $"{Mathf.Max(0, s.MaxPropChanges - ctl.LocalChanges)} changes left" : "unlimited changes";
                 Center($"You are now: {pn}  ({ctl.LocalMaxHits} HP, {chg})", 56, 18, Color.green);
 
-                string decoy = s.MaxDecoys > 0 ? $"[Q] decoy ({Mathf.Max(0, s.MaxDecoys - ctl.LocalDecoysUsed)} left)" : "";
-                string conc = s.ConcussCharges > 0 ? $"[G] concussion ({Mathf.Max(0, s.ConcussCharges - ctl.LocalConcussUsed)} left)" : "";
+                string decoy = s.MaxDecoys > 0 ? $"[{KeyBinds.Name(KeyBinds.Decoy)}] decoy ({Mathf.Max(0, s.MaxDecoys - ctl.LocalDecoysUsed)} left)" : "";
+                string conc = s.ConcussCharges > 0 ? $"[{KeyBinds.Name(KeyBinds.Concussion)}] concussion ({Mathf.Max(0, s.ConcussCharges - ctl.LocalConcussUsed)} left)" : "";
                 string ab = (decoy + "   " + conc).Trim();
                 if (ab.Length > 0) Center(ab, 78, 16, Color.cyan);
             }
@@ -123,9 +124,9 @@ namespace PropHunt.UI
 
             if (fromForm)
             {
-                GUILayout.Label($"Hide {s.HideSeconds}s   .   Hunt {s.HuntSeconds}s");
-                GUILayout.Label($"1 hunter / {s.PlayersPerHunter} players   .   Prop HP/m {s.HitsToCatch}");
-                GUILayout.Label($"Caught: {s.Caught}   .   Rounds: {s.Structure}");
+                GUILayout.Label($"Hide {s.HideSeconds}s   ·   Hunt {s.HuntSeconds}s");
+                GUILayout.Label($"1 hunter / {s.PlayersPerHunter} players   ·   Prop HP/m {s.HitsToCatch}");
+                GUILayout.Label($"Caught: {s.Caught}   ·   Rounds: {s.Structure}");
             }
             else
             {

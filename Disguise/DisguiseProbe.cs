@@ -1,12 +1,12 @@
+#if DEBUG
 using System;
 
 namespace PropHunt.Disguise
 {
     /// <summary>
-    /// Phase 0 probe (gate 3): toggle the visibility of every REMOTE player's third-person body locally,
-    /// to confirm whether <c>Player.SetThirdPersonMeshesVisibility</c> hides a remote player's body for the
-    /// local viewer - the basis of the disguise. If a remote player's body vanishes for you when toggled,
-    /// the gate passes; if it only affects your own view, we fall back to toggling the Avatar's renderers.
+    /// DEBUG-only probe: toggle the visibility of every REMOTE player's third-person body locally, to confirm
+    /// whether <c>Player.SetThirdPersonMeshesVisibility</c> hides a remote player's body for the local viewer -
+    /// the basis of the disguise.
     /// </summary>
     internal static class DisguiseProbe
     {
@@ -33,3 +33,4 @@ namespace PropHunt.Disguise
         }
     }
 }
+#endif

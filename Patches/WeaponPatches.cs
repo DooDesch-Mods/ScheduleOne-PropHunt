@@ -8,7 +8,7 @@ using PropHunt.Game;
 namespace PropHunt.Patches
 {
     /// <summary>
-    /// Verified against the Mono decompile (ScheduleOne.Equipping.Equippable_RangedWeapon):
+    /// ScheduleOne.Equipping.Equippable_RangedWeapon behaviour this patch relies on:
     ///  - Fire() has no tased/stun guard, so a concussed hunter could still shoot -> block it.
     ///  - Reload() plays the full reload animation (trigger + ReloadStartTime wait) and refills the clip
     ///    FROM a magazine item that GetMagazine() finds in a hotbar slot (ID == Magazine.ID). The hunter is

@@ -1,3 +1,4 @@
+#if DEBUG
 using System;
 using System.Text;
 using SteamNetworkLib.Models;
@@ -5,8 +6,8 @@ using SteamNetworkLib.Models;
 namespace PropHunt.Net
 {
     /// <summary>
-    /// Phase 0 spike message: a trivial ping used only to prove that SteamNetworkLib round-trips a custom
-    /// P2P message between clients over the game's own Steam lobby. Not part of the real gamemode protocol.
+    /// DEBUG-only: a trivial ping used to verify that SteamNetworkLib round-trips a custom P2P message between
+    /// clients over the game's own Steam lobby. Not part of the real gamemode protocol.
     /// </summary>
     public class PingMessage : P2PMessage
     {
@@ -29,3 +30,4 @@ namespace PropHunt.Net
         }
     }
 }
+#endif

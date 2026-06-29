@@ -200,6 +200,7 @@ namespace PropHunt.Net
         }
     }
 
+#if DEBUG
     /// <summary>Curator -> all (DEBUG curation): the prop KEY currently being previewed in phcurate, so every other
     /// client wears it as a live on-player preview. "-" = stop previewing (SteamNetworkLib drops empty bodies).</summary>
     public class CuratePreviewMessage : P2PMessage
@@ -209,4 +210,5 @@ namespace PropHunt.Net
         public override byte[] Serialize() => MsgCodec.Bytes(string.IsNullOrEmpty(Key) ? "-" : Key);
         public override void Deserialize(byte[] data) { var s = MsgCodec.Str(data); Key = s == "-" ? "" : s; }
     }
+#endif
 }

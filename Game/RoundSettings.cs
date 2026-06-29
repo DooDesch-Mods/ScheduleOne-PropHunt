@@ -29,7 +29,7 @@ namespace PropHunt.Game
         internal RoundStructure Structure = RoundStructure.Continuous;
         internal int TimeOfDay = 1200;          // HHMM; world locked here during a round (1200 = noon/day, 0100 = night)
         internal string HunterWeapon = "m1911"; // item id given to each hunter at hunt start ("" = none)
-        internal bool FriendlyFire = true;      // hunters can damage each other (enforcement = testing-phase)
+        internal bool FriendlyFire = true;      // hunters can damage each other
         internal bool RemoveDecoysBetweenRounds = true;   // clear dropped decoys at round end (false = they persist into the next round)
 
         internal static CaughtBehavior ParseCaught(string s) =>

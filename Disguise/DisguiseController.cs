@@ -10,8 +10,7 @@ namespace PropHunt.Disguise
     /// third-person body and parents a render-only clone of the prop mesh to their transform; the prop then
     /// rides the game's already-replicated player transform, so no transform networking is needed. Driven
     /// from the synced <see cref="GameState"/> each tick; idempotent (only rebuilds when a player's prop id
-    /// changes). TODO(testing): if SetThirdPersonMeshesVisibility only affects the local view, fall back to
-    /// toggling Avatar BodyMeshes/FaceMesh/ShapeKeyMeshes renderers; tune prop offset/scale.
+    /// changes).
     /// </summary>
     internal sealed class DisguiseController
     {

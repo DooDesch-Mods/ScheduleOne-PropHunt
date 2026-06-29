@@ -11,7 +11,7 @@ namespace PropHunt.Game
     /// Engine-side round environment: host world setup (lock time of day + freeze, keep police ignoring
     /// players) and per-client local effects (clear own crime so no arrests, teleport into the play area,
     /// arm the local hunter). Every interop call is try/caught + best-effort so a single failure never
-    /// crashes the round. TODO(testing): tune the spread ring, weapon set, and friendly-fire enforcement.
+    /// crashes the round.
     /// </summary>
     internal static class RoundEnvironment
     {

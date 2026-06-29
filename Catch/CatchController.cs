@@ -7,7 +7,7 @@ namespace PropHunt.Catch
     /// <summary>
     /// LOCAL hunter tooling during the Hunting phase: aim + click to catch.
     ///
-    /// Shot resolution (Feature 3):
+    /// Shot resolution:
     ///   1. Thin pre-ray (radius 0) finds anything in the line of sight up to TagRange.
     ///   2. If a decoy is hit (GameObject name walks up to something starting with "ph_decoy_"), the
     ///      trailing index is parsed and forwarded to GameModeController.RequestHitDecoy (step 4 stub).
@@ -19,8 +19,8 @@ namespace PropHunt.Catch
     ///
     /// Host re-validates geometry (distance + lateral offset gated by prop size) before accepting any tag.
     ///
-    /// Camera confirmed: PlayerCamera.Instance.Camera (Camera field, il2cpp L1857); forward via Camera.transform.forward.
-    /// PlayerRegistry.IdForPlayer confirmed as existing API used throughout the codebase.
+    /// Aim uses PlayerCamera.Instance.Camera; forward via Camera.transform.forward. Victims resolve to a stable
+    /// id via PlayerRegistry.IdForPlayer.
     /// </summary>
     internal sealed class CatchController
     {
@@ -32,7 +32,7 @@ namespace PropHunt.Catch
             if (_ctl.Phase != RoundPhase.Hunting || _ctl.LocalRole != PlayerRole.Hunter) return;
             try
             {
-                if (!Input.GetMouseButtonDown(0)) return;
+                if (!Input.GetKeyDown(PropHunt.Config.KeyBinds.Catch)) return;
                 var lp = Player.Local;
                 if (lp != null && lp.IsTased) return;   // stunned: can't catch while tased
 

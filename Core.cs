@@ -165,8 +165,8 @@ namespace PropHunt
                 return;
             }
 
-            // Gameplay scene loaded. The gamemode controller, role assignment, and prop catalog are wired
-            // here as those systems land (Phase 1).
+            // Gameplay scene loaded. The session controller, role assignment, and prop catalog are wired up
+            // when a PropHunt session starts.
             LogDebug("[PropHunt] Main scene loaded.");
         }
 
@@ -241,7 +241,7 @@ namespace PropHunt
 #endif
 
 #if DEBUG
-        /// <summary>Fired when preferences are saved (incl. via the Mod Manager &amp; Phone App UI). Phase 0 debug probes.</summary>
+        /// <summary>Fired when preferences are saved (incl. via the Mod Manager &amp; Phone App UI). DEBUG-only probes.</summary>
         public override void OnPreferencesSaved()
         {
             try
