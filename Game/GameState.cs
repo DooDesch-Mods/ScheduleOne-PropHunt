@@ -24,6 +24,8 @@ namespace PropHunt.Game
         internal int HunterMaxHits = 3;// friendly-fire hits needed to knock this hunter down (from the host setting)
         internal bool Downed;          // hunter is ragdolled/knocked down (FF-KO or concussion); recovers at DownedUntilUnix
         internal long DownedUntilUnix; // absolute unix seconds the host will stand this hunter back up (0 = not downed)
+        internal float KnockX;         // horizontal knockback direction for the ragdoll (away from the attacker); 0,0 = vanilla forward faint
+        internal float KnockZ;
 
         // ---- per-round stats (reset each round; drive the round-end scoreboard + awards) ----
         internal int CatchesMade;      // hiders this player caught (hunter)
@@ -118,7 +120,9 @@ namespace PropHunt.Game
                   .Append(p.HunterHits.ToString(ci)).Append('|')
                   .Append(p.HunterMaxHits.ToString(ci)).Append('|')
                   .Append(p.Downed ? '1' : '0').Append('|')
-                  .Append(p.DownedUntilUnix.ToString(ci));
+                  .Append(p.DownedUntilUnix.ToString(ci)).Append('|')
+                  .Append(p.KnockX.ToString(ci)).Append('|')
+                  .Append(p.KnockZ.ToString(ci));
             }
             foreach (var d in Decoys)
             {
@@ -203,6 +207,8 @@ namespace PropHunt.Game
                 if (f.Length >= 21) p.HunterMaxHits = SafeInt(f[20]);
                 if (f.Length >= 22) p.Downed = f[21] == "1";
                 if (f.Length >= 23) long.TryParse(f[22], NumberStyles.Integer, ci, out p.DownedUntilUnix);
+                if (f.Length >= 24) p.KnockX = SafeFloat(f[23]);
+                if (f.Length >= 25) p.KnockZ = SafeFloat(f[24]);
             }
             return gs;
         }

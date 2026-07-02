@@ -29,13 +29,20 @@ namespace PropHunt.Music
             catch (Exception e) { Core.LogDebug("[PropHunt] music play failed: " + e.Message); }
         }
 
-        /// <summary>Stop whatever round track we enabled, handing music back to the game.</summary>
+        /// <summary>Fade out + stop whatever round track we enabled, handing music back to the game. Disables the track
+        /// FIRST (so MusicManager.UpdateTracks won't immediately re-select + re-play it) then Stop()s it, which makes
+        /// MusicTrack.Update ramp its volume down over the track's FadeOutTime (~2s) before silencing the source - i.e.
+        /// a smooth fade, not a hard cut.</summary>
         internal static void Stop()
         {
             try
             {
                 var mm = PersistentSingleton<MusicManager>.Instance;
-                if (mm != null && !string.IsNullOrEmpty(_active)) mm.StopTrack(_active);
+                if (mm != null && !string.IsNullOrEmpty(_active))
+                {
+                    mm.SetTrackEnabled(_active, false);   // Disable -> not re-selected by UpdateTracks
+                    mm.StopTrack(_active);                // Stop -> MusicTrack.Update fades the volume out, then stops the source
+                }
             }
             catch { }
             _active = null;

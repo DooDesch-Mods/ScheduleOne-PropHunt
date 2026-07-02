@@ -85,7 +85,7 @@ namespace PropHunt.Catch
                         // by ImpactFxSuppressPatch. The host re-validates before accepting.
                         SpawnPropHitFx(h.point);
                         PropHunt.UI.Hud.HudController.ShowHitmarker();
-                        _ctl.RequestClaimTag(propVictim);
+                        _ctl.RequestClaimTag(propVictim, t.forward);
                         Core.LogDebug($"[PropHunt] claim tag on {propVictim} via prop hitbox (size {PropCatalog.SizeOf(_ctl.PropIdOf(propVictim)):F2})");
                         return;
                     }
@@ -104,14 +104,14 @@ namespace PropHunt.Catch
                         if (_ctl.Settings != null && _ctl.Settings.FriendlyFire)
                         {
                             PropHunt.UI.Hud.HudController.ShowHitmarker();
-                            _ctl.RequestHitHunter(victimId);
+                            _ctl.RequestHitHunter(victimId, t.forward);
                             Core.LogDebug($"[PropHunt] friendly-fire hit on hunter {victimId}");
                             return;
                         }
                         continue;
                     }
                     PropHunt.UI.Hud.HudController.ShowHitmarker();
-                    _ctl.RequestClaimTag(victimId);
+                    _ctl.RequestClaimTag(victimId, t.forward);
                     Core.LogDebug($"[PropHunt] claim tag on {victimId} via capsule (undisguised)");
                     return;
                 }

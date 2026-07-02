@@ -83,13 +83,24 @@ namespace PropHunt.Net
         }
     }
 
-    /// <summary>Client -> host: a hunter claims a catch on the given victim (host re-validates geometry).</summary>
+    /// <summary>Client -> host: a hunter claims a catch on the given victim, carrying the camera AIM direction the shot
+    /// was fired along (unit vector) so the host validates against where the player actually looked - not the body
+    /// facing, which diverges from the aim while standing still and falsely rejects long-range hits. Payload
+    /// "victim;dx;dy;dz" (dir may be absent on an old client -> host falls back to the body forward).</summary>
     public class ClaimTagMessage : P2PMessage
     {
         public override string MessageType => "PH_TAG";
         public ulong VictimSteamId { get; set; }
-        public override byte[] Serialize() => MsgCodec.Bytes(MsgCodec.Of(VictimSteamId));
-        public override void Deserialize(byte[] data) => VictimSteamId = MsgCodec.U(MsgCodec.Str(data));
+        public float DirX { get; set; }
+        public float DirY { get; set; }
+        public float DirZ { get; set; }
+        public override byte[] Serialize() => MsgCodec.Bytes($"{MsgCodec.Of(VictimSteamId)};{MsgCodec.Of(DirX)};{MsgCodec.Of(DirY)};{MsgCodec.Of(DirZ)}");
+        public override void Deserialize(byte[] data)
+        {
+            var p = MsgCodec.Str(data).Split(';');
+            if (p.Length >= 1) VictimSteamId = MsgCodec.U(p[0]);
+            if (p.Length >= 4) { DirX = MsgCodec.F(p[1]); DirY = MsgCodec.F(p[2]); DirZ = MsgCodec.F(p[3]); }
+        }
     }
 
     /// <summary>Client -> host: a hunter claims a friendly-fire hit on another HUNTER (host re-validates FF/geometry).
@@ -98,8 +109,16 @@ namespace PropHunt.Net
     {
         public override string MessageType => "PH_FF";
         public ulong VictimSteamId { get; set; }
-        public override byte[] Serialize() => MsgCodec.Bytes(MsgCodec.Of(VictimSteamId));
-        public override void Deserialize(byte[] data) => VictimSteamId = MsgCodec.U(MsgCodec.Str(data));
+        public float DirX { get; set; }
+        public float DirY { get; set; }
+        public float DirZ { get; set; }
+        public override byte[] Serialize() => MsgCodec.Bytes($"{MsgCodec.Of(VictimSteamId)};{MsgCodec.Of(DirX)};{MsgCodec.Of(DirY)};{MsgCodec.Of(DirZ)}");
+        public override void Deserialize(byte[] data)
+        {
+            var p = MsgCodec.Str(data).Split(';');
+            if (p.Length >= 1) VictimSteamId = MsgCodec.U(p[0]);
+            if (p.Length >= 4) { DirX = MsgCodec.F(p[1]); DirY = MsgCodec.F(p[2]); DirZ = MsgCodec.F(p[3]); }
+        }
     }
 
     /// <summary>Client -> host: the sender's own local player has left the play area.</summary>

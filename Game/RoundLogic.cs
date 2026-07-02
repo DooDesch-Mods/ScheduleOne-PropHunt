@@ -64,7 +64,7 @@ namespace PropHunt.Game
                 p.PropYaw = 0f; p.DecoysUsed = 0; p.ConcussUsed = 0;
                 p.CatchesMade = 0; p.HitsDealt = 0; p.DecoyBaits = 0; p.StunsLanded = 0; p.SurvivedSeconds = 0;   // per-round stats (SessScore persists)
                 p.DecoysSmashed = 0; p.Taunts = 0;
-                p.HunterHits = 0; p.HunterMaxHits = Math.Max(1, set.HunterHitsToDown); p.Downed = false; p.DownedUntilUnix = 0;   // hunter friendly-fire HP + knockdown
+                p.HunterHits = 0; p.HunterMaxHits = Math.Max(1, set.HunterHitsToDown); p.Downed = false; p.DownedUntilUnix = 0; p.KnockX = 0f; p.KnockZ = 0f;   // hunter friendly-fire HP + knockdown
             }
         }
 
@@ -195,7 +195,7 @@ namespace PropHunt.Game
                 if (!p.Downed) continue;
                 if (now >= p.DownedUntilUnix || p.Role != PlayerRole.Hunter || p.Eliminated)
                 {
-                    p.Downed = false; p.HunterHits = 0; p.DownedUntilUnix = 0;
+                    p.Downed = false; p.HunterHits = 0; p.DownedUntilUnix = 0; p.KnockX = 0f; p.KnockZ = 0f;
                     changed = true;
                 }
             }
@@ -351,7 +351,7 @@ namespace PropHunt.Game
                 v.Role = PlayerRole.Hunter;
                 v.PropId = -1; v.Locked = false; v.Eliminated = false; v.Hits = 0; v.MaxHits = 1; v.Changes = 0;
                 v.PropYaw = 0f; v.DecoysUsed = 0; v.ConcussUsed = 0;
-                v.HunterHits = 0; v.HunterMaxHits = Math.Max(1, set.HunterHitsToDown); v.Downed = false; v.DownedUntilUnix = 0;
+                v.HunterHits = 0; v.HunterMaxHits = Math.Max(1, set.HunterHitsToDown); v.Downed = false; v.DownedUntilUnix = 0; v.KnockX = 0f; v.KnockZ = 0f;
             }
             else { v.Eliminated = true; }
             if (AliveHiders(s) == 0) EndRound(s, set, now, true);

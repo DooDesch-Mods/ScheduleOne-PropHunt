@@ -700,7 +700,9 @@ namespace PropHunt.Game
                     PropHunt.Music.RoundMusicController.Play(PropHunt.Config.PropHuntPreferences.HidingMusicTrack);
                 }
                 if (_state.Phase == RoundPhase.Hunting)
-                    PropHunt.Music.RoundMusicController.Play(PropHunt.Config.PropHuntPreferences.HuntingMusicTrack);
+                    // Hunt begins (hunters unblinded): FADE the music out so hunters can hear the hiders' whistles
+                    // precisely. Stop() ramps the hiding track down over its native fade-out; the hunt stays quiet.
+                    PropHunt.Music.RoundMusicController.Stop();
                 // back in the safehouse / between rounds -> reset everyone to first person (a pulled-back
                 // third-person view from the last round must not carry into the lobby) + stop the round music.
                 if (_state.Phase == RoundPhase.Safehouse || _state.Phase == RoundPhase.RoundEnd || _state.Phase == RoundPhase.MatchEnd)
@@ -778,7 +780,7 @@ namespace PropHunt.Game
             try { _border?.Dispose(); } catch { }
             try { _tauntWheel?.Dispose(); } catch { }
             try { PropHunt.Music.RoundMusicController.Stop(); } catch { }   // hand music back to the game
-            try { if (_localDownedApplied) { _localDownedApplied = false; Player.Local?.SendPassOutRecovery(); } } catch { }   // stand up if we tore down mid-ragdoll (clear flag first so it resets even if the RPC throws)
+            try { if (_localDownedApplied) { _localDownedApplied = false; Player.Local?.SendPassOutRecovery(); Player.Activate(); } } catch { }   // stand up + restore control if we tore down mid-ragdoll (clear flag first so it resets even if an RPC throws)
             try { Quests.GuideQuest.Stop(); } catch { }   // remove the local guidance quest on session teardown
             _disguise = null;
             _decoy = null;
@@ -849,8 +851,8 @@ namespace PropHunt.Game
                 c.RegisterMessageHandler<RotatePropMessage>((m, s) => Active?.HandleRotate(s.m_SteamID, m.Yaw));
                 c.RegisterMessageHandler<DropDecoyMessage>((m, s) => Active?.HandleDropDecoy(s.m_SteamID, m.X, m.Y, m.Z, m.Yaw));
                 c.RegisterMessageHandler<ConcussMessage>((m, s) => Active?.HandleConcuss(s.m_SteamID, m.X, m.Y, m.Z));
-                c.RegisterMessageHandler<ClaimTagMessage>((m, s) => Active?.HandleClaimTag(s.m_SteamID, m.VictimSteamId));
-                c.RegisterMessageHandler<HitHunterMessage>((m, s) => Active?.HandleHitHunter(s.m_SteamID, m.VictimSteamId));
+                c.RegisterMessageHandler<ClaimTagMessage>((m, s) => Active?.HandleClaimTag(s.m_SteamID, m.VictimSteamId, new Vector3(m.DirX, m.DirY, m.DirZ)));
+                c.RegisterMessageHandler<HitHunterMessage>((m, s) => Active?.HandleHitHunter(s.m_SteamID, m.VictimSteamId, new Vector3(m.DirX, m.DirY, m.DirZ)));
                 c.RegisterMessageHandler<OutOfBoundsMessage>((m, s) => Active?.HandleOutOfBounds(s.m_SteamID));
                 c.RegisterMessageHandler<TauntMessage>((m, s) => Active?.NotifyTaunt(m.SteamId, m.Sound, m.IsWhistle));
                 c.RegisterMessageHandler<ManualTauntMessage>((m, s) => Active?.HandleManualTaunt(s.m_SteamID, m.Sound));
@@ -928,17 +930,17 @@ namespace PropHunt.Game
             else SendToHost(new LockPropMessage { Locked = locked });
         }
 
-        internal void RequestClaimTag(ulong victimSteamId)
+        internal void RequestClaimTag(ulong victimSteamId, Vector3 aimDir)
         {
-            if (_isHost) HandleClaimTag(LocalId, victimSteamId);
-            else SendToHost(new ClaimTagMessage { VictimSteamId = victimSteamId });
+            if (_isHost) HandleClaimTag(LocalId, victimSteamId, aimDir);
+            else SendToHost(new ClaimTagMessage { VictimSteamId = victimSteamId, DirX = aimDir.x, DirY = aimDir.y, DirZ = aimDir.z });
         }
 
         /// <summary>A hunter's shot landed on another HUNTER (friendly fire). The host validates + knocks them down.</summary>
-        internal void RequestHitHunter(ulong victimSteamId)
+        internal void RequestHitHunter(ulong victimSteamId, Vector3 aimDir)
         {
-            if (_isHost) HandleHitHunter(LocalId, victimSteamId);
-            else SendToHost(new HitHunterMessage { VictimSteamId = victimSteamId });
+            if (_isHost) HandleHitHunter(LocalId, victimSteamId, aimDir);
+            else SendToHost(new HitHunterMessage { VictimSteamId = victimSteamId, DirX = aimDir.x, DirY = aimDir.y, DirZ = aimDir.z });
         }
 
         private int _lastShotFrame = -1;
@@ -957,8 +959,21 @@ namespace PropHunt.Game
             {
                 var lp = Player.Local;
                 if (lp == null) return;
-                if (downed) { lp.SendPassOut(); SetFx("KNOCKED DOWN", new Color(0.95f, 0.55f, 0.2f)); }
-                else lp.SendPassOutRecovery();
+                if (downed)
+                {
+                    lp.SendPassOut();   // networked ragdoll (replicates to everyone). Its owner-side ExitAll disables
+                                        // look/move/inventory during the knockdown - desirable while down.
+                    SetFx("KNOCKED DOWN", new Color(0.95f, 0.55f, 0.2f));
+                }
+                else
+                {
+                    lp.SendPassOutRecovery();   // un-ragdoll everywhere
+                    // PassOutRecovery does NOT re-enable control - vanilla relies on PassOutScreen.Close() -> Activate(),
+                    // which we suppress (PassOutScreenGatePatch). So restore control ourselves: Player.Activate() is the
+                    // exact inverse of the ExitAll that SendPassOut ran (canLook + CanMove + inventory + crosshair +
+                    // LockMouse). Without this the camera stays locked ("canLook=false") after standing up.
+                    Player.Activate();
+                }
             }
             catch (Exception e) { Core.LogDebug("[PropHunt] ragdoll drive failed: " + e.Message); }
         }
@@ -1115,7 +1130,7 @@ namespace PropHunt.Game
                     ulong hid = PlayerRegistry.IdForPlayer(pl);
                     if (RoleOf(hid) != PlayerRole.Hunter) continue;
                     if (UnityEngine.Vector3.Distance(center, pl.transform.position) > r) continue;
-                    if (RoundLogic.ApplyConcussDown(_state, hid, seconds, now)) hit++;   // synced Downed -> ragdoll on that hunter's client
+                    if (RoundLogic.ApplyConcussDown(_state, hid, seconds, now)) { SetKnockback(hid, pl.transform.position - center); hit++; }   // synced Downed -> ragdoll AWAY from the blast on that hunter's client
                 }
                 if (hit > 0 && _state.Players.TryGetValue(hiderId, out var hs)) hs.StunsLanded += hit;   // credit the hider (synced by HandleConcuss' PushState)
                 Core.Log.Msg($"[PropHunt] concussion by {hiderId} - knocked down {hit} hunter(s) within {r}m for {seconds}s.");
@@ -1123,7 +1138,7 @@ namespace PropHunt.Game
             catch (Exception e) { Core.Log.Warning("[PropHunt] concussion effect failed: " + e.Message); }
         }
 
-        private void HandleClaimTag(ulong hunter, ulong victim)
+        private void HandleClaimTag(ulong hunter, ulong victim, Vector3 aimDir)
         {
             if (!_isHost || _state.Phase != RoundPhase.Hunting) return;
             // host-side geometry re-validation - never trust the client's ray
@@ -1138,16 +1153,18 @@ namespace PropHunt.Game
                 // than a tiny prop. maxLateral is scaled to the victim's prop size with a generous tolerance
                 // (+0.5m) to account for camera-vs-body-forward divergence.
                 float victimPropSize = PropHunt.Disguise.PropCatalog.SizeOf(PropIdOf(victim));
-                // project the hunter->victim offset onto the hunter's lateral plane (perpendicular to forward)
-                var hunterFwd = hp.transform.forward;
+                // Validate against the client's CAMERA AIM (the direction the shot was actually fired), NOT the body
+                // forward. While a player stands still the body facing diverges from where they look, so a body-forward
+                // cone grows with distance and falsely rejects long-range hits (moving toward the target aligned the
+                // body, which is why it only worked up close). aimDir is the camera forward the client sent; fall back
+                // to the body forward only for an old client that sent none.
+                var hunterFwd = (aimDir.sqrMagnitude > 0.01f) ? aimDir.normalized : hp.transform.forward;
                 var delta = vp.transform.position - hp.transform.position;
                 float along = UnityEngine.Vector3.Dot(delta, hunterFwd);
                 var lateral = delta - hunterFwd * along;
                 float lateralDist = lateral.magnitude;
-                // Allowed lateral offset SCALES with distance (a cone, not a fixed radius). The client already
-                // ray-validated the shot against the prop hitbox using the CAMERA forward, but the host only has the
-                // BODY forward (which diverges from where the player looks), so a fixed radius falsely rejects shots at
-                // range. prop-size base + ~14% of the forward distance (~an 8 degree cone) keeps it anti-cheat-bounded.
+                // Allowed lateral offset SCALES with distance (a cone, not a fixed radius): a bigger prop is catchable
+                // from a wider angle. prop-size base + ~14% of the forward distance keeps it bounded.
                 float maxLateral = UnityEngine.Mathf.Clamp(victimPropSize * 0.4f, 0.15f, 2.0f) + 0.75f + UnityEngine.Mathf.Max(0f, along) * 0.14f;
                 if (lateralDist > maxLateral)
                 {
@@ -1176,7 +1193,7 @@ namespace PropHunt.Game
         /// then routes through <see cref="RoundLogic.ApplyHitHunter"/>. Plays blood on every accepted hit and, on the
         /// knockdown hit, a stun cue; the ragdoll itself is driven on the victim's own client from the synced Downed
         /// flag (see <see cref="DriveLocalRagdoll"/>). Never trusts the client's ray.</summary>
-        private void HandleHitHunter(ulong shooter, ulong victim)
+        private void HandleHitHunter(ulong shooter, ulong victim, Vector3 aimDir)
         {
             if (!_isHost || _state.Phase != RoundPhase.Hunting || !_settings.FriendlyFire) return;
             PlayerRegistry.Refresh();
@@ -1189,7 +1206,8 @@ namespace PropHunt.Game
                 Core.LogDebug($"[PropHunt] FF hit rejected: shooter/victim not resolved (hp={hp != null}, vp={vp != null}).");
                 return;
             }
-            var hunterFwd = hp.transform.forward;
+            // validate against the client's CAMERA AIM (the shot direction), not the body facing (long-range fix - see HandleClaimTag).
+            var hunterFwd = (aimDir.sqrMagnitude > 0.01f) ? aimDir.normalized : hp.transform.forward;
             var delta = vp.transform.position - hp.transform.position;
             float along = UnityEngine.Vector3.Dot(delta, hunterFwd);
             var lateral = delta - hunterFwd * along;
@@ -1206,6 +1224,7 @@ namespace PropHunt.Game
                 try { vp?.Health?.PlayBloodMist(); } catch { }
                 if (newlyDowned)
                 {
+                    SetKnockback(victim, vp.transform.position - hp.transform.position);   // ragdoll away from the shooter
                     // reuse the concussion "stun" cue (sound + STUNNED flash for nearby hunters); the ragdoll is driven
                     // on the victim's own client off the synced Downed flag.
                     BroadcastFx(new StunFxMessage { ThrowerId = shooter, X = vpos.x, Y = vpos.y, Z = vpos.z });
@@ -1214,6 +1233,28 @@ namespace PropHunt.Game
                 }
                 PushState();
             }
+        }
+
+        /// <summary>Set the synced horizontal knockback direction for a player's ragdoll (away from the attacker), read
+        /// by <see cref="Patches.PassOutKnockbackPatch"/> on every client so the body falls in the hit direction instead
+        /// of the vanilla always-forward faint. <paramref name="dir"/> is a world vector attacker-&gt;victim (y ignored).</summary>
+        internal void SetKnockback(ulong id, Vector3 dir)
+        {
+            if (!_state.Players.TryGetValue(id, out var p)) return;
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 0.0001f) { p.KnockX = 0f; p.KnockZ = 0f; return; }
+            dir.Normalize();
+            p.KnockX = dir.x; p.KnockZ = dir.z;
+        }
+
+        /// <summary>The synced knockback direction for a player id (used by the pass-out ragdoll patch). Returns false
+        /// when unknown or unset (0,0) so the patch keeps the vanilla forward faint.</summary>
+        internal bool TryGetKnock(ulong id, out float kx, out float kz)
+        {
+            kx = 0f; kz = 0f;
+            if (id == 0 || !_state.Players.TryGetValue(id, out var p)) return false;
+            kx = p.KnockX; kz = p.KnockZ;
+            return kx != 0f || kz != 0f;
         }
 
         private void HandleOutOfBounds(ulong sender)
