@@ -33,6 +33,8 @@ namespace PropHunt.Game
         private readonly SideHustle.LaunchContext _ctx;
         private readonly bool _isHost;
         private RoundSettings _settings = new RoundSettings();
+        private bool _settingsDirty;        // host edited a setting via the phone -> re-publish to clients (throttled)
+        private float _lastSettingsPush;
         private GameState _state = new GameState();
         private HostSyncVar<string> _stateVar;
         private DisguiseController _disguise;
@@ -76,6 +78,9 @@ namespace PropHunt.Game
         internal RoundPhase Phase => _state.Phase;
         internal ulong LocalId => PropHuntNet.LocalSteamId;
         internal int AliveHiderCount => RoundLogic.AliveHiders(_state);
+        /// <summary>Live Steam-lobby member count (host + everyone joined). Use this in the Lobby - the synced
+        /// <see cref="GameState"/> roster only fills once the match starts, so before that it would read just the host.</summary>
+        internal int LobbyMemberCount { get { int n = GetMemberIds().Count; return n > 0 ? n : _state.Players.Count; } }
         internal bool LocalOutside => _playArea != null && _playArea.LocalOutside;
         internal float OobGrace => _playArea != null ? _playArea.GraceLeft : 0f;
         internal float LastTauntTime => _lastTauntTime;
@@ -106,6 +111,10 @@ namespace PropHunt.Game
         internal bool ThirdPersonOn => _thirdPerson != null && _thirdPerson.IsOn;
         internal bool LocalSpectating => _spectator != null && _spectator.Active;
         internal string SpectatorHudText => _spectator != null ? _spectator.HudText : null;
+        /// <summary>The onboarding state (role card + [H] controls overlay) - read by the uGUI HUD, which renders it.</summary>
+        internal UI.Onboarding Onboarding => _onboarding;
+        /// <summary>True while the radial taunt wheel is open - the HUD suppresses the role card so they don't overlap.</summary>
+        internal bool TauntWheelOpen => _tauntWheel != null && _tauntWheel.MenuOpen;
         internal bool RoundActive => _state.Phase == RoundPhase.Hiding || _state.Phase == RoundPhase.Hunting || _state.Phase == RoundPhase.RoundEnd || _state.Phase == RoundPhase.Safehouse;
 
         internal PlayerRole LocalRole => RoleOf(LocalId);
@@ -123,6 +132,27 @@ namespace PropHunt.Game
         internal int LocalMaxHits
         {
             get { var id = LocalId; return (id != 0 && _state.Players.TryGetValue(id, out var p)) ? p.MaxHits : 1; }
+        }
+
+        /// <summary>Friendly-fire hits the local HUNTER has taken this "life" (knocked down at LocalHunterMaxHits).</summary>
+        internal int LocalHunterHits
+        {
+            get { var id = LocalId; return (id != 0 && _state.Players.TryGetValue(id, out var p)) ? p.HunterHits : 0; }
+        }
+        /// <summary>Friendly-fire hits the local hunter can take before being knocked down (their "HP").</summary>
+        internal int LocalHunterMaxHits
+        {
+            get { var id = LocalId; return (id != 0 && _state.Players.TryGetValue(id, out var p)) ? Math.Max(1, p.HunterMaxHits) : Math.Max(1, _settings.HunterHitsToDown); }
+        }
+        /// <summary>True while the local player is knocked down (ragdolled) by friendly fire or a concussion.</summary>
+        internal bool LocalDowned
+        {
+            get { var id = LocalId; return id != 0 && _state.Players.TryGetValue(id, out var p) && p.Downed; }
+        }
+        /// <summary>Whole seconds left on the local player's knockdown (0 if not downed).</summary>
+        internal int LocalDownedSecondsLeft
+        {
+            get { var id = LocalId; return (id != 0 && _state.Players.TryGetValue(id, out var p) && p.Downed) ? (int)Math.Max(0, p.DownedUntilUnix - NowUnix()) : 0; }
         }
         /// <summary>Prop changes the local hider has used this round.</summary>
         internal int LocalChanges
@@ -204,8 +234,12 @@ namespace PropHunt.Game
         {
             try { Taunt.TauntSounds.PlayFx(caught ? CatchClips : HitClips, pos, 0.8f); } catch { }
             ulong me = LocalId;
+#if DEBUG
+            // DEBUG-ONLY: the hunter's hit/catch flash reveals which props are real hiders - a cheat in real play -
+            // so it ships only in Debug for testing. The victim's own status flash (below) is legitimate and stays.
             if (me == hunterId) SetFx(caught ? "CATCH!" : "HIT", new Color(0.3f, 1f, 0.5f));
-            else if (me == victimId) SetFx(caught ? "CAUGHT!" : "HIT!", Color.red);
+#endif
+            if (me == victimId) SetFx(caught ? "CAUGHT!" : "HIT!", Color.red);
         }
 
         /// <summary>A concussion went off: play a stun SFX at the centre; the thrower gets confirmation, a local
@@ -225,11 +259,16 @@ namespace PropHunt.Game
         internal void NotifyDecoyFx(ulong hunterId, Vector3 pos)
         {
             try { Taunt.TauntSounds.PlayFx(DecoyClips, pos, 0.8f); } catch { }
+#if DEBUG
+            // DEBUG-ONLY: telling the hunter "that was a DECOY" reveals decoys (a cheat in real play); Debug-only.
             if (LocalId == hunterId) SetFx("DECOY!", Color.yellow);
+#endif
         }
 
         /// <summary>IMGUI hook (called from Core.OnGUI): the taunt selection wheel.</summary>
-        internal void DrawGui() { try { _tauntWheel?.DrawGui(); } catch { } try { _onboarding?.DrawGui(_tauntWheel != null && _tauntWheel.MenuOpen); } catch { } }
+        // Only the radial taunt wheel still draws via IMGUI (an input widget out of the HUD redesign's scope). The
+        // role card + [H] controls overlay moved to the uGUI HUD (HudRoot reads Onboarding state + content).
+        internal void DrawGui() { try { _tauntWheel?.DrawGui(); } catch { } }
 
 #if DEBUG
         /// <summary>DEBUG-only: dump the prop pipeline state - catalog size/hash, crosshair target, highlight count,
@@ -252,7 +291,7 @@ namespace PropHunt.Game
                         {
                             var c = hits[i]; if (c == null) continue; scanned++;
                             var mf = c.GetComponentInParent<MeshFilter>();
-                            if (mf != null && mf.sharedMesh != null && PropCatalog.IdForMesh(mf.sharedMesh) >= 0) near++;
+                            if (mf != null && PropCatalog.IdForMeshFilter(mf) >= 0) near++;
                         }
                     Core.Log.Msg($"[PropHunt] props: {near} becomable object(s) within 22m ({scanned} colliders scanned).");
                 }
@@ -406,6 +445,7 @@ namespace PropHunt.Game
                 var t = prop.InteriorSpawnPoint != null ? prop.InteriorSpawnPoint : prop.SpawnPoint;
                 var pos = t != null ? t.position : prop.transform.position;
                 _state.AreaX = pos.x; _state.AreaY = pos.y; _state.AreaZ = pos.z;
+                _state.AreaRadius = Mathf.Max(_settings.PlayAreaRadius, MinPlayAreaRadius);   // enforce the floor at round start too
             }
             catch { }
         }
@@ -621,6 +661,16 @@ namespace PropHunt.Game
                 if (changed) PushState();
             }
 
+            // Host: re-publish phone-edited settings so clients see them live (throttled, runs in any phase incl. the
+            // Lobby/Safehouse where the host edits between rounds).
+            if (_isHost && _settingsDirty && Time.unscaledTime - _lastSettingsPush > 0.4f)
+            {
+                _settingsDirty = false;
+                _lastSettingsPush = Time.unscaledTime;
+                _state.SettingsBlob = _settings.Serialize();
+                PushState();
+            }
+
             if (_state.Phase != _loggedPhase)
             {
                 var prevPhase = _loggedPhase;
@@ -630,6 +680,9 @@ namespace PropHunt.Game
 
                 if (_state.Phase == RoundPhase.Hiding)
                 {
+                    // re-apply the world time at the start of every round, so each round begins at the configured
+                    // time of day (and, with FreezeTime off, the clock then runs from there instead of staying locked).
+                    if (_isHost) RoundEnvironment.ApplyHostWorld(_settings);
                     // Rebuild the catalog now the world is fully loaded (the client's session-start build can
                     // run BEFORE the scene finishes loading -> a near-empty catalog + hash mismatch). Both sides
                     // rebuild at the same lifecycle point -> matching deterministic ids/hash.
@@ -643,10 +696,18 @@ namespace PropHunt.Game
 #if DEBUG
                     if (LocalRole == PlayerRole.Hider) DumpPropDebug();
 #endif
+                    // round-start music (reused game track); local per client, driven by the synced phase edge.
+                    PropHunt.Music.RoundMusicController.Play(PropHunt.Config.PropHuntPreferences.HidingMusicTrack);
                 }
+                if (_state.Phase == RoundPhase.Hunting)
+                    PropHunt.Music.RoundMusicController.Play(PropHunt.Config.PropHuntPreferences.HuntingMusicTrack);
                 // back in the safehouse / between rounds -> reset everyone to first person (a pulled-back
-                // third-person view from the last round must not carry into the lobby).
-                if (_state.Phase == RoundPhase.Safehouse || _state.Phase == RoundPhase.RoundEnd) _thirdPerson?.ForceOff();
+                // third-person view from the last round must not carry into the lobby) + stop the round music.
+                if (_state.Phase == RoundPhase.Safehouse || _state.Phase == RoundPhase.RoundEnd || _state.Phase == RoundPhase.MatchEnd)
+                {
+                    _thirdPerson?.ForceOff();
+                    PropHunt.Music.RoundMusicController.Stop();
+                }
                 // arming/disarming the local hunter is role-driven, not phase-edge driven -> ApplyLocalEffects
             }
 
@@ -671,6 +732,7 @@ namespace PropHunt.Game
             _taunt?.Tick();
             _disguise?.Apply(_state);
             _decoy?.Apply(_state);
+            DriveLocalRagdoll();   // ragdoll/stand-up the local player when the synced Downed flag flips (FF-KO / concussion)
 
             int lpid = LocalPropId;
             if (lpid != _lastLocalProp)
@@ -681,6 +743,10 @@ namespace PropHunt.Game
                 Core.LogDebug($"[PropHunt] local disguise PropId -> {lpid} ({LocalPropName ?? "none"})");
                 UpdatePropCollisionHeight(lpid);
             }
+
+            // Local guidance quest (journal/tracker): created once the phone UI is ready, completed when the player
+            // opens the PropHunt app. Points the player at the app as the control/tracking surface.
+            Quests.GuideQuest.Tick();
 
             if (_state.Phase == RoundPhase.MatchEnd) RequestReturnToHub();
         }
@@ -711,6 +777,9 @@ namespace PropHunt.Game
             try { _passthrough?.Dispose(); } catch { }   // restore any obstacle collisions we ignored
             try { _border?.Dispose(); } catch { }
             try { _tauntWheel?.Dispose(); } catch { }
+            try { PropHunt.Music.RoundMusicController.Stop(); } catch { }   // hand music back to the game
+            try { if (_localDownedApplied) { _localDownedApplied = false; Player.Local?.SendPassOutRecovery(); } } catch { }   // stand up if we tore down mid-ragdoll (clear flag first so it resets even if the RPC throws)
+            try { Quests.GuideQuest.Stop(); } catch { }   // remove the local guidance quest on session teardown
             _disguise = null;
             _decoy = null;
             _picker = null;
@@ -781,6 +850,7 @@ namespace PropHunt.Game
                 c.RegisterMessageHandler<DropDecoyMessage>((m, s) => Active?.HandleDropDecoy(s.m_SteamID, m.X, m.Y, m.Z, m.Yaw));
                 c.RegisterMessageHandler<ConcussMessage>((m, s) => Active?.HandleConcuss(s.m_SteamID, m.X, m.Y, m.Z));
                 c.RegisterMessageHandler<ClaimTagMessage>((m, s) => Active?.HandleClaimTag(s.m_SteamID, m.VictimSteamId));
+                c.RegisterMessageHandler<HitHunterMessage>((m, s) => Active?.HandleHitHunter(s.m_SteamID, m.VictimSteamId));
                 c.RegisterMessageHandler<OutOfBoundsMessage>((m, s) => Active?.HandleOutOfBounds(s.m_SteamID));
                 c.RegisterMessageHandler<TauntMessage>((m, s) => Active?.NotifyTaunt(m.SteamId, m.Sound, m.IsWhistle));
                 c.RegisterMessageHandler<ManualTauntMessage>((m, s) => Active?.HandleManualTaunt(s.m_SteamID, m.Sound));
@@ -864,11 +934,64 @@ namespace PropHunt.Game
             else SendToHost(new ClaimTagMessage { VictimSteamId = victimSteamId });
         }
 
+        /// <summary>A hunter's shot landed on another HUNTER (friendly fire). The host validates + knocks them down.</summary>
+        internal void RequestHitHunter(ulong victimSteamId)
+        {
+            if (_isHost) HandleHitHunter(LocalId, victimSteamId);
+            else SendToHost(new HitHunterMessage { VictimSteamId = victimSteamId });
+        }
+
+        private int _lastShotFrame = -1;
+        private bool _localDownedApplied;   // edge-detect the synced Downed flag so we ragdoll/recover the owner exactly once
+
+        /// <summary>Drive the native ragdoll on the LOCAL (owner) player from the synced Downed flag. The host owns the
+        /// Downed state (friendly-fire KO or concussion), but the native <c>PassOut</c> RPC is owner-gated + ExcludeOwner,
+        /// so only the downed player's OWN client can trigger the limp that replicates to everyone. We therefore watch
+        /// our own Downed edge here: rising -> SendPassOut (ragdoll), falling -> SendPassOutRecovery (stand up in place).</summary>
+        private void DriveLocalRagdoll()
+        {
+            bool downed = LocalDowned;
+            if (downed == _localDownedApplied) return;
+            _localDownedApplied = downed;
+            try
+            {
+                var lp = Player.Local;
+                if (lp == null) return;
+                if (downed) { lp.SendPassOut(); SetFx("KNOCKED DOWN", new Color(0.95f, 0.55f, 0.2f)); }
+                else lp.SendPassOutRecovery();
+            }
+            catch (Exception e) { Core.LogDebug("[PropHunt] ragdoll drive failed: " + e.Message); }
+        }
+
+        /// <summary>The local hunter FIRED a real, ammo/aim/cooldown-gated shot (driven by the weapon-fire Harmony
+        /// postfix, not by raw input). Resolve it into a decoy/prop hit using the weapon's reach. Guarded to ONE
+        /// resolve per frame: a single shot is one frame, and the Fire postfix can run more than once per shot (e.g.
+        /// the gameplay patches get applied twice across the scratch-world boot), which would otherwise double the hit.</summary>
+        internal void OnLocalHunterFired(float maxRange)
+        {
+            if (Time.frameCount == _lastShotFrame) return;
+            _lastShotFrame = Time.frameCount;
+            try { _catch?.ResolveShot(maxRange); } catch { }
+        }
+
+        /// <summary>Host: apply a single setting edit from the phone Settings tab + flag it for re-publish so clients
+        /// see the change live (Tick pushes the new SettingsBlob, throttled). No-op for non-hosts (clients can't edit).</summary>
+        internal void SetSetting(string key, string value)
+        {
+            if (!_isHost) return;
+            _settings.ApplyKeyValue(key, value);
+            _settingsDirty = true;
+        }
+
         internal void ReportOutOfBounds()
         {
             if (_isHost) HandleOutOfBounds(LocalId);
             else SendToHost(new OutOfBoundsMessage());
         }
+
+        // host-only: last unix time each hider was AWARDED a taunt point, to cap taunt scoring at once per 15s
+        // (the taunt sound/cue still plays every time - only the score is rate-limited).
+        private readonly System.Collections.Generic.Dictionary<ulong, long> _lastTauntScoreUnix = new System.Collections.Generic.Dictionary<ulong, long>();
 
         /// <summary>Local player asks to taunt ([1]) with a chosen sound; the host broadcasts the reveal cue.</summary>
         internal void RequestManualTaunt(string sound)
@@ -887,6 +1010,19 @@ namespace PropHunt.Game
             if (string.IsNullOrEmpty(sound)) sound = Taunt.TauntSounds.PickDefault();
             try { PropHuntNet.Client?.BroadcastMessage(new TauntMessage { SteamId = sender, Sound = sound }); } catch { }
             NotifyTaunt(sender, sound);   // host also hears it (BroadcastMessage doesn't self-send)
+
+            // Score the taunt for a live hider during a round, capped to once per 15s (RoundScore * 2). The taunt
+            // itself always plays above; only the point is rate-limited so spamming [1] doesn't farm score.
+            if (p.Role == PlayerRole.Hider && (_state.Phase == RoundPhase.Hiding || _state.Phase == RoundPhase.Hunting))
+            {
+                long now = NowUnix();
+                if (!_lastTauntScoreUnix.TryGetValue(sender, out var last) || now - last >= 15)
+                {
+                    _lastTauntScoreUnix[sender] = now;
+                    p.Taunts++;
+                    PushState();   // sync the stat (rate-limited -> infrequent)
+                }
+            }
         }
 
         // ---- host-authoritative handlers (validate I/O, delegate the decision to RoundLogic) ----
@@ -895,7 +1031,8 @@ namespace PropHunt.Game
         {
             if (!_isHost) return;
             int maxHits = ComputeMaxHits(propId);
-            bool ok = RoundLogic.ApplySelectProp(_state, sender, propId, maxHits, _settings.MaxPropChanges);
+            bool freeChange = _settings.FreeChangesInHiding && _state.Phase == RoundPhase.Hiding;
+            bool ok = RoundLogic.ApplySelectProp(_state, sender, propId, maxHits, _settings.MaxPropChanges, freeChange);
             _state.Players.TryGetValue(sender, out var sp);
             Core.LogDebug($"[PropHunt] host: select from {sender} prop {propId} hp {maxHits} -> {(ok ? "ACCEPTED" : "rejected")}" +
                           (sp != null ? $" (role={sp.Role} elim={sp.Eliminated} changes={sp.Changes}/{_settings.MaxPropChanges})" : " (sender NOT in roster)"));
@@ -957,13 +1094,17 @@ namespace PropHunt.Game
             }
         }
 
-        /// <summary>Host engine I/O: taze every hunter within the concussion radius of the given centre.</summary>
+        /// <summary>Host: knock down every hunter within the concussion radius of the given centre for a short stun.
+        /// Uses the SAME ragdoll/Downed state as friendly fire (a stun is just a brief knockdown), so nearby hunters
+        /// ragdoll via the synced Downed flag instead of the old fixed 2s taze. Credits the throwing hider's StunsLanded.</summary>
         private void ApplyConcussionEffect(UnityEngine.Vector3 center, ulong hiderId)
         {
             try
             {
                 PlayerRegistry.Refresh();
                 float r = _settings.ConcussRadius;
+                int seconds = Math.Max(1, (int)Math.Round(_settings.ConcussStunSeconds));
+                long now = NowUnix();
                 int hit = 0;
                 var list = Player.PlayerList;
                 if (list == null) return;
@@ -971,12 +1112,13 @@ namespace PropHunt.Game
                 {
                     var pl = list[i];
                     if (pl == null) continue;
-                    if (RoleOf(PlayerRegistry.IdForPlayer(pl)) != PlayerRole.Hunter) continue;
+                    ulong hid = PlayerRegistry.IdForPlayer(pl);
+                    if (RoleOf(hid) != PlayerRole.Hunter) continue;
                     if (UnityEngine.Vector3.Distance(center, pl.transform.position) > r) continue;
-                    try { pl.Taze(); hit++; } catch { }
+                    if (RoundLogic.ApplyConcussDown(_state, hid, seconds, now)) hit++;   // synced Downed -> ragdoll on that hunter's client
                 }
                 if (hit > 0 && _state.Players.TryGetValue(hiderId, out var hs)) hs.StunsLanded += hit;   // credit the hider (synced by HandleConcuss' PushState)
-                Core.Log.Msg($"[PropHunt] concussion by {hiderId} - tazed {hit} hunter(s) within {r}m.");
+                Core.Log.Msg($"[PropHunt] concussion by {hiderId} - knocked down {hit} hunter(s) within {r}m for {seconds}s.");
             }
             catch (Exception e) { Core.Log.Warning("[PropHunt] concussion effect failed: " + e.Message); }
         }
@@ -996,13 +1138,17 @@ namespace PropHunt.Game
                 // than a tiny prop. maxLateral is scaled to the victim's prop size with a generous tolerance
                 // (+0.5m) to account for camera-vs-body-forward divergence.
                 float victimPropSize = PropHunt.Disguise.PropCatalog.SizeOf(PropIdOf(victim));
-                float maxLateral = UnityEngine.Mathf.Clamp(victimPropSize * 0.4f, 0.15f, 2.0f) + 0.5f;
                 // project the hunter->victim offset onto the hunter's lateral plane (perpendicular to forward)
                 var hunterFwd = hp.transform.forward;
                 var delta = vp.transform.position - hp.transform.position;
                 float along = UnityEngine.Vector3.Dot(delta, hunterFwd);
                 var lateral = delta - hunterFwd * along;
                 float lateralDist = lateral.magnitude;
+                // Allowed lateral offset SCALES with distance (a cone, not a fixed radius). The client already
+                // ray-validated the shot against the prop hitbox using the CAMERA forward, but the host only has the
+                // BODY forward (which diverges from where the player looks), so a fixed radius falsely rejects shots at
+                // range. prop-size base + ~14% of the forward distance (~an 8 degree cone) keeps it anti-cheat-bounded.
+                float maxLateral = UnityEngine.Mathf.Clamp(victimPropSize * 0.4f, 0.15f, 2.0f) + 0.75f + UnityEngine.Mathf.Max(0f, along) * 0.14f;
                 if (lateralDist > maxLateral)
                 {
                     Core.LogDebug($"[PropHunt] tag rejected: lateral {lateralDist:F2}m > {maxLateral:F2}m (propSize={victimPropSize:F2})");
@@ -1015,8 +1161,57 @@ namespace PropHunt.Game
                 if (caught) Core.Log.Msg($"[PropHunt] {hunter} CAUGHT {victim} ({_settings.Caught}).");
                 else Core.Log.Msg($"[PropHunt] {hunter} hit {victim} ({_state.Players[victim].Hits}/{_state.Players[victim].MaxHits}).");
                 var vpos = vp != null ? vp.transform.position : (hp != null ? hp.transform.position : Vector3.zero);
+                // Blood spurt on the hit hider - the gun no longer damages players (immunity), so the vanilla
+                // death-blood is gone; play the blood mist here as pure "you hit a hider" feedback. Host-side +
+                // ObserversRpc -> replicates to everyone, at the (hidden) avatar = the prop position. No damage.
+                try { vp?.Health?.PlayBloodMist(); } catch { }
                 BroadcastFx(new CatchFxMessage { HunterId = hunter, VictimId = victim, Caught = caught, X = vpos.x, Y = vpos.y, Z = vpos.z });
                 NotifyCatchFx(hunter, victim, caught, vpos);
+                PushState();
+            }
+        }
+
+        /// <summary>Host: validate + apply a friendly-fire hit from one hunter on another. Re-validates the aim with a
+        /// lateral-offset cone (like <see cref="HandleClaimTag"/>, but a human-body base since hunters wear no prop),
+        /// then routes through <see cref="RoundLogic.ApplyHitHunter"/>. Plays blood on every accepted hit and, on the
+        /// knockdown hit, a stun cue; the ragdoll itself is driven on the victim's own client from the synced Downed
+        /// flag (see <see cref="DriveLocalRagdoll"/>). Never trusts the client's ray.</summary>
+        private void HandleHitHunter(ulong shooter, ulong victim)
+        {
+            if (!_isHost || _state.Phase != RoundPhase.Hunting || !_settings.FriendlyFire) return;
+            PlayerRegistry.Refresh();
+            var hp = PlayerRegistry.Get(shooter);
+            var vp = PlayerRegistry.Get(victim);
+            // Require BOTH players resolved/online so the geometry gate always runs - otherwise a client could target a
+            // just-disconnected hunter (still in GameState until the next SyncRoster) and skip the aim validation.
+            if (hp == null || vp == null)
+            {
+                Core.LogDebug($"[PropHunt] FF hit rejected: shooter/victim not resolved (hp={hp != null}, vp={vp != null}).");
+                return;
+            }
+            var hunterFwd = hp.transform.forward;
+            var delta = vp.transform.position - hp.transform.position;
+            float along = UnityEngine.Vector3.Dot(delta, hunterFwd);
+            var lateral = delta - hunterFwd * along;
+            float maxLateral = 0.9f + UnityEngine.Mathf.Max(0f, along) * 0.14f;   // human-body base + a widening cone with range
+            if (lateral.magnitude > maxLateral)
+            {
+                Core.LogDebug($"[PropHunt] FF hit rejected: lateral {lateral.magnitude:F2}m > {maxLateral:F2}m");
+                return;
+            }
+            if (RoundLogic.ApplyHitHunter(_state, _settings, shooter, victim, NowUnix(), out bool newlyDowned))
+            {
+                var vpos = vp.transform.position;
+                // blood spurt on the hit hunter (pure feedback; the gun does no real damage - see DisableVanillaPlayerDeath).
+                try { vp?.Health?.PlayBloodMist(); } catch { }
+                if (newlyDowned)
+                {
+                    // reuse the concussion "stun" cue (sound + STUNNED flash for nearby hunters); the ragdoll is driven
+                    // on the victim's own client off the synced Downed flag.
+                    BroadcastFx(new StunFxMessage { ThrowerId = shooter, X = vpos.x, Y = vpos.y, Z = vpos.z });
+                    NotifyStunFx(shooter, vpos);
+                    Core.Log.Msg($"[PropHunt] {shooter} knocked down hunter {victim} (friendly fire).");
+                }
                 PushState();
             }
         }
@@ -1103,6 +1298,7 @@ namespace PropHunt.Game
                 var dAfter = _state.Decoys[decoyIndex];
                 if (dAfter.Destroyed)
                 {
+                    h.DecoysSmashed++;   // hunter scores for clearing a fake (RoundScore * 3)
                     Core.Log.Msg($"[PropHunt] hunter {hunter} DESTROYED decoy {decoyIndex} (FAKE!) hits={dAfter.Hits}/{dAfter.MaxHits}.");
                     var dpos = new Vector3(dAfter.X, dAfter.Y, dAfter.Z);
                     BroadcastFx(new DecoyFxMessage { HunterId = hunter, X = dpos.x, Y = dpos.y, Z = dpos.z });
@@ -1116,7 +1312,8 @@ namespace PropHunt.Game
 
         // ---- engine helpers ----
 
-        private void RequestReturnToHub()
+        /// <summary>Host: leave the gamemode and return to the Side Hustle hub (phone "Return to hub" button + MatchEnd auto-return).</summary>
+        internal void RequestReturnToHub()
         {
             if (_returnRequested) return;
             _returnRequested = true;
@@ -1143,8 +1340,13 @@ namespace PropHunt.Game
                 if (lp != null) { var pos = lp.transform.position; _state.AreaX = pos.x; _state.AreaY = pos.y; _state.AreaZ = pos.z; }
             }
             catch { }
-            _state.AreaRadius = _settings.PlayAreaRadius;
+            _state.AreaRadius = Mathf.Max(_settings.PlayAreaRadius, MinPlayAreaRadius);
         }
+
+        /// <summary>Hard floor for the play-area radius. A too-small area (a friend hosted with 40m, centred on a
+        /// safehouse whose interior spawn sits near one edge) strands the hider outside the wall within seconds and
+        /// eliminates them. 50m is the smallest that reliably contains the smallest safehouse + its immediate yard.</summary>
+        private const float MinPlayAreaRadius = 50f;
 
         // ---- local effects (freeze + blind hunters during hiding), applied only on change ----
 

@@ -21,7 +21,6 @@ namespace PropHunt.Disguise
         private static readonly Dictionary<ulong, GameObject> _clones = new Dictionary<ulong, GameObject>();
         private static readonly Dictionary<ulong, Bounds> _lb = new Dictionary<ulong, Bounds>();
         private static readonly Dictionary<ulong, Quaternion> _rot = new Dictionary<ulong, Quaternion>();
-        private static Dictionary<string, PropEntry> _byKey;
         private static bool _handlerReg;
 
         /// <summary>Curator: broadcast the prop being previewed (null/empty = stop). Also applied locally so the
@@ -66,7 +65,13 @@ namespace PropHunt.Disguise
         private static void Apply(string key)
         {
             ClearClones();
-            _entry = string.IsNullOrEmpty(key) ? null : Resolve(key);
+            if (string.IsNullOrEmpty(key))
+            {
+                _entry = null; _active = false;
+                try { PropCatalog.ClearKeyIndex(); } catch { }   // session ended (on this client too) - drop the cache
+                return;
+            }
+            _entry = Resolve(key);
             _active = _entry != null;
         }
 
@@ -112,17 +117,16 @@ namespace PropHunt.Disguise
 
         private static PropEntry Resolve(string key)
         {
+            // Use the curator's CACHED key index (per-mesh + per-LOD keys), built once per session. The old code
+            // rebuilt a full EnumerateAllCandidates scan on every cache miss - and since keep-keys are per-LOD keys
+            // that the LOD-folded candidate list never contains, that miss-rebuild fired on EVERY navigation move
+            // (the extreme stepping lag). The cached index is built lazily here for non-curator clients.
             try
             {
-                if (_byKey == null || !_byKey.ContainsKey(key))
-                {
-                    _byKey = new Dictionary<string, PropEntry>();
-                    foreach (var e in PropCatalog.EnumerateAllCandidates())
-                        if (e != null && !string.IsNullOrEmpty(e.Key)) _byKey[e.Key] = e;
-                }
+                var idx = PropCatalog.KeyIndex();
+                return (idx != null && idx.TryGetValue(key, out var pe)) ? pe : null;
             }
-            catch { }
-            return (_byKey != null && _byKey.TryGetValue(key, out var pe)) ? pe : null;
+            catch { return null; }
         }
 
         private static void EnsureHandler()

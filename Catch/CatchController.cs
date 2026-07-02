@@ -27,62 +27,92 @@ namespace PropHunt.Catch
         private readonly GameModeController _ctl;
         internal CatchController(GameModeController ctl) { _ctl = ctl; }
 
-        internal void Tick()
+        // Catches are driven by a REAL fired weapon shot (WeaponPatches postfix on Equippable_RangedWeapon.Fire /
+        // Equippable_MeleeWeapon.ExecuteHit -> GameModeController.OnLocalHunterFired -> here), never by raw input.
+        // That makes them ammo/aim/cooldown-gated like the gun itself, so spamming left-click without firing does
+        // nothing, and the shot only lands where the weapon actually fired.
+        internal void Tick() { }
+
+        /// <summary>Resolve a fired shot into a decoy/prop hit. <paramref name="maxRange"/> is the weapon's reach
+        /// (generous for guns, short for melee). Called from the weapon-fire Harmony postfix.</summary>
+        internal void ResolveShot(float maxRange)
         {
             if (_ctl.Phase != RoundPhase.Hunting || _ctl.LocalRole != PlayerRole.Hunter) return;
             try
             {
-                if (!Input.GetKeyDown(PropHunt.Config.KeyBinds.Catch)) return;
                 var lp = Player.Local;
-                if (lp != null && lp.IsTased) return;   // stunned: can't catch while tased
+                // A tased hunter's Fire() is skipped by the prefix, but Harmony still runs this postfix - so re-check.
+                if (lp != null && lp.IsTased) return;
+                if (_ctl.LocalDowned) return;   // knocked down (FF / concussion) -> can't shoot or catch
 
                 var cam = PlayerSingleton<PlayerCamera>.Instance;
                 if (cam == null || cam.Camera == null) return;
                 var t = cam.Camera.transform;
-                // The catch ray reaches as far as the weapon's projectile would - there is NO short "catch range".
-                // Hunters fire projectile guns: if your aim is on the prop when you fire, the hit counts, at any
-                // distance across the play area. Difficulty stays in the PROP SIZE (small prop = small target).
-                const float maxRange = 150f;
+                // The catch ray reaches as far as the weapon does (passed in): generous for guns - if your aim is on
+                // the prop when you fire, the hit counts across the play area - and short for melee. Difficulty stays
+                // in the PROP SIZE (small prop = small target).
 
                 // ONE generous sphere sweep along the aim. A thin ray needed pixel-perfect aim (decoys felt
                 // impossible to hit). The sweep widens the acceptance so you only need to be roughly on target;
                 // the disguise/decoy now carries a prop-sized trigger collider, and the host re-validates a
                 // player tag with its own prop-size lateral gate, so this stays fair.
                 const float sweepR = 0.35f;
-                var hits = Physics.SphereCastAll(t.position, sweepR, t.forward, maxRange);
+                // MUST include trigger colliders: the disguise's prop hitbox (and decoys) are TRIGGERS so they never
+                // block movement. The default SphereCastAll skips triggers, which is why a shot passed straight through
+                // a hider's prop hitbox and never registered a catch. QueryTriggerInteraction.Collide hits them.
+                var hits = Physics.SphereCastAll(t.position, sweepR, t.forward, maxRange, ~0, QueryTriggerInteraction.Collide);
                 if (hits == null || hits.Length == 0) return;
                 System.Array.Sort(hits, (System.Comparison<RaycastHit>)((a, b) => a.distance.CompareTo(b.distance)));
 
-                // nearest relevant hit wins: a decoy, or a disguised player hit THROUGH THEIR PROP HITBOX.
+                // nearest relevant hit wins: a decoy, a DISGUISED hider (via their "ph_prop_<id>" hitbox), or an
+                // UNDISGUISED player (via their capsule). The disguise clone is NOT parented to the player (it is
+                // world-space, re-centred each frame), so a disguised hider is resolved from the hitbox NAME -
+                // GetComponentInParent<Player> finds nothing on the clone, which is why catches never registered.
                 for (int i = 0; i < hits.Length; i++)
                 {
                     var h = hits[i];
                     if (IsDecoy(h.transform, out int decoyIdx))
                     {
+                        SpawnPropHitFx(h.point);   // immediate local hit feedback on the decoy (it reads as a real prop)
+                        PropHunt.UI.Hud.HudController.ShowHitmarker();
                         Core.LogDebug($"[PropHunt] hit decoy idx={decoyIdx}");
                         _ctl.RequestHitDecoy(decoyIdx);
                         return;
                     }
+                    if (IsDisguiseHitbox(h.transform, out ulong propVictim) && propVictim != 0 && propVictim != _ctl.LocalId)
+                    {
+                        // feedback ON THE PROP (the game's impact puff at the hit point); on-player blood is suppressed
+                        // by ImpactFxSuppressPatch. The host re-validates before accepting.
+                        SpawnPropHitFx(h.point);
+                        PropHunt.UI.Hud.HudController.ShowHitmarker();
+                        _ctl.RequestClaimTag(propVictim);
+                        Core.LogDebug($"[PropHunt] claim tag on {propVictim} via prop hitbox (size {PropCatalog.SizeOf(_ctl.PropIdOf(propVictim)):F2})");
+                        return;
+                    }
+
+                    // An UNDISGUISED player (no prop yet) is still catchable via their capsule; a DISGUISED player is
+                    // NEVER caught via the capsule (only the prop hitbox above), so a small prop stays a small target.
                     Player victim = ResolvePlayer(h);
                     if (victim == null) continue;
                     ulong victimId = PlayerRegistry.IdForPlayer(victim);
-                    if (victimId == 0 || victimId == _ctl.LocalId) continue;   // self / invalid - keep scanning
-
-                    // A DISGUISED player counts as hit ONLY when the shot lands on their prop hitbox (ph_prop_*),
-                    // never on their movement capsule / body - so a small prop is a small target and you cannot
-                    // shoot "over" the cone at the tall capsule behind it. An undisguised player (no prop yet) is
-                    // still catchable normally, so never picking a prop is not an exploit.
-                    bool disguised = _ctl.PropIdOf(victimId) >= 0;
-                    bool viaProp = IsDisguiseHitbox(h.transform);
-                    if (disguised && !viaProp) continue;
-
-                    // feedback ON THE PROP (not blood on the player): show the game's impact puff where the shot
-                    // landed on the prop, so the hunter sees the hit registered. The on-player blood is suppressed
-                    // by ImpactFxSuppressPatch.
-                    if (viaProp) SpawnPropHitFx(h.point);
-
+                    if (victimId == 0 || victimId == _ctl.LocalId) continue;
+                    if (_ctl.PropIdOf(victimId) >= 0) continue;   // disguised -> handled via the prop hitbox only
+                    // A shot on another HUNTER is FRIENDLY FIRE (knock down, never catch). When FF is off, teammates
+                    // are not targets - pass through and keep scanning for a real target behind them.
+                    if (_ctl.RoleOf(victimId) == PlayerRole.Hunter)
+                    {
+                        if (_ctl.Settings != null && _ctl.Settings.FriendlyFire)
+                        {
+                            PropHunt.UI.Hud.HudController.ShowHitmarker();
+                            _ctl.RequestHitHunter(victimId);
+                            Core.LogDebug($"[PropHunt] friendly-fire hit on hunter {victimId}");
+                            return;
+                        }
+                        continue;
+                    }
+                    PropHunt.UI.Hud.HudController.ShowHitmarker();
                     _ctl.RequestClaimTag(victimId);
-                    Core.LogDebug($"[PropHunt] claim tag on {victimId} (disguised={disguised}, propSize={PropCatalog.SizeOf(_ctl.PropIdOf(victimId)):F2})");
+                    Core.LogDebug($"[PropHunt] claim tag on {victimId} via capsule (undisguised)");
                     return;
                 }
             }
@@ -106,10 +136,12 @@ namespace PropHunt.Catch
             catch { }
         }
 
-        /// <summary>True if the hit transform (or an ancestor) is a disguise prop hitbox ("ph_prop_*"). Only these
-        /// count as a catchable hit on a player - the player's movement capsule / body never does.</summary>
-        private static bool IsDisguiseHitbox(Transform hit)
+        /// <summary>True if the hit transform (or an ancestor) is a disguise prop hitbox ("ph_prop_&lt;steamId&gt;");
+        /// outputs the disguised player's steam id parsed from the name (the clone isn't parented to the player, so the
+        /// name is how we map a hit prop back to its hider).</summary>
+        private static bool IsDisguiseHitbox(Transform hit, out ulong victimId)
         {
+            victimId = 0;
             if (hit == null) return false;
             try
             {
@@ -117,7 +149,7 @@ namespace PropHunt.Catch
                 for (int depth = 0; depth < 6 && t != null; depth++)
                 {
                     string n = t.gameObject.name;
-                    if (n != null && n.StartsWith("ph_prop_")) return true;
+                    if (n != null && n.StartsWith("ph_prop_") && ulong.TryParse(n.Substring("ph_prop_".Length), out victimId)) return true;
                     t = t.parent;
                 }
             }

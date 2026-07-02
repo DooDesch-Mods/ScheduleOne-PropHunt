@@ -21,6 +21,10 @@ namespace PropHunt.Disguise
         internal LODGroup SourceLodGroup;
         // the GameObject to clone: the LODGroup root when present, else the single mesh's GameObject.
         internal GameObject SourceRoot;
+        // when true, PropClone clones the ENTIRE SourceRoot subtree (a whole composite prefab: a vehicle or a
+        // buildable with all its parts + nested LODGroups) instead of a single mesh or one LODGroup. Set by
+        // PropSources for the registry/vehicle curate lists (DEBUG). Default false = unchanged single/LOD behaviour.
+        internal bool CloneWholeRoot;
     }
 
     /// <summary>
@@ -150,6 +154,7 @@ namespace PropHunt.Disguise
                         });
                     }
                 }
+                IngestCompositeSources(tmp, seen);   // add curator-APPROVED whole-object props (buildables/vehicles/world) to the pool
                 tmp.Sort((a, c) => string.CompareOrdinal(a.Key, c.Key));   // deterministic collision-resolution order
                 for (int i = 0; i < tmp.Count; i++)
                 {
@@ -301,6 +306,33 @@ namespace PropHunt.Disguise
             catch { return false; }
         }
 
+        /// <summary>Add the curator-APPROVED whole-object props (registry buildables + vehicles + world objects) to
+        /// the becomable pool. Only keys explicitly kept (=1) are admitted, flowing through the SAME _byId/dedup path
+        /// as scene props. SHIPS in Release: the enumeration is deterministic (prefab DBs + a FindObjectsOfTypeAll
+        /// marker scan that is not culling-dependent), so host and client build the same composite set + ids.</summary>
+        private static void IngestCompositeSources(List<PropEntry> tmp, HashSet<string> seen)
+        {
+            try
+            {
+                var extra = new List<PropEntry>();
+                extra.AddRange(PropSources.EnumerateBuildables());
+                extra.AddRange(PropSources.EnumerateVehicles());
+                extra.AddRange(PropSources.EnumerateWorldObjects());
+                int added = 0;
+                for (int i = 0; i < extra.Count; i++)
+                {
+                    var e = extra[i];
+                    if (e == null || string.IsNullOrEmpty(e.Key)) continue;
+                    if (!(_curation.TryGetValue(e.Key, out var keep) && keep)) continue;   // only explicitly approved
+                    if (!seen.Add(e.Key)) continue;
+                    tmp.Add(e);
+                    added++;
+                }
+                if (added > 0) Core.LogDebug($"[PropHunt] catalog: +{added} approved composite props (buildables/vehicles/world).");
+            }
+            catch (System.Exception ex) { Core.Log.Warning("[PropHunt] IngestCompositeSources failed: " + ex.Message); }
+        }
+
 #if DEBUG
         /// <summary>
         /// Logs the full candidate list with per-entry details. Called by the phcuratelist console command.
@@ -332,6 +364,83 @@ namespace PropHunt.Disguise
                 Core.Log.Msg($"[PropHunt]  {i + 1,4}  {lodTag}  {sz,5:F2}m  v{verts,6}  m{mats}  [{decTag}]  {e.Name}  ({e.Key})");
             }
         }
+
+        /// <summary>Snapshot of the EXACT becomable pool: rebuilds the runtime catalog from the current active world +
+        /// curation (+ the DEBUG composite ingestion) and returns its entries. This is PRECISELY what [2]-random draws
+        /// from (RandomId) and what a looked-at mesh resolves to (IdForMesh) - the ground truth of what a player can
+        /// actually become right now, unlike the allowlist (which lists approved KEYS regardless of what's loaded).</summary>
+        internal static List<PropEntry> CatalogSnapshot()
+        {
+            Build();
+            return new List<PropEntry>(_entries);
+        }
+
+        /// <summary>Every key currently marked keep=1 in the curation - i.e. the EXACT becomable allowlist, sorted.
+        /// phcuratekeep reviews this directly (not a world re-scan) so every become-able prop is guaranteed reviewable,
+        /// independent of LOD folding or what happens to be loaded where the dev is standing.</summary>
+        internal static List<string> CuratedKeepKeys()
+        {
+            if (!_curationLoaded) LoadCuration();
+            var list = new List<string>();
+            foreach (var kv in _curation) if (kv.Value) list.Add(kv.Key);
+            list.Sort(string.CompareOrdinal);
+            return list;
+        }
+
+        /// <summary>Index every renderable world mesh by its per-mesh <see cref="MeshKey"/>, so the curator can
+        /// resolve any curation key back to a previewable world prop. Deliberately a SUPERSET of the runtime Build()
+        /// scan: FindObjectsOfTypeAll (active + inactive) and NONE of the scene.IsValid / character / door / vehicle
+        /// filters that could otherwise hide a become-able mesh from review (those filters are why a keep=1 prop could
+        /// be become-able yet never appear in the old world-scan curator). First match per key wins (a preview only).</summary>
+        internal static Dictionary<string, PropEntry> BuildKeyIndex()
+        {
+            var idx = new Dictionary<string, PropEntry>();
+            try
+            {
+                var filters = Resources.FindObjectsOfTypeAll<MeshFilter>();
+                if (filters != null)
+                    for (int i = 0; i < filters.Length; i++)
+                    {
+                        var mf = filters[i];
+                        if (mf == null) continue;
+                        var mesh = mf.sharedMesh;
+                        if (mesh == null) continue;
+                        if (IsJunkMeshName(mesh.name)) continue;
+                        if (mesh.vertexCount < 8) continue;
+                        var rend = mf.GetComponent<MeshRenderer>();
+                        if (rend == null || rend.sharedMaterial == null) continue;
+                        string k = MeshKey(mesh);
+                        if (k == null || idx.ContainsKey(k)) continue;
+                        LODGroup lg = null;
+                        try { lg = mf.GetComponentInParent<LODGroup>(); } catch { }
+                        var entry = new PropEntry
+                        {
+                            Key = k, Name = mesh.name, Source = mf, SourceRenderer = rend,
+                            SourceLodGroup = lg, SourceRoot = lg != null ? lg.gameObject : mf.gameObject
+                        };
+                        idx[k] = entry;
+                        // A LOD prop's curation keep-keys are its individual per-LOD MeshKeys (Decide writes ALL of
+                        // them). Register every LOD-level key to this same prop so any of them resolves to a live
+                        // preview, even if a particular LOD child got skipped above (e.g. a material-less far LOD).
+                        if (lg != null)
+                            foreach (var lk in LodMeshKeys(lg))
+                                if (!idx.ContainsKey(lk)) idx[lk] = entry;
+                    }
+            }
+            catch (System.Exception e) { Core.Log.Warning("[PropHunt] BuildKeyIndex failed: " + e.Message); }
+            return idx;
+        }
+
+        // Cached world key->prop index shared by the curator's keep-allowlist AND its on-player CuratePreview.
+        // Built ONCE per curate session (rebuild:true on Enter); every navigation move + every preview resolve
+        // reuses it instead of re-scanning the whole world per move (that per-move re-scan was the curator lag).
+        private static Dictionary<string, PropEntry> _keyIndex;
+        internal static Dictionary<string, PropEntry> KeyIndex(bool rebuild = false)
+        {
+            if (rebuild || _keyIndex == null) _keyIndex = BuildKeyIndex();
+            return _keyIndex;
+        }
+        internal static void ClearKeyIndex() { _keyIndex = null; }
 #endif
 
         // ---- curation persistence (UserData/PropHunt/prop_curation.txt; lines "key=1" keep / "key=0" skip) ----
@@ -603,6 +712,29 @@ namespace PropHunt.Disguise
             if (key == null) return -1;
             int id = StableHash(key);
             return (_byId.TryGetValue(id, out var e) && e.Key == key) ? id : -1;
+        }
+
+        /// <summary>Composite-aware form of <see cref="IdForMesh"/>: first tries the scene mesh content key (fast
+        /// path), then falls back to the object's COMPOSITE key (veh:/reg:/world:) so [E] look-at can become a
+        /// vehicle / buildable / world object too - not just [2]-random. The composite key is derived from the
+        /// object's components (via <see cref="PropSources.CompositeKeyFor"/>), so it resolves even when the visible
+        /// mesh is static-batched (and thus has no per-object content key of its own).</summary>
+        internal static int IdForMeshFilter(MeshFilter mf)
+        {
+            if (mf == null || mf.sharedMesh == null) return -1;
+            int id = IdForMesh(mf.sharedMesh);
+            if (id >= 0) return id;
+            try
+            {
+                string key = PropSources.CompositeKeyFor(mf);
+                if (!string.IsNullOrEmpty(key))
+                {
+                    int cid = StableHash(key);
+                    if (_byId.TryGetValue(cid, out var e) && e.Key == key) return cid;
+                }
+            }
+            catch { }
+            return -1;
         }
 
         internal static void Reset() { _entries.Clear(); _byId.Clear(); _hash = 0; }

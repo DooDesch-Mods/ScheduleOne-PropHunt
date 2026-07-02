@@ -31,7 +31,20 @@ namespace PropHunt.Config
         private static MelonPreferences_Entry<int> _timeOfDay;
         private static MelonPreferences_Entry<string> _hunterWeapon;
         private static MelonPreferences_Entry<bool> _friendlyFire;
+        private static MelonPreferences_Entry<int> _hunterHitsToDown;
+        private static MelonPreferences_Entry<float> _hunterDownBaseSeconds;
+        private static MelonPreferences_Entry<float> _hunterDownMaxSeconds;
+        private static MelonPreferences_Entry<float> _concussStunSeconds;
         private static MelonPreferences_Entry<bool> _removeDecoysBetweenRounds;
+        private static MelonPreferences_Entry<bool> _allowRandomChange;
+        private static MelonPreferences_Entry<bool> _freeChangesInHiding;
+        private static MelonPreferences_Entry<bool> _freezeTime;
+        private static MelonPreferences_Entry<bool> _autoStartNextRound;
+        private static MelonPreferences_Entry<string> _hidingMusicTrack;
+        private static MelonPreferences_Entry<string> _huntingMusicTrack;
+        private static MelonPreferences_Entry<string> _customBlob;
+        private static MelonPreferences_Entry<string> _customBase;
+        private static MelonPreferences_Entry<string> _weaponCache;
 #if DEBUG
         private static MelonPreferences_Entry<bool> _startRoundDebug;
         private static MelonPreferences_Entry<bool> _netPingDebug;
@@ -79,12 +92,38 @@ namespace PropHunt.Config
                 "Default for the host setup screen. Continuous = auto-start the next round with swapped roles. Single = one round, then back to the hub.");
             _timeOfDay = CreateEntry("TimeOfDay", 1200, "Time of day (HHMM)",
                 "World time locked during a round (progression frozen). 1200 = noon/day, 0100 = night.");
-            _hunterWeapon = CreateEntry("HunterWeapon", "m1911", "Hunter weapon",
-                "Item id given to each hunter at hunt start (e.g. m1911, revolver, machete). Empty = none.");
+            _hunterWeapon = CreateEntry("HunterWeapon", "pumpshotgun", "Hunter weapon",
+                "Item id given to each hunter at hunt start (e.g. pumpshotgun, m1911, machete). Empty = none.");
             _friendlyFire = CreateEntry("FriendlyFire", true, "Friendly fire (hunters)",
-                "Whether hunters can damage each other.");
+                "Whether hunters can knock each other down with friendly fire (ragdoll, never kill).");
+            _hunterHitsToDown = CreateEntry("HunterHitsToDown", 3, "Friendly hits to down",
+                "Friendly-fire hits a hunter takes before being knocked down (their HP).");
+            _hunterDownBaseSeconds = CreateEntry("HunterDownBaseSeconds", 3f, "Knockdown time (seconds)",
+                "How long a hunter is ragdolled when first knocked down.");
+            _hunterDownMaxSeconds = CreateEntry("HunterDownMaxSeconds", 10f, "Max knockdown time (seconds)",
+                "Cap on ragdoll time; each extra hit while down extends toward this.");
+            _concussStunSeconds = CreateEntry("ConcussStunSeconds", 2f, "Concussion stun time (seconds)",
+                "How long a concussion ([G]) knocks nearby hunters down (a short stun).");
             _removeDecoysBetweenRounds = CreateEntry("RemoveDecoysBetweenRounds", true, "Clear decoys between rounds",
                 "Remove every dropped decoy at the end of a round. Off = decoys carry over into the next round.");
+            _allowRandomChange = CreateEntry("AllowRandomChange", true, "Allow random prop ([2])",
+                "Let hiders press [2] to become a random prop.");
+            _freeChangesInHiding = CreateEntry("FreeChangesInHiding", true, "Free changes while hiding",
+                "Prop changes during the hiding phase are unlimited; the Max-prop-changes limit applies only during the hunt.");
+            _freezeTime = CreateEntry("FreezeTime", true, "Freeze time of day",
+                "Lock the world clock during a round. Off = set the time at round start, then let it progress.");
+            _autoStartNextRound = CreateEntry("AutoStartNextRound", true, "Auto-start next round",
+                "After a round, automatically start the next one after a short safehouse pause. Off = the host starts each round manually. Can be toggled live in the phone app.");
+            _hidingMusicTrack = CreateEntry("HidingMusicTrack", "Sneak Ambience", "Hiding-phase music track",
+                "Name of an existing game music track to play during the Hiding phase (empty = none). Use the DEBUG 'phmusic' console command to list available track names.");
+            _huntingMusicTrack = CreateEntry("HuntingMusicTrack", "Heavy Combat", "Hunting-phase music track",
+                "Name of an existing game music track to play during the Hunting phase (empty = none). Use 'phmusic' to list track names.");
+            _customBlob = CreateEntry("CustomPresetBlob", "", "Custom preset (saved)",
+                "Internal: the last hosted custom settings, offered as a Custom preset next time. Managed automatically.");
+            _customBase = CreateEntry("CustomPresetBase", "", "Custom preset base mode",
+                "Internal: which base mode the saved Custom preset was derived from. Managed automatically.");
+            _weaponCache = CreateEntry("WeaponCache", "", "Hunter weapon list (cached)",
+                "Internal: the available weapons discovered from the game's item registry, used to fill the host-form dropdown. Managed automatically.");
 #if DEBUG
             _startRoundDebug = CreateEntry("StartRoundDebug", false, "Start round (debug, one-shot)",
                 "Toggle ON (as host, in a co-op session) to force-start a PropHunt round now. Auto-resets to OFF.");
@@ -97,7 +136,11 @@ namespace PropHunt.Config
 
         private static MelonPreferences_Entry<T> CreateEntry<T>(string identifier, T defaultValue, string displayName, string description = null)
         {
-            return _category.CreateEntry(identifier, defaultValue, displayName, description);
+            // is_hidden: true keeps the entry PERSISTED and code-readable (the Side Hustle host form + our phone app
+            // still read/write these values) but hides it from generic MelonPreferences UIs - notably the Mod Manager
+            // & Phone App settings list - because PropHunt manages its own settings via the host form. Standard
+            // MelonLoader flag; any settings-scanner that respects is_hidden will omit these.
+            return _category.CreateEntry(identifier, defaultValue, displayName, description, is_hidden: true);
         }
 
         internal static bool Enabled => _enabled?.Value ?? true;
@@ -117,9 +160,39 @@ namespace PropHunt.Config
         internal static string CaughtBehaviorRaw => _caughtBehavior?.Value ?? "Spectator";
         internal static string RoundStructureRaw => _roundStructure?.Value ?? "Continuous";
         internal static int TimeOfDay => _timeOfDay?.Value ?? 1200;
-        internal static string HunterWeapon => _hunterWeapon?.Value ?? "m1911";
+        internal static string HunterWeapon => _hunterWeapon?.Value ?? "pumpshotgun";
         internal static bool FriendlyFire => _friendlyFire?.Value ?? true;
+        internal static int HunterHitsToDown => Mathf.Max(1, _hunterHitsToDown?.Value ?? 3);
+        internal static float HunterDownBaseSeconds => Mathf.Max(1f, _hunterDownBaseSeconds?.Value ?? 3f);
+        internal static float HunterDownMaxSeconds => Mathf.Max(HunterDownBaseSeconds, _hunterDownMaxSeconds?.Value ?? 10f);
+        internal static float ConcussStunSeconds => Mathf.Max(1f, _concussStunSeconds?.Value ?? 2f);
         internal static bool RemoveDecoysBetweenRounds => _removeDecoysBetweenRounds?.Value ?? true;
+        internal static bool AllowRandomChange => _allowRandomChange?.Value ?? true;
+        internal static bool FreeChangesInHiding => _freeChangesInHiding?.Value ?? true;
+        internal static bool FreezeTime => _freezeTime?.Value ?? true;
+        internal static bool AutoStartNextRound => _autoStartNextRound?.Value ?? true;
+        internal static string HidingMusicTrack => _hidingMusicTrack?.Value ?? "";
+        internal static string HuntingMusicTrack => _huntingMusicTrack?.Value ?? "";
+        internal static string CustomBlob => _customBlob?.Value ?? "";
+        internal static string CustomBase => _customBase?.Value ?? "";
+        internal static string WeaponCache => _weaponCache?.Value ?? "";
+
+        /// <summary>Persist the weapon list discovered from the item registry (newline-separated "id|name" pairs).</summary>
+        internal static void SaveWeaponCache(string cache)
+        {
+            if (_weaponCache == null) return;
+            _weaponCache.Value = cache ?? "";
+            try { MelonPreferences.Save(); } catch { }
+        }
+
+        /// <summary>Persist the last hosted custom settings so they are offered as a "Custom - {base}" preset next time.</summary>
+        internal static void SaveCustomPreset(string blob, string baseMode)
+        {
+            if (_customBlob == null || _customBase == null) return;
+            _customBlob.Value = blob ?? "";
+            _customBase.Value = baseMode ?? "";
+            try { MelonPreferences.Save(); } catch { }
+        }
 
         /// <summary>Build the default RoundSettings (host side) from these preferences.</summary>
         internal static PropHunt.Game.RoundSettings BuildRoundSettings()
@@ -144,7 +217,15 @@ namespace PropHunt.Config
                 TimeOfDay = TimeOfDay,
                 HunterWeapon = HunterWeapon,
                 FriendlyFire = FriendlyFire,
-                RemoveDecoysBetweenRounds = RemoveDecoysBetweenRounds
+                HunterHitsToDown = HunterHitsToDown,
+                HunterDownBaseSeconds = HunterDownBaseSeconds,
+                HunterDownMaxSeconds = HunterDownMaxSeconds,
+                ConcussStunSeconds = ConcussStunSeconds,
+                RemoveDecoysBetweenRounds = RemoveDecoysBetweenRounds,
+                AllowRandomChange = AllowRandomChange,
+                FreeChangesInHiding = FreeChangesInHiding,
+                FreezeTime = FreezeTime,
+                AutoStartNextRound = AutoStartNextRound
             };
         }
 

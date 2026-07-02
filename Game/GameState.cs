@@ -19,12 +19,20 @@ namespace PropHunt.Game
         internal int DecoysUsed;       // decoys dropped this round ([Q])
         internal int ConcussUsed;      // concussion grenades used this round ([G])
 
+        // ---- hunter combat (friendly-fire + concussion knockdown; hunters only) ----
+        internal int HunterHits;       // friendly-fire hits this hunter has taken this "life" (down at HunterMaxHits; reset on recovery)
+        internal int HunterMaxHits = 3;// friendly-fire hits needed to knock this hunter down (from the host setting)
+        internal bool Downed;          // hunter is ragdolled/knocked down (FF-KO or concussion); recovers at DownedUntilUnix
+        internal long DownedUntilUnix; // absolute unix seconds the host will stand this hunter back up (0 = not downed)
+
         // ---- per-round stats (reset each round; drive the round-end scoreboard + awards) ----
         internal int CatchesMade;      // hiders this player caught (hunter)
         internal int HitsDealt;        // hits this player landed on hiders (hunter)
         internal int DecoyBaits;       // hits hunters wasted on this player's decoys (hider)
         internal int StunsLanded;      // hunters this player's concussions stunned (hider)
         internal int SurvivedSeconds;  // seconds this hider survived the hunt (set when caught / at round end)
+        internal int DecoysSmashed;    // decoys this player (hunter) destroyed this round
+        internal int Taunts;           // scored manual taunts this hider made this round (host rate-limits to 1/15s)
 
         // ---- session stats (NOT reset per round; the leaderboard) ----
         internal int SessScore;        // cumulative score across all rounds of this match
@@ -104,7 +112,13 @@ namespace PropHunt.Game
                   .Append(p.DecoyBaits.ToString(ci)).Append('|')
                   .Append(p.StunsLanded.ToString(ci)).Append('|')
                   .Append(p.SurvivedSeconds.ToString(ci)).Append('|')
-                  .Append(p.SessScore.ToString(ci));
+                  .Append(p.SessScore.ToString(ci)).Append('|')
+                  .Append(p.DecoysSmashed.ToString(ci)).Append('|')
+                  .Append(p.Taunts.ToString(ci)).Append('|')
+                  .Append(p.HunterHits.ToString(ci)).Append('|')
+                  .Append(p.HunterMaxHits.ToString(ci)).Append('|')
+                  .Append(p.Downed ? '1' : '0').Append('|')
+                  .Append(p.DownedUntilUnix.ToString(ci));
             }
             foreach (var d in Decoys)
             {
@@ -183,6 +197,12 @@ namespace PropHunt.Game
                 if (f.Length >= 15) p.StunsLanded = SafeInt(f[14]);
                 if (f.Length >= 16) p.SurvivedSeconds = SafeInt(f[15]);
                 if (f.Length >= 17) p.SessScore = SafeInt(f[16]);
+                if (f.Length >= 18) p.DecoysSmashed = SafeInt(f[17]);
+                if (f.Length >= 19) p.Taunts = SafeInt(f[18]);
+                if (f.Length >= 20) p.HunterHits = SafeInt(f[19]);
+                if (f.Length >= 21) p.HunterMaxHits = SafeInt(f[20]);
+                if (f.Length >= 22) p.Downed = f[21] == "1";
+                if (f.Length >= 23) long.TryParse(f[22], NumberStyles.Integer, ci, out p.DownedUntilUnix);
             }
             return gs;
         }

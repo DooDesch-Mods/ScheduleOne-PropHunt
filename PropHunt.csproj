@@ -12,6 +12,11 @@
     <Compile Remove="Workspace/**/*.cs" />
   </ItemGroup>
 
+  <!-- NOTE: PropHunt does NOT compile the DooDesch.UI source itself (no DooDeschUI.props import). It already
+       references SideHustle.dll, which embeds the DooDesch.UI design system (Theme/Components are public there),
+       so the in-game phone app uses those types straight from SideHustle.dll. Re-compiling them here would create
+       duplicate types (CS0436). The uGUI module references below provide the underlying Unity UI types. -->
+
   <!--
     PropHunt - MelonLoader PropHunt multiplayer gamemode for Schedule I.
     Dual-backend capable (same layout as the sibling RVRepairVan mod):
@@ -99,6 +104,14 @@
     </EmbeddedResource>
   </ItemGroup>
 
+  <!-- The phone-app icon (teal crate with peeking eyes). Loaded by Phone/PropHuntPhoneApp.cs IconSprite via this
+       exact LogicalName, so it ships inside the DLL (no Mods-folder PNG needed). Exists-guarded. -->
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)Assets/phone_icon.png')">
+    <EmbeddedResource Include="Assets/phone_icon.png">
+      <LogicalName>PropHunt.Assets.phone_icon.png</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
   <!-- Backend-specific GlobalUsings: keep only the active backend's file -->
   <ItemGroup>
     <Compile Remove="Compat/GlobalUsings.Il2Cpp.cs" Condition="'$(Backend)' != 'il2cpp'" />
@@ -149,6 +162,19 @@
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(GameManagedPath)/UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- uGUI + TextMeshPro: the in-game phone app uses S1API.UIFactory + DooDesch.UI (uGUI Button/Image/Text/etc.). -->
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(GameManagedPath)/UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UIModule">
+      <HintPath>$(GameManagedPath)/UnityEngine.UIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Unity.TextMeshPro">
+      <HintPath>$(GameManagedPath)/Unity.TextMeshPro.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.AudioModule">

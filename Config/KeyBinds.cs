@@ -17,6 +17,7 @@ namespace PropHunt.Config
         internal const KeyCode Decoy        = KeyCode.Q;            // drop a decoy
         internal const KeyCode Concussion   = KeyCode.G;            // stun nearby hunters
         internal const KeyCode Taunt        = KeyCode.Alpha1;       // tap: taunt, hold: taunt wheel
+        internal const KeyCode HighlightToggle = KeyCode.B;         // toggle the becomable-prop markers (off = blend in)
 
         // shared
         internal const KeyCode ThirdPerson  = KeyCode.V;            // hider: toggle 3rd person

@@ -65,8 +65,9 @@ namespace PropHunt.Disguise
                     _ctl.RequestSelectProp(CurrentTargetId);
                     Core.LogDebug($"[PropHunt] selected prop {CurrentTargetId} ({CurrentTargetName}).");
                 }
-                // [2] become a random prop (no aiming needed)
-                if (Input.GetKeyDown(KeyBinds.RandomProp)) { _ctl.RequestSelectRandomProp(); Core.LogDebug("[PropHunt] random prop requested ([2])."); }
+                // [2] become a random prop (no aiming needed) - only when the host allows it
+                if (Input.GetKeyDown(KeyBinds.RandomProp) && (_ctl.Settings == null || _ctl.Settings.AllowRandomChange))
+                { _ctl.RequestSelectRandomProp(); Core.LogDebug("[PropHunt] random prop requested ([2])."); }
                 // [Q] drop a decoy of the current prop;  [G] concussion grenade (stun nearby hunters)
                 if (Input.GetKeyDown(KeyBinds.Decoy) && _ctl.LocalPropId >= 0) { _ctl.RequestDropDecoy(); Core.LogDebug("[PropHunt] decoy requested ([Q])."); }
                 if (Input.GetKeyDown(KeyBinds.Concussion)) { _ctl.RequestConcuss(); Core.LogDebug("[PropHunt] concussion requested ([G])."); }
@@ -128,7 +129,7 @@ namespace PropHunt.Disguise
                     }
                     if (mf == null && hit.transform != null) mf = hit.transform.GetComponentInChildren<MeshFilter>();
                     if (mf == null || mf.sharedMesh == null) continue;
-                    int id = PropCatalog.IdForMesh(mf.sharedMesh);
+                    int id = PropCatalog.IdForMeshFilter(mf);
                     if (id >= 0) { foundId = id; foundName = PropCatalog.ById(id)?.Name; break; }
                 }
             }

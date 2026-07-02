@@ -17,14 +17,16 @@ namespace PropHunt.Game
     {
         private static readonly HashSet<int> _suppressedOfficers = new HashSet<int>();
 
-        /// <summary>Host: lock the world to the configured time of day and freeze its progression.</summary>
+        /// <summary>Host: set the world to the configured time of day at round start. When
+        /// <see cref="RoundSettings.FreezeTime"/> is true the clock is also frozen (locked for the whole round);
+        /// otherwise it is set once and then runs normally from there.</summary>
         internal static void ApplyHostWorld(RoundSettings s)
         {
             try
             {
                 var tm = NetworkSingleton<TimeManager>.Instance;
-                if (tm != null) { tm.SetTimeAndSync(s.TimeOfDay); tm.SetTimeSpeedMultiplier(0f); }
-                Core.Log.Msg($"[PropHunt] world: time locked to {s.TimeOfDay}, progression frozen.");
+                if (tm != null) { tm.SetTimeAndSync(s.TimeOfDay); tm.SetTimeSpeedMultiplier(s.FreezeTime ? 0f : 1f); }
+                Core.Log.Msg($"[PropHunt] world: time set to {s.TimeOfDay}{(s.FreezeTime ? ", progression frozen" : ", progression running")}.");
             }
             catch (Exception e) { Core.Log.Warning("[PropHunt] ApplyHostWorld failed: " + e.Message); }
         }

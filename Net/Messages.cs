@@ -92,6 +92,16 @@ namespace PropHunt.Net
         public override void Deserialize(byte[] data) => VictimSteamId = MsgCodec.U(MsgCodec.Str(data));
     }
 
+    /// <summary>Client -> host: a hunter claims a friendly-fire hit on another HUNTER (host re-validates FF/geometry).
+    /// The victim is knocked down (ragdoll), never killed. Payload = the victim's steam id.</summary>
+    public class HitHunterMessage : P2PMessage
+    {
+        public override string MessageType => "PH_FF";
+        public ulong VictimSteamId { get; set; }
+        public override byte[] Serialize() => MsgCodec.Bytes(MsgCodec.Of(VictimSteamId));
+        public override void Deserialize(byte[] data) => VictimSteamId = MsgCodec.U(MsgCodec.Str(data));
+    }
+
     /// <summary>Client -> host: the sender's own local player has left the play area.</summary>
     public class OutOfBoundsMessage : P2PMessage
     {

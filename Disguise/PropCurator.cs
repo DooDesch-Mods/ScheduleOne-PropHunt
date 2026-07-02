@@ -48,7 +48,7 @@ namespace PropHunt.Disguise
 
         internal static bool Active => _active;
 
-        private enum CurateFilter { All, Unreviewed, Kept }
+        private enum CurateFilter { All, Unreviewed, Kept, Skipped }
 
         /// <summary>phcurate: review EVERY candidate mesh.</summary>
         internal static void Toggle() => Enter(CurateFilter.All);
@@ -57,9 +57,64 @@ namespace PropHunt.Disguise
         /// finish off newly-appeared props without scrolling past the hundreds already decided.</summary>
         internal static void ToggleUnreviewed() => Enter(CurateFilter.Unreviewed);
 
-        /// <summary>phcuratekeep: re-review ONLY the currently-KEPT candidates (the ones in the becomable pool) - to
-        /// weed out auto-seeded keeps you never verified. Press [N] on a bad one to drop it from the pool.</summary>
+        /// <summary>phcuratekeep: review the ENTIRE become-able allowlist - every key currently marked keep=1 - so
+        /// nothing become-able can hide from review. Built from the curation file itself (not a world re-scan), so it
+        /// is independent of LOD folding or what is loaded where you stand; loaded props show a live preview, the rest
+        /// show by name. Press [N] on a bad one to drop it from the pool.</summary>
         internal static void ToggleKept() => Enter(CurateFilter.Kept);
+
+        /// <summary>phcurateskip: review the currently-SKIPPED scene props so you can RESCUE good-looking ones the
+        /// heuristic seed threw out (too big/small/oddly-named). [Y] moves a skip back into the becomable pool. This is
+        /// how you grow the pool from the large scene candidate set (~1500+ clean meshes) beyond the seeded keeps.</summary>
+        internal static void ToggleSkipped() => Enter(CurateFilter.Skipped);
+
+        /// <summary>phcuratebuild: review the BUILDABLES list - every placeable furniture/fixture/equipment whole-object
+        /// prefab from the game's Registry (one clean entry per object, parts+LODs bundled). Keyed "reg:&lt;name&gt;".</summary>
+        internal static void ToggleBuildables() => EnterList(PropSources.EnumerateBuildables, "BUILDABLES");
+
+        /// <summary>phcuratevehicles: review the VEHICLES list - every car TYPE from VehicleManager (whole car, wheels
+        /// + body + lights as one object). Keyed "veh:&lt;VehicleCode&gt;".</summary>
+        internal static void ToggleVehicles() => EnterList(PropSources.EnumerateVehicles, "VEHICLES");
+
+        /// <summary>phcurateworld: review the WORLD-OBJECTS list - interactive/functional world objects (ATM, vending
+        /// machine, dumpster, storage, ...) grouped as whole objects by their root component, deduped by content.
+        /// Keyed "world:&lt;contentKey&gt;". Static decor without a functional marker is not here (see phcuratekeep).</summary>
+        internal static void ToggleWorld() => EnterList(PropSources.EnumerateWorldObjects, "WORLD OBJECTS");
+
+        /// <summary>phcuratepool: review the EXACT becomable pool - the ACTUAL runtime catalog (PropCatalog.Build) that
+        /// [2]-random draws from and [E]-look-at resolves to, NOT the allowlist keys. Un-culls first so every approvable
+        /// prop is active and catalogued (the full pool). Whatever appears here is precisely what a player can become;
+        /// [N] prunes a prop straight out of that pool. The definitive "what can players actually get" verification.</summary>
+        internal static void ToggleCatalog() => EnterList(() => { UncullAllProperties(); return PropCatalog.CatalogSnapshot(); }, "BECOMABLE POOL (exact)");
+
+        /// <summary>Enter the curator over an explicit whole-object candidate list (a registry/vehicle source) instead
+        /// of the scene scan. No property un-cull (these come from prefab databases, not the live scene). Decisions
+        /// persist by the entry's namespaced key into the same curation file; approved ones become test-able next round.</summary>
+        private static void EnterList(System.Func<List<PropEntry>> source, string tag)
+        {
+            float now = Time.time;
+            if (now - _lastToggle < 0.4f) return;
+            _lastToggle = now;
+            if (_active) { Exit(); return; }
+            try
+            {
+                PropCatalog.LoadCuration();
+                _candidates = source();
+                if (_candidates == null || _candidates.Count == 0)
+                {
+                    Core.Log.Warning($"[PropHunt] phcurate {tag}: no candidates (load a world first so the database is populated).");
+                    return;
+                }
+                _index = 0;
+                BuildPreview();
+                Game.RoundEnvironment.LockTimeOfDay(1200);
+                _active = true;
+                Core.Log.Msg($"[PropHunt] prop curation ON ({tag}): {_candidates.Count} whole-objects. " +
+                             "[Y]=keep  [N]=skip  Left/Right=prev/next  PgUp/PgDn=+-10  (same command = save+exit).");
+                ShowCurrent();
+            }
+            catch (System.Exception e) { Core.Log.Warning($"[PropHunt] phcurate {tag} enter failed: " + e.Message); Exit(); }
+        }
 
         private static void Enter(CurateFilter filter)
         {
@@ -72,25 +127,39 @@ namespace PropHunt.Disguise
             if (_active) { Exit(); return; }
             try
             {
-                UncullAllProperties();   // force every distance-culled interior active so its props can be reviewed
+                // Un-culling every property interior is heavy (it activates thousands of renderers) and is ONLY
+                // useful for the discovery filters, where you want interior props active to spot them. The Kept
+                // review resolves its previews from the key index, which sees inactive meshes too (FindObjectsOfTypeAll),
+                // so un-culling there is pure lag with zero benefit - skip it.
+                if (filter == CurateFilter.All || filter == CurateFilter.Unreviewed) UncullAllProperties();
                 PropCatalog.LoadCuration();
-                var all = PropCatalog.EnumerateAllCandidates();
-                if (filter == CurateFilter.All) _candidates = all;
+                if (filter == CurateFilter.Kept)
+                {
+                    // Review the allowlist ITSELF (every keep=1 key), not a world re-scan - so no become-able prop can
+                    // hide from review (the old world-scan + LOD-fold + scene.IsValid filter let some slip through).
+                    _candidates = BuildKeptAllowlist();
+                }
                 else
                 {
-                    var filtered = new List<PropEntry>();
-                    for (int i = 0; i < all.Count; i++)
+                    var all = PropCatalog.EnumerateAllCandidates();
+                    if (filter == CurateFilter.All) _candidates = all;
+                    else
                     {
-                        bool match = filter == CurateFilter.Unreviewed ? IsUnreviewed(all[i]) : IsKept(all[i]);
-                        if (match) filtered.Add(all[i]);
+                        var filtered = new List<PropEntry>();
+                        for (int i = 0; i < all.Count; i++)
+                        {
+                            bool match = filter == CurateFilter.Unreviewed ? IsUnreviewed(all[i]) : IsSkipped(all[i]);
+                            if (match) filtered.Add(all[i]);
+                        }
+                        _candidates = filtered;
                     }
-                    _candidates = filtered;
                 }
 
                 if (_candidates == null || _candidates.Count == 0)
                 {
                     string why = filter == CurateFilter.Unreviewed ? "no UNREVIEWED candidates - everything in this world is already reviewed."
-                               : filter == CurateFilter.Kept       ? "no KEPT candidates in this world yet (nothing to re-review)."
+                               : filter == CurateFilter.Kept       ? "no kept props in the curation yet (nothing to review)."
+                               : filter == CurateFilter.Skipped    ? "no SKIPPED candidates in this world (nothing to rescue)."
                                :                                      "no candidate meshes in this world (load a world first).";
                     Core.Log.Warning("[PropHunt] phcurate: " + why);
                     return;
@@ -99,7 +168,7 @@ namespace PropHunt.Disguise
                 BuildPreview();
                 Game.RoundEnvironment.LockTimeOfDay(1200);   // bright daylight so props are clearly visible
                 _active = true;
-                string tag = filter == CurateFilter.Unreviewed ? " (UNREVIEWED only)" : filter == CurateFilter.Kept ? " (KEPT only)" : "";
+                string tag = filter == CurateFilter.Unreviewed ? " (UNREVIEWED only)" : filter == CurateFilter.Kept ? " (KEPT only)" : filter == CurateFilter.Skipped ? " (SKIPPED - rescue good ones with [Y])" : "";
                 Core.Log.Msg($"[PropHunt] prop curation ON{tag}: {_candidates.Count} meshes. " +
                              "[Y]=keep  [N]=skip  Left/Right=prev/next  PgUp/PgDn=+-10  phcurate=save+exit.");
                 ShowCurrent();
@@ -137,12 +206,69 @@ namespace PropHunt.Disguise
             return PropCatalog.DecisionOf(e.Key) == null;
         }
 
+        /// <summary>True when a candidate is currently SKIPPED (LOD-aware, matching DecisionTextFor): its resolved
+        /// status is SKIP (a skip decision, not kept, not unreviewed). Used by phcurateskip to rescue good rejects.</summary>
+        private static bool IsSkipped(PropEntry e) => e != null && DecisionTextFor(e) == "SKIP";
+
+        /// <summary>Build the phcuratekeep list from the allowlist itself: one reviewable entry per kept prop, covering
+        /// EVERY keep=1 key. A key that resolves to a loaded world mesh gets that mesh as a live preview (LOD props
+        /// fold into a single entry so [N] drops the whole prop); a key with no loaded mesh shows by name so it can
+        /// still be skipped out of the allowlist. This guarantees nothing become-able can hide from review.</summary>
+        private static List<PropEntry> BuildKeptAllowlist()
+        {
+            var keys = PropCatalog.CuratedKeepKeys();
+            var idx = PropCatalog.KeyIndex(rebuild: true);   // build once + cache for CuratePreview (no per-move re-scan)
+            var list = new List<PropEntry>();
+            var seenGroup = new HashSet<LODGroup>();
+            var covered = new HashSet<string>();
+            int preview = 0, byName = 0;
+            for (int i = 0; i < keys.Count; i++)
+            {
+                string key = keys[i];
+                if (covered.Contains(key)) continue;
+                covered.Add(key);
+                if (idx.TryGetValue(key, out var hit) && hit != null)
+                {
+                    if (hit.SourceLodGroup != null)
+                    {
+                        if (!seenGroup.Add(hit.SourceLodGroup)) continue;   // this LOD prop is already in the list
+                        // fold the whole LOD prop into one entry: mark its other loaded LOD keys covered
+                        var lks = PropCatalog.LodMeshKeys(hit.SourceLodGroup);
+                        for (int k = 0; k < lks.Count; k++) covered.Add(lks[k]);
+                    }
+                    list.Add(hit); preview++;
+                }
+                else
+                {
+                    // kept key with no loaded world mesh: review by name (still skippable to drop it from the allowlist)
+                    list.Add(new PropEntry { Key = key, Name = NameFromKey(key) });
+                    byName++;
+                }
+            }
+            list.Sort((a, c) => string.CompareOrdinal(a.Name ?? "", c.Name ?? ""));
+            // Coverage proof: EVERY keep=1 key is represented. entries < keys means LOD props folded into one entry;
+            // by-name entries are kept props whose mesh isn't loaded here (still skippable). If this log is absent or
+            // the numbers don't add up, an OLD build is running (the old world-scan curator never logged this).
+            Core.Log.Msg($"[PropHunt] phcuratekeep allowlist: {list.Count} entries covering ALL {keys.Count} keep keys " +
+                         $"({preview} with live preview, {byName} by-name/not-loaded, {keys.Count - list.Count} folded into LOD groups).");
+            return list;
+        }
+
+        /// <summary>The display mesh name embedded in a curation key ("name|verts|wxhxd" -> "name").</summary>
+        private static string NameFromKey(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return "?";
+            int bar = key.IndexOf('|');
+            return bar > 0 ? key.Substring(0, bar) : key;
+        }
+
         private static void Exit()
         {
             bool was = _active;
             _active = false;
             try { CuratePreview.Clear(); } catch { }   // stop the on-player preview on all clients
             try { PropCatalog.SaveCuration(); } catch { }
+            try { PropCatalog.ClearKeyIndex(); } catch { }   // drop the cached world index (rebuilt fresh next Enter)
             try { RestorePropertyCulling(); } catch { }   // resume normal distance culling of interiors
             try { Game.RoundEnvironment.RestoreTimeProgression(); } catch { }
             if (_meshGo != null) { try { Object.Destroy(_meshGo); } catch { } }
@@ -274,7 +400,14 @@ namespace PropHunt.Disguise
 
             // normalise to ~FitSize and centre on the spinning anchor
             float size; Vector3 center;
-            if (e.SourceLodGroup != null) { size = e.SourceLodGroup.size; center = e.SourceLodGroup.localReferencePoint; }
+            if (e.CloneWholeRoot && PropClone.TryGetLocalBounds(_meshGo, out var wb))
+            {
+                // whole composite prefab: scale from the BUILT clone's full bounds (the representative single mesh
+                // would mis-scale/off-centre a multi-part car or furniture piece).
+                size = Mathf.Max(wb.size.x, Mathf.Max(wb.size.y, wb.size.z));
+                center = wb.center;
+            }
+            else if (e.SourceLodGroup != null) { size = e.SourceLodGroup.size; center = e.SourceLodGroup.localReferencePoint; }
             else
             {
                 var b = (e.Source != null && e.Source.sharedMesh != null) ? e.Source.sharedMesh.bounds : new Bounds();
@@ -313,6 +446,15 @@ namespace PropHunt.Disguise
         {
             _infoObj = _infoStats = _infoFlags = ""; _infoFlagsBad = false;
             var e = Current; if (e == null) return;
+            if (e.Source == null)
+            {
+                // residual allowlist key with no renderable mesh+material anywhere in memory (e.g. a non-visual /
+                // structural prop). Genuinely unpreviewable - but still reviewable: [N] drops it from the allowlist.
+                _infoObj = $"mesh '{e.Name}'    -    no previewable instance in memory";
+                _infoStats = $"key  {e.Key}";
+                _infoFlags = "non-visual/structural prop - nothing to preview; [N] drops it from the allowlist";
+                return;
+            }
             var mesh = e.Source != null ? e.Source.sharedMesh : null;
             var rend = e.SourceRenderer;
             string objName = (e.Source != null && e.Source.gameObject != null) ? e.Source.gameObject.name : "?";
@@ -384,13 +526,31 @@ namespace PropHunt.Disguise
         private static void ShowCurrent()
         {
             var e = Current; if (e == null) return;
-            Core.LogDebug($"[PropHunt] curate [{_index + 1}/{_candidates.Count}] '{e.Name}' ({e.Key}) -> {DecisionText(e.Key)}  ({_infoFlags})");
+            Core.LogDebug($"[PropHunt] curate [{_index + 1}/{_candidates.Count}] '{e.Name}' ({e.Key}) -> {DecisionTextFor(e)}  ({_infoFlags})");
             try { CuratePreview.Set(e.Key); } catch { }   // live on-player preview on the OTHER clients
         }
 
-        private static string DecisionText(string key)
+        // LOD-AWARE status of a candidate, matching IsKept/IsUnreviewed: a LOD prop is ONE prop, so its status is
+        // resolved across ALL its LOD-mesh keys (KEEP if any kept, else SKIP if any skipped, else unreviewed) rather
+        // than from the single primary key - otherwise a kept LOD prop could display "SKIP" in phcuratekeep.
+        private static string DecisionTextFor(PropEntry e)
         {
-            var d = PropCatalog.DecisionOf(key);
+            if (e == null) return "unreviewed";
+            if (e.SourceLodGroup != null)
+            {
+                var keys = PropCatalog.LodMeshKeys(e.SourceLodGroup);
+                if (keys.Count > 0)
+                {
+                    bool anyKeep = false, anySkip = false;
+                    for (int i = 0; i < keys.Count; i++)
+                    {
+                        var dk = PropCatalog.DecisionOf(keys[i]);
+                        if (dk == true) anyKeep = true; else if (dk == false) anySkip = true;
+                    }
+                    return anyKeep ? "KEEP" : anySkip ? "SKIP" : "unreviewed";
+                }
+            }
+            var d = PropCatalog.DecisionOf(e.Key);
             return d == true ? "KEEP" : d == false ? "SKIP" : "unreviewed";
         }
 
@@ -398,7 +558,7 @@ namespace PropHunt.Disguise
         {
             if (!_active) return;
             var e = Current; if (e == null) return;
-            string dec = DecisionText(e.Key);
+            string dec = DecisionTextFor(e);
             Color decCol = dec == "KEEP" ? Color.green : dec == "SKIP" ? new Color(1f, 0.45f, 0.45f) : Color.gray;
 
             const float w = 640f, h = 158f;

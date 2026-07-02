@@ -32,6 +32,8 @@ namespace PropHunt.Disguise
             if (state == null) return;
             try
             {
+                // A prop-catalog hash mismatch (host vs local) is the surviving "disguises may differ" check; the
+                // broader "everyone must be on the same build" version check now lives in Side Hustle at the join layer.
                 if (!_warnedHashMismatch && state.CatalogHash != 0 && state.CatalogHash != PropCatalog.Hash)
                 {
                     _warnedHashMismatch = true;
@@ -58,7 +60,8 @@ namespace PropHunt.Disguise
                         // hider in the synced roster (the host still lists them until the lobby drops them) otherwise
                         // floods the log every frame - observed at 360k lines, which also stalls the host via log I/O.
                         if (disguised && _warnedUnresolved.Add(ps.SteamId))
-                            Core.LogDebug($"[PropHunt] disguise: no game Player resolved for {ps.SteamId} (prop {ps.PropId}) - cannot render");
+                            Core.Log.Warning($"[PropHunt] disguise: no game Player resolved for {ps.SteamId} (prop {ps.PropId}) - cannot render. " +
+                                             "PlayerCode not yet replicated for this peer? (retries each tick)");
                         continue;
                     }
                     _warnedUnresolved.Remove(ps.SteamId);   // resolved now -> a future drop warns once again

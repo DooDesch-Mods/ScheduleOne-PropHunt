@@ -46,7 +46,7 @@ namespace PropHunt
         {
             try
             {
-                SideHustle.API.Register(new SideHustle.GamemodeDescriptor
+                _descriptor = new SideHustle.GamemodeDescriptor
                 {
                     Id = "doodesch.prophunt",
                     DisplayName = "PropHunt",
@@ -63,8 +63,17 @@ namespace PropHunt
                     // create phone prompts, overlays + NPC waypoints that fight a PropHunt round and can drop players
                     // into a scripted RV sequence instead of the map. Opt out of all three (Side Hustle applies them).
                     BlockVanillaQuests = true,
+                    AllowedQuestTitles = new[] { Quests.GuideQuest.Title },   // our own guide quest is exempt from the block
                     SkipIntro = true,
                     ForceNewGame = true,
+                    // World hygiene Side Hustle enforces for the whole session (replaces PropHunt's own patches):
+                    //  - no saving (scratch world; teleports/locked doors/disguises would corrupt a save),
+                    //  - NPCs ignore hunter gunfire (so a hider can mimic them without derailing the schedule),
+                    //  - no vanilla player death (elimination is ONLY the host-validated catch; vanilla death +
+                    //    medical-centre respawn would eject the player out of the play area).
+                    BlockSaveDuringSession = true,
+                    SuppressNpcCombatReactions = true,
+                    DisableVanillaPlayerDeath = true,
                     // Keep PropHunt's session clean: disable unrelated gameplay/world mods that could interfere,
                     // but allow a few harmless ones to stay. PropHunt's own mod, S1API and the Side Hustle hub are
                     // always kept (essentials); SteamNetworkLib is a UserLib that is never disabled; and BiggerLobbies
@@ -83,7 +92,8 @@ namespace PropHunt
                         // SteamNetworkLib) are always present, and BiggerLobbies is optional - it raises the lobby
                         // cap when installed but PropHunt runs without it. Nothing here forces or blocks a mod.
                     }
-                });
+                };
+                SideHustle.API.Register(_descriptor);
                 Log.Msg("[PropHunt] registered with Side Hustle.");
             }
             catch (Exception e)
@@ -93,6 +103,7 @@ namespace PropHunt
         }
 
         private static SideHustle.LaunchContext _session;
+        private static SideHustle.GamemodeDescriptor _descriptor;   // our registered descriptor (its Presets are refreshed after a host)
         private static Game.GameModeController _controller;
         private static bool _patched;              // gameplay Harmony patches applied (lazily, on the first gameplay scene)
 
@@ -103,6 +114,18 @@ namespace PropHunt
         {
             _session = ctx;
             Log.Msg($"[PropHunt] hosting via Side Hustle (lobby {ctx.LobbyId}, {ctx.PlayerCount} player(s)).");
+            // If the host tweaked a preset (mode == "Custom - <base>"), persist these settings as the Custom preset
+            // so the form pre-selects them next time + refresh our preset list for any re-host this session.
+            try
+            {
+                var mp = ctx.Multiplayer;
+                if (mp != null && !string.IsNullOrEmpty(mp.Mode) && mp.Mode.StartsWith("Custom - ") && !string.IsNullOrEmpty(mp.ConfigBlob))
+                {
+                    PropHuntPreferences.SaveCustomPreset(mp.ConfigBlob, mp.Mode.Substring("Custom - ".Length));
+                    if (_descriptor != null) _descriptor.Presets = Config.RoundPresets.Build();
+                }
+            }
+            catch (Exception e) { Log.Warning("[PropHunt] save custom preset failed: " + e.Message); }
             // SteamNetworkLib auto-attaches to the game's Steam lobby (idempotent).
             Net.PropHuntNet.Initialize();
             _controller?.Dispose();
@@ -123,6 +146,7 @@ namespace PropHunt
         private static void OnExitToHub(SideHustle.LaunchContext ctx)
         {
             Log.Msg("[PropHunt] session ended; tearing down.");
+            UI.Hud.HudController.Teardown();   // destroy the uGUI HUD canvas with the session
             _controller?.Dispose();
             _controller = null;
             _session = null;
@@ -141,7 +165,15 @@ namespace PropHunt
             if (sceneName == "Main" && !_patched)
             {
                 _patched = true;
-                try { HarmonyInstance.PatchAll(); Log.Msg("[PropHunt] PatchAll completed."); }
+                // Idempotency belt: the scratch-world boot can initialize "Main" twice, and PatchAll-ing twice applies
+                // every postfix twice (it doubled the per-shot catch hit). Skip if Harmony already has our patches.
+                bool already = false;
+                try { foreach (var _ in HarmonyInstance.GetPatchedMethods()) { already = true; break; } } catch { }
+                try
+                {
+                    if (already) Log.Msg("[PropHunt] gameplay patches already applied; skipping PatchAll.");
+                    else { HarmonyInstance.PatchAll(); Log.Msg("[PropHunt] PatchAll completed."); }
+                }
                 catch (Exception e) { Log.Error("[PropHunt] PatchAll FAILED (later patches skipped): " + e); }
                 try
                 {
@@ -168,6 +200,35 @@ namespace PropHunt
             // Gameplay scene loaded. The session controller, role assignment, and prop catalog are wired up
             // when a PropHunt session starts.
             LogDebug("[PropHunt] Main scene loaded.");
+
+            // The item registry is only populated in a gameplay scene (not at the menu where the host form is built),
+            // so discover the available weapons here + cache them for the host-form weapon dropdown. Rebuild the
+            // descriptor's settings so the next time the host form opens it offers the full weapon list.
+            try
+            {
+                if (Config.WeaponCatalog.RefreshFromRegistry() && _descriptor != null)
+                    _descriptor.HostSettings = Config.PropHuntSettingsSpec.Build();
+            }
+            catch (Exception e) { Log.Warning("[PropHunt] weapon catalog refresh failed: " + e.Message); }
+        }
+
+        /// <summary>
+        /// Leaving the gameplay scene ("Main" -> menu) ends the session, however it happened: the clean Side Hustle
+        /// "return to hub" (OnExitToHub) OR the host quitting via the game's own pause menu / a client losing the host.
+        /// Tear the HUD + session down here too so nothing lingers into the main menu (e.g. the status bar kept
+        /// running). Idempotent: if OnExitToHub already disposed, _controller is null and this is a no-op.
+        /// </summary>
+        public override void OnSceneWasUnloaded(int buildIndex, string sceneName)
+        {
+            if (sceneName != "Main") return;
+            try { UI.Hud.HudController.Teardown(); } catch { }
+            if (_controller != null)
+            {
+                Log.Msg("[PropHunt] left the gameplay scene; tearing down the session.");
+                try { _controller.Dispose(); } catch { }
+                _controller = null;
+                _session = null;
+            }
         }
 
         public override void OnUpdate()
@@ -186,6 +247,8 @@ namespace PropHunt
             Net.PropHuntNet.Tick();
             _controller?.Tick(UnityEngine.Time.deltaTime);
 #endif
+            Phone.PropHuntPhoneApp.Instance?.Tick();   // refresh the in-game phone app while it is open
+            UI.Hud.HudController.Tick();   // build/refresh/teardown the in-game uGUI HUD with the session
 #if DEBUG
             Disguise.PropCurator.Tick();   // prop curation tool (toggled by the phcurate console command)
             Disguise.CuratePreview.Tick();   // live on-player preview of the curated prop on other clients
@@ -206,7 +269,9 @@ namespace PropHunt
 
         public override void OnGUI()
         {
-            if (_controller != null) { UI.PropHuntHud.Draw(_controller); _controller.DrawGui(); }
+            // The gameplay HUD is now a uGUI overlay (UI.Hud.HudController, ticked from OnUpdate). The only IMGUI left
+            // is the radial taunt wheel, drawn here via the controller.
+            if (_controller != null) _controller.DrawGui();
 #if DEBUG
             Disguise.PropCurator.DrawGui();
             PropHunt.Debug.DebugOverlay.DrawGui();

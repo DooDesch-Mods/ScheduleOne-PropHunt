@@ -24,9 +24,43 @@ namespace PropHunt.Disguise
             if (e == null) return null;
             try
             {
+                if (e.CloneWholeRoot && e.SourceRoot != null) return BuildSubtree(e, name);
                 return e.SourceLodGroup != null ? BuildLod(e, name) : BuildSingle(e, name);
             }
             catch (System.Exception ex) { Core.LogDebug("[PropHunt] PropClone.Build failed: " + ex.Message); return null; }
+        }
+
+        /// <summary>Clone an ENTIRE composite prefab subtree (a whole vehicle / buildable with all its parts + any
+        /// nested LODGroups). Same inactive-holder + Strip discipline as <see cref="BuildLod"/> so no game script,
+        /// FishNet behaviour, WheelCollider or Rigidbody ever runs - only the visual meshes/LODGroups survive. Every
+        /// nested LODGroup is rebounded so its LOD switching keeps working. Falls back to LOD/single on failure.</summary>
+        private static GameObject BuildSubtree(PropEntry e, string name)
+        {
+            var src = e.SourceRoot;
+            if (src == null) return e.SourceLodGroup != null ? BuildLod(e, name) : BuildSingle(e, name);
+
+            GameObject holder = null;
+            try
+            {
+                holder = new GameObject("ph_holder");
+                holder.SetActive(false);                          // clone stays inactive -> no Awake on the copied scripts
+                var go = Object.Instantiate(src, holder.transform);
+                go.name = name;
+                Strip(go);                                        // remove scripts/colliders/Rigidbody/FishNet BEFORE activation
+                go.transform.SetParent(null, false);
+                go.SetActive(true);
+                EnableAllVisuals(go);
+                return go;
+            }
+            catch (System.Exception ex)
+            {
+                Core.LogDebug("[PropHunt] BuildSubtree failed: " + ex.Message);
+                return e.SourceLodGroup != null ? BuildLod(e, name) : BuildSingle(e, name);
+            }
+            finally
+            {
+                if (holder != null) { try { Object.Destroy(holder); } catch { } }
+            }
         }
 
         /// <summary>World AABB from the clone's MESH ASSET bounds (every MeshFilter's sharedMesh.bounds corners,
@@ -46,6 +80,7 @@ namespace PropHunt.Disguise
             {
                 var mf = mfs[i];
                 if (mf == null || mf.sharedMesh == null) continue;
+                if (PropCatalog.IsJunkMeshName(mf.sharedMesh.name)) continue;   // skip trigger/collider/proxy meshes
                 // ONLY the currently-VISIBLE meshes: a mesh with no MeshRenderer (collision/culling proxy) or whose
                 // renderer is disabled (an inactive LOD level) must be skipped - those carry huge or stale bounds
                 // that blew the union up to hundreds of metres and flung the prop off-screen.
@@ -120,6 +155,7 @@ namespace PropHunt.Disguise
             {
                 var mf = mfs[i];
                 if (mf == null || mf.sharedMesh == null) continue;
+                if (PropCatalog.IsJunkMeshName(mf.sharedMesh.name)) continue;   // skip trigger/collider/proxy meshes
                 // only currently-visible meshes (skip non-rendered proxy meshes + inactive LOD levels, whose mesh
                 // bounds otherwise blow the box up to hundreds of metres)
                 var mr = mf.GetComponent<MeshRenderer>();
@@ -237,6 +273,12 @@ namespace PropHunt.Disguise
         {
             local = default;
             if (e == null || e.Source == null || e.Source.sharedMesh == null) return false;
+            // Whole composite (buildable/vehicle/world object): bound EVERY visible part in the SOURCE-ROOT's local
+            // space, not just the single representative mesh. The rep mesh is often OFFSET from the prop root (e.g. a
+            // TV bench's tabletop or a wall-mounted TV), and TryGetSourceLocalBounds anchors its box in the REP mesh's
+            // OWN space - applied at the clone root, that mis-placed min.y and floated the prop off the ground. This
+            // unions all parts anchored at the root, so grounding uses the true lowest visible point (the legs).
+            if (e.CloneWholeRoot && e.SourceRoot != null && TryGetWholeRootBoundsFromSource(e, out local)) return true;
             if (e.SourceLodGroup == null) return TryGetSourceLocalBounds(e, out local);   // single-mesh prop
             try
             {
@@ -263,6 +305,70 @@ namespace PropHunt.Disguise
             }
             catch (System.Exception ex) { Core.LogDebug("[PropHunt] prop bounds (source) failed: " + ex.Message); }
             return TryGetSourceLocalBounds(e, out local);
+        }
+
+        /// <summary>Root-local bounds of a WHOLE-ROOT composite (buildable/vehicle/world object) from its SOURCE
+        /// meshes, expressed in the SourceRoot's own local space (= the clone root's space, since the clone
+        /// replicates the root 1:1). Unions EVERY visible source mesh so a multi-part item grounds on its true
+        /// lowest point (a bench's legs, not just the offset tabletop that <see cref="TryGetSourceLocalBounds"/>
+        /// bounded from the rep mesh's own frame). Excludes collider/junk proxies, the placement-visualization nodes
+        /// (grid FootprintTile/TileAppearance + the ActivateDuringBuild build-arrow - still in the SOURCE even though
+        /// the clone strips them, and their ground-level footprint would drag min.y below the real base), and any
+        /// stray mesh far from the prop body (the 269m-box guard, referenced off the representative mesh).</summary>
+        internal static bool TryGetWholeRootBoundsFromSource(PropEntry e, out Bounds local)
+        {
+            local = default;
+            if (e == null || e.SourceRoot == null) return false;
+            try
+            {
+                var rootT = e.SourceRoot.transform;
+                var mfs = e.SourceRoot.GetComponentsInChildren<MeshFilter>(true);
+                if (mfs == null) return false;
+
+                // reference + cull radius from the representative (biggest) mesh: a real part can't be more than a
+                // few prop-sizes from it, but an unrelated far sibling in the prefab can - exclude those.
+                bool haveRef = false; Vector3 refP = Vector3.zero; float cull2 = 0f;
+                if (e.Source != null && e.Source.sharedMesh != null)
+                {
+                    refP = rootT.InverseTransformPoint(e.Source.transform.TransformPoint(e.Source.sharedMesh.bounds.center));
+                    var ext = e.Source.sharedMesh.bounds.extents;
+                    float repSize = Mathf.Max(ext.x, Mathf.Max(ext.y, ext.z)) * 2f;
+                    float cull = Mathf.Max(repSize * 3f + 2f, 6f);
+                    cull2 = cull * cull; haveRef = true;
+                }
+
+                bool any = false;
+                for (int i = 0; i < mfs.Length; i++)
+                {
+                    var mf = mfs[i];
+                    if (mf == null || mf.sharedMesh == null) continue;
+                    var mr = mf.GetComponent<MeshRenderer>();
+                    if (mr == null || mr.sharedMaterial == null) continue;              // non-visual proxy
+                    if (PropCatalog.IsJunkMeshName(mf.sharedMesh.name)) continue;
+                    if (IsPlacementVizMesh(mf)) continue;                               // grid tiles / build arrow
+                    Vector3 cl = rootT.InverseTransformPoint(mf.transform.TransformPoint(mf.sharedMesh.bounds.center));
+                    if (haveRef && (cl - refP).sqrMagnitude > cull2) continue;          // stray far mesh
+                    EncapsulateMeshLocal(mf, rootT, ref local, ref any);
+                }
+                return any;
+            }
+            catch (System.Exception ex) { Core.LogDebug("[PropHunt] whole-root bounds failed: " + ex.Message); return false; }
+        }
+
+        /// <summary>True if a source MeshFilter belongs to a placement-only visualization (the grid FootprintTile/
+        /// TileAppearance squares or an ActivateDuringBuild build-arrow/indicator) - present in the buildable's
+        /// SOURCE prefab even though <see cref="Strip"/> removes them from the clone, so bounds must skip them too.
+        /// Matched by component (not by "Indicator" name) so a vehicle's always-on turn-signal meshes are kept.</summary>
+        private static bool IsPlacementVizMesh(MeshFilter mf)
+        {
+            try
+            {
+                if (mf.GetComponentInParent<Il2CppScheduleOne.Tiles.FootprintTile>() != null) return true;
+                if (mf.GetComponentInParent<Il2CppScheduleOne.Tiles.TileAppearance>() != null) return true;
+                if (mf.GetComponentInParent<Il2CppScheduleOne.Building.ActivateDuringBuild>() != null) return true;
+            }
+            catch { }
+            return false;
         }
 
         /// <summary>Add a trigger hitbox from a pre-computed ROOT-LOCAL bounds (so the hitbox matches the disguise's
@@ -316,8 +422,7 @@ namespace PropHunt.Disguise
                 Strip(go);                                        // DestroyImmediate scripts/colliders BEFORE activation
                 go.transform.SetParent(null, false);              // detach into the world (the caller re-parents to the player)
                 go.SetActive(true);
-                var lg = go.GetComponent<LODGroup>();
-                if (lg != null) { try { lg.RecalculateBounds(); } catch { } }
+                EnableAllVisuals(go);
                 return go;
             }
             catch (System.Exception ex)
@@ -329,6 +434,40 @@ namespace PropHunt.Disguise
             {
                 if (holder != null) { try { Object.Destroy(holder); } catch { } }
             }
+        }
+
+        /// <summary>Make every visual in a freshly-built clone show, even if the SOURCE was distance-culled
+        /// (SetActive(false)) when it was cloned - which yielded a blank preview for far world objects/interiors.
+        /// Activates all descendant GameObjects and enables MeshRenderers NOT managed by a LODGroup (LODGroup
+        /// renderers are left to the group, which enables the correct LOD at the clone's distance), then rebounds
+        /// each LODGroup. Only ever adds visibility - the disguise/preview never renders less than the real prop.</summary>
+        private static void EnableAllVisuals(GameObject go)
+        {
+            try
+            {
+                var trs = go.GetComponentsInChildren<Transform>(true);
+                if (trs != null) for (int i = 0; i < trs.Length; i++)
+                { try { if (trs[i] != null && !trs[i].gameObject.activeSelf) trs[i].gameObject.SetActive(true); } catch { } }
+
+                // Deliberately do NOT blanket-enable disabled renderers. A renderer left DISABLED in the source is an
+                // intentional PROXY - an interaction/collision-visualiser box (the "Cube" on an ATM / mailbox / vehicle);
+                // force-enabling those spawned a stray white box over the prop. A distance-CULLED VISUAL instead keeps
+                // renderer.enabled=true and only had its GameObject SetActive(false) - the sweep above already restores
+                // it. So SetActive is enough for real visuals, and proxies correctly stay hidden.
+
+                // Force each LODGroup to its highest-detail level. A clone captured while its source was far/culled
+                // otherwise has no guaranteed path back to visible (RecalculateBounds alone never re-enables a
+                // renderer), which was leaving LOD props blank. LOD0 is the visual (never a proxy), so this shows the
+                // prop without the white-box side-effect. Guaranteed-visible beats matching the real prop's LOD-pop.
+                var lgs = go.GetComponentsInChildren<LODGroup>(true);
+                if (lgs != null) for (int i = 0; i < lgs.Length; i++)
+                {
+                    var lg = lgs[i];
+                    if (lg == null) continue;
+                    try { lg.RecalculateBounds(); lg.ForceLOD(0); } catch { }
+                }
+            }
+            catch { }
         }
 
         private static GameObject BuildSingle(PropEntry e, string name)
@@ -356,6 +495,34 @@ namespace PropHunt.Disguise
         private static void Strip(GameObject go)
         {
             try { go.isStatic = false; } catch { }
+
+            // A buildable prop carries the game's PLACEMENT-ONLY visuals, which must never show on a disguise:
+            //   (a) FootprintTile/TileAppearance nodes = the white grid squares. Vanilla "hides" them by
+            //       MeshRenderer.enabled=false while leaving the GameObjects ACTIVE, so they survive the
+            //       MonoBehaviour sweep below and EnableAllVisuals would re-show them.
+            //   (b) ActivateDuringBuild-marked nodes = the blue front/direction arrow + L/R indicators. Vanilla
+            //       shows these with GameObject.SetActive(true) during placement and SetActive(false) on a placed
+            //       item; our EnableAllVisuals SetActive-sweep re-activates them, so the arrow reappears.
+            // Destroy both node families up front (before the sweep + before activation). The ActivateDuringBuild
+            // marker is exact - a vehicle's always-on turn-signal "Indicator" meshes do NOT carry it, so they are
+            // untouched (which is why we match the component, never the "Indicator" name). No-op for props that
+            // carry neither (most scene props, vehicles, world objects).
+            try
+            {
+                var fts = go.GetComponentsInChildren<Il2CppScheduleOne.Tiles.FootprintTile>(true);
+                if (fts != null) for (int i = 0; i < fts.Length; i++)
+                { try { if (fts[i] != null) Object.DestroyImmediate(fts[i].gameObject); } catch { } }
+                // belt-and-suspenders: kill any TileAppearance node not nested under a FootprintTile we just removed.
+                var tas = go.GetComponentsInChildren<Il2CppScheduleOne.Tiles.TileAppearance>(true);
+                if (tas != null) for (int i = 0; i < tas.Length; i++)
+                { try { if (tas[i] != null) Object.DestroyImmediate(tas[i].gameObject); } catch { } }
+                // the build-only direction arrow / indicators (marker-only MonoBehaviour, no fields).
+                var adb = go.GetComponentsInChildren<Il2CppScheduleOne.Building.ActivateDuringBuild>(true);
+                if (adb != null) for (int i = 0; i < adb.Length; i++)
+                { try { if (adb[i] != null) Object.DestroyImmediate(adb[i].gameObject); } catch { } }
+            }
+            catch { }
+
             var ts = go.GetComponentsInChildren<Transform>(true);
             if (ts != null) for (int i = 0; i < ts.Length; i++)
             {

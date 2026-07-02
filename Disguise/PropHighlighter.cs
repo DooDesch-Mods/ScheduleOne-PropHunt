@@ -26,6 +26,7 @@ namespace PropHunt.Disguise
         private int _lastLoggedCount = -1;
         private bool _failed;
         private bool _active;
+        private bool _enabled = true;   // local hider toggle (KeyBinds.HighlightToggle): off = no markers, blend in
 
         private const float ScanRadius = 22f;
         private const float ScanInterval = 0.4f;
@@ -39,8 +40,11 @@ namespace PropHunt.Disguise
         {
             if (_failed) return;
             // hiders see what they can become during hiding AND hunting (the shells are LOCAL-only)
-            bool want = (_ctl.Phase == RoundPhase.Hiding || _ctl.Phase == RoundPhase.Hunting)
-                        && _ctl.LocalRole == PlayerRole.Hider && PropCatalog.Count > 0;
+            bool hiderInRound = (_ctl.Phase == RoundPhase.Hiding || _ctl.Phase == RoundPhase.Hunting)
+                                && _ctl.LocalRole == PlayerRole.Hider && PropCatalog.Count > 0;
+            // local toggle: a hider can hide the becomable-prop markers to blend into the environment better
+            if (hiderInRound && Input.GetKeyDown(Config.KeyBinds.HighlightToggle)) _enabled = !_enabled;
+            bool want = hiderInRound && _enabled;
             if (!want) { if (_active) { ClearAll(); _lastLoggedCount = -1; } _active = false; return; }
             _active = true;
             try
@@ -86,7 +90,7 @@ namespace PropHunt.Disguise
                     if (mf.GetComponent<MeshRenderer>() == null) continue;
                     if (mf.GetComponentInParent<Player>() != null) continue;    // a disguise riding a player, not a world prop
                     if (IsOurClone(mf.transform)) continue;                     // our own decoy/disguise/shell clones
-                    if (PropCatalog.IdForMesh(mf.sharedMesh) < 0) continue;     // not a becomable prop
+                    if (PropCatalog.IdForMeshFilter(mf) < 0) continue;          // not a becomable prop (scene mesh OR composite veh:/reg:/world:)
                     if (!seen.Add(mf.gameObject.GetInstanceID())) continue;
                     _candidates.Add(mf);
                 }

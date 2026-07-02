@@ -27,7 +27,8 @@ namespace PropHunt.Patches
         }
     }
 
-    /// <summary>Block firing while the local player is tased (concussion stun); the stun auto-clears after ~2s.</summary>
+    /// <summary>Block firing while the local hunter is KNOCKED DOWN (friendly-fire KO or concussion) - and, as a belt,
+    /// while the vanilla IsTased flag is set. The knockdown auto-clears from the host clock.</summary>
     [HarmonyPatch(typeof(Equippable_RangedWeapon), nameof(Equippable_RangedWeapon.Fire))]
     internal static class TasedNoFirePatch
     {
@@ -35,8 +36,39 @@ namespace PropHunt.Patches
         {
             var ctl = GameModeController.Active;
             if (ctl == null || !ctl.RoundActive) return true;
+            if (ctl.LocalDowned) return false;   // knocked down -> can't fire
             var p = Player.Local;
-            return !(p != null && p.IsTased);   // false -> skip Fire() while tased
+            return !(p != null && p.IsTased);    // false -> skip Fire() while tased (belt-and-braces)
+        }
+    }
+
+    /// <summary>
+    /// Register a PropHunt catch from a REAL fired shot. The postfix runs only after the hunter's gun actually
+    /// fires (ammo + aim + cooldown gated by the game), so spamming left-click without firing can no longer
+    /// "hit" anything, and the catch resolves from where the weapon truly shot. The actual decoy/prop resolution
+    /// (camera sphere-sweep) lives in CatchController.ResolveShot.
+    /// </summary>
+    [HarmonyPatch(typeof(Equippable_RangedWeapon), nameof(Equippable_RangedWeapon.Fire))]
+    internal static class HunterRangedCatchPatch
+    {
+        private static void Postfix()
+        {
+            if (!WeaponPatchGate.HunterInRound()) return;
+            try { GameModeController.Active?.OnLocalHunterFired(150f); } catch { }   // guns reach across the play area
+            // NOTE: we deliberately do NOT top up the clip here - the clip must still deplete so the hunter has to
+            // RELOAD (a balancing gate that prevents continuous fire). Infinite RESERVE (so reload never runs dry) is
+            // handled by HunterInfiniteMagazinePatch on GetMagazine, for both the pistol AND the pump shotgun.
+        }
+    }
+
+    /// <summary>Melee equivalent: a real melee strike (short reach) resolves a catch the same way.</summary>
+    [HarmonyPatch(typeof(Equippable_MeleeWeapon), "ExecuteHit")]
+    internal static class HunterMeleeCatchPatch
+    {
+        private static void Postfix()
+        {
+            if (!WeaponPatchGate.HunterInRound()) return;
+            try { GameModeController.Active?.OnLocalHunterFired(4f); } catch { }
         }
     }
 
@@ -50,35 +82,37 @@ namespace PropHunt.Patches
     [HarmonyPatch(typeof(Equippable_RangedWeapon), nameof(Equippable_RangedWeapon.GetMagazine))]
     internal static class HunterInfiniteMagazinePatch
     {
-        private static IntegerItemInstance _mag;
-        private static string _magId;
-
         private static void Postfix(Equippable_RangedWeapon __instance, ref bool __result, ref StorableItemInstance mag)
         {
             if (!WeaponPatchGate.HunterInRound()) return;
             int reserve = (__instance.MagazineSize > 0 ? __instance.MagazineSize : 7) * 5;
 
-            // a real magazine already in the hotbar -> just keep it topped so it never depletes
+            // a real magazine already in the hotbar -> keep its rounds topped so it never depletes
             if (__result && mag != null)
             {
                 try { var ii = mag.TryCast<IntegerItemInstance>(); if (ii != null) ii.SetValue(reserve); } catch { }
                 return;
             }
 
-            // otherwise hand back an inexhaustible throwaway (never added to the inventory)
+            // otherwise hand back an inexhaustible throwaway (never added to the inventory), rebuilt fresh from the
+            // weapon's OWN Magazine def each call so it is always full regardless of the ammo item TYPE:
+            //  - pistol magazine = IntegerItemInstance (rounds live in a Value) -> the Magazine reload reads/top its
+            //    Value, so we SetValue(reserve);
+            //  - pump-shotgun shells = a plain quantity stack -> the Incremental reload consumes mag.ChangeQuantity(-1)
+            //    per shell, so GetDefaultInstance(reserve) seeds a high Quantity that covers the whole reload.
+            // The previous code only handled IntegerItemInstance: for the shotgun the TryCast was null, GetMagazine
+            // kept returning false, the incremental reload never started, and the shotgun ran dry after one clip.
             try
             {
                 var def = __instance.Magazine;
                 if (def == null) return;
-                if (_mag == null || _magId != def.ID)
-                {
-                    var inst = def.GetDefaultInstance(1);
-                    _mag = inst != null ? inst.TryCast<IntegerItemInstance>() : null;
-                    _magId = def.ID;
-                }
-                if (_mag == null) return;
-                _mag.SetValue(reserve);
-                mag = _mag;
+                var inst = def.GetDefaultInstance(reserve);
+                if (inst == null) return;
+                var ii = inst.TryCast<IntegerItemInstance>();
+                if (ii != null) ii.SetValue(reserve);
+                var sii = inst.TryCast<StorableItemInstance>();
+                if (sii == null) return;
+                mag = sii;
                 __result = true;
             }
             catch { }
