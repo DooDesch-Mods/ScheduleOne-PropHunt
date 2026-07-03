@@ -40,8 +40,7 @@ namespace PropHunt.Config
         private static MelonPreferences_Entry<bool> _freeChangesInHiding;
         private static MelonPreferences_Entry<bool> _freezeTime;
         private static MelonPreferences_Entry<bool> _autoStartNextRound;
-        private static MelonPreferences_Entry<string> _hidingMusicTrack;
-        private static MelonPreferences_Entry<string> _huntingMusicTrack;
+        private static MelonPreferences_Entry<string> _musicTrack;
         private static MelonPreferences_Entry<string> _customBlob;
         private static MelonPreferences_Entry<string> _customBase;
         private static MelonPreferences_Entry<string> _weaponCache;
@@ -114,10 +113,8 @@ namespace PropHunt.Config
                 "Lock the world clock during a round. Off = set the time at round start, then let it progress.");
             _autoStartNextRound = CreateEntry("AutoStartNextRound", true, "Auto-start next round",
                 "After a round, automatically start the next one after a short safehouse pause. Off = the host starts each round manually. Can be toggled live in the phone app.");
-            _hidingMusicTrack = CreateEntry("HidingMusicTrack", "Sneak Ambience", "Hiding-phase music track",
-                "Name of an existing game music track to play during the Hiding phase (empty = none). Use the DEBUG 'phmusic' console command to list available track names.");
-            _huntingMusicTrack = CreateEntry("HuntingMusicTrack", "Heavy Combat", "Hunting-phase music track",
-                "Name of an existing game music track to play during the Hunting phase (empty = none). Use 'phmusic' to list track names.");
+            _musicTrack = CreateEntry("MusicTrack", "Sneak Ambience", "Round music track",
+                "The single game music track PropHunt plays continuously through every phase EXCEPT the hunt (lobby, hiding, round-end, safehouse). It fades out when the hunt starts (so hunters hear the whistles) and resumes at round end - it never restarts between phases. Empty = no music. Use the DEBUG 'phmusic' console command to list available track names.");
             _customBlob = CreateEntry("CustomPresetBlob", "", "Custom preset (saved)",
                 "Internal: the last hosted custom settings, offered as a Custom preset next time. Managed automatically.");
             _customBase = CreateEntry("CustomPresetBase", "", "Custom preset base mode",
@@ -171,8 +168,7 @@ namespace PropHunt.Config
         internal static bool FreeChangesInHiding => _freeChangesInHiding?.Value ?? true;
         internal static bool FreezeTime => _freezeTime?.Value ?? true;
         internal static bool AutoStartNextRound => _autoStartNextRound?.Value ?? true;
-        internal static string HidingMusicTrack => _hidingMusicTrack?.Value ?? "";
-        internal static string HuntingMusicTrack => _huntingMusicTrack?.Value ?? "";
+        internal static string MusicTrack => _musicTrack?.Value ?? "";
         internal static string CustomBlob => _customBlob?.Value ?? "";
         internal static string CustomBase => _customBase?.Value ?? "";
         internal static string WeaponCache => _weaponCache?.Value ?? "";

@@ -17,6 +17,9 @@ namespace PropHunt.Patches
     {
         private static void Postfix(PlayerCamera __instance)
         {
+            // A downed player's body-cam owns the camera: aim it at their own ragdoll (position is set by the game's
+            // PlayerCamera.OverrideTransform; we only re-aim here, after LateUpdate, so the aim tracks the settling body).
+            if (BodyCam.Active) { BodyCam.Track(__instance); return; }
             if (!SpectatorCam.Active && !ThirdPersonView.Active) return;
             try
             {

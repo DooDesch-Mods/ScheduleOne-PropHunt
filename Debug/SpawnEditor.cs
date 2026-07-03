@@ -121,7 +121,7 @@ namespace PropHunt.Debug
                 if (prop == null) { Core.Log.Warning($"[PropHunt] phspawn: '{code}' not found in scene."); return; }
                 var t = prop.InteriorSpawnPoint != null ? prop.InteriorSpawnPoint : prop.SpawnPoint;
                 if (t == null) { Core.Log.Warning($"[PropHunt] phspawn: '{code}' has no spawn transform."); return; }
-                Game.RoundEnvironment.TeleportLocalTo(t.position + Vector3.up * 1f);   // +1m: vanilla teleport offset
+                Game.RoundEnvironment.TeleportLocalToInstant(t.position + Vector3.up * 1f);   // +1m: vanilla teleport offset; no blink while authoring
                 Core.Log.Msg($"[PropHunt] phspawn: teleported into '{code}' ({prop.PropertyName}).");
             }
             catch (System.Exception e) { Core.Log.Warning("[PropHunt] phspawn teleport failed: " + e.Message); }

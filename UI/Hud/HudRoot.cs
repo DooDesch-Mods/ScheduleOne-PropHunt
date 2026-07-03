@@ -146,7 +146,7 @@ namespace PropHunt.UI.Hud
             // --- [H] controls overlay (centered modal-style card) ---
             _helpPanel = HudWidgets.Pill(_host, "hud_help", Theme.WithAlpha(Theme.BgDeep, 0.95f));
             HudWidgets.Outline(_helpPanel, Theme.HairlineStrong);
-            HudWidgets.Place(_helpPanel, 0.5f, 0.5f, 0f, 0f, 620f, 470f);
+            HudWidgets.Place(_helpPanel, 0.5f, 0.5f, 0f, 0f, 620f, 580f);   // tall enough for HIDER + HUNTER + SPECTATOR without crowding
             var helpTitle = HudWidgets.Label(_helpPanel.transform, "title", Theme.H2, Theme.TextPrimary, TextAnchor.UpperCenter, FontStyle.Bold);
             HudWidgets.Place(helpTitle, 0.5f, 1f, 0f, -16f, 580f, 28f);
             helpTitle.text = "PropHunt - Controls";
@@ -203,6 +203,22 @@ namespace PropHunt.UI.Hud
                 status += $"      {ctl.SecondsLeft}s      Hiders left: {ctl.AliveHiderCount}      You: {ctl.LocalRole}";
                 int ws = ctl.SecondsToWhistle;
                 if (ws >= 0) status += $"      whistle in {ws}s";
+            }
+            // Between rounds show ONE monotonic countdown to the next round instead of a per-phase timer that resets
+            // three times: SecondsUntilNextRound rolls the RoundEnd scoreboard + auto Safehouse pause + doors window
+            // into a single number that just ticks down. It sharpens to "starting in Xs" for the final doors window,
+            // says "waiting for the host..." in a manual lobby, and "round over" when there's no next round (Single).
+            else if (phase == RoundPhase.RoundEnd || phase == RoundPhase.Safehouse)
+            {
+                int nxt = ctl.SecondsUntilNextRound;
+                if (phase == RoundPhase.Safehouse && ctl.State.SafehouseReady)
+                    status += nxt > 0 ? $"      starting in {nxt}s" : "      starting...";
+                else if (nxt > 0)
+                    status += $"      next round in {nxt}s";
+                else if (phase == RoundPhase.Safehouse)
+                    status += "      waiting for the host...";
+                else
+                    status += "      round over";
             }
             SetText(_status, ref _cStatus, status);
             SetActive(_statusPill, ref _aStatus, true);

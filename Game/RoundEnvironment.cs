@@ -93,9 +93,27 @@ namespace PropHunt.Game
             TeleportLocalTo(new UnityEngine.Vector3(x + UnityEngine.Mathf.Cos(ang) * r, y, z + UnityEngine.Mathf.Sin(ang) * r));
         }
 
-        /// <summary>Local: teleport the local player to a world position via the game's PlayerTeleporter (the proven
-        /// path that keeps the CharacterController/network position consistent), with a transform fallback.</summary>
+        /// <summary>Local: teleport the local player to a world position behind an eye-blink (eyes close -> move ->
+        /// eyes open) so the jump reads as a natural blink instead of a hard cut. The move itself happens while the
+        /// screen is black; falls back to an instant move if the eyelid overlay isn't ready. Every gameplay teleport
+        /// (round start, safehouse entry / map switch, out-of-bounds recenter) funnels through here.</summary>
         internal static void TeleportLocalTo(UnityEngine.Vector3 pos)
+            => PropHunt.View.EyeBlink.Teleport(() => TeleportLocalToInstant(pos));
+
+        /// <summary>As <see cref="TeleportLocalTo(UnityEngine.Vector3)"/>, but also faces the player at <paramref
+        /// name="yaw"/> - applied inside the shut window so the view snap is hidden by the blink too.</summary>
+        internal static void TeleportLocalTo(UnityEngine.Vector3 pos, float yaw)
+            => PropHunt.View.EyeBlink.Teleport(() =>
+            {
+                TeleportLocalToInstant(pos);
+                try { var lp = Player.Local; if (lp != null) lp.transform.rotation = UnityEngine.Quaternion.Euler(0f, yaw, 0f); } catch { }
+            });
+
+        /// <summary>Local: move the local player to a world position via the game's PlayerTeleporter (the proven path
+        /// that keeps the CharacterController/network position consistent), with a transform fallback. No blink - used
+        /// as the "shut window" action of <see cref="TeleportLocalTo(UnityEngine.Vector3)"/> and by the dev spawn
+        /// editor (which teleports rapidly while authoring and must not blink each time).</summary>
+        internal static void TeleportLocalToInstant(UnityEngine.Vector3 pos)
         {
             try
             {

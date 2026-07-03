@@ -260,6 +260,19 @@ namespace PropHunt.Phone
             var st = ctl.State;
             string s = $"{_tab}|{st.Phase}|{st.RoundNumber}|{st.Winner}|{st.Players.Count}|{ctl.AliveHiderCount}|{ctl.IsHost}|{st.SafehouseCode}|{(st.SafehouseReady ? 1 : 0)}";
             if (_tab == PhoneScreens.TabPlayers || _tab == PhoneScreens.TabStats) s += "|" + Mathf.FloorToInt(Time.unscaledTime);
+            if (_tab == PhoneScreens.TabMatch)
+            {
+                // Lobby: the "Players in the lobby: N" count comes from the LIVE Steam-lobby membership
+                // (ctl.LobbyMemberCount), which the base signature does NOT carry (it only has the synced roster, which
+                // is empty pre-match). Fold it in so a joining player changes the signature -> the tab rebuilds -> the
+                // count updates without needing the client to open their own app first.
+                if (st.Phase == RoundPhase.Lobby) s += "|lm" + ctl.LobbyMemberCount;
+                // Match/Safehouse: the "Auto-start next round" control is a plain button whose label is built once.
+                // SetSetting mutates local _settings synchronously, so fold the live value in -> a click flips the
+                // signature next frame -> the button label updates instantly (works for the host too, who is excluded
+                // from the SettingsBlob key below to avoid resetting a Settings-tab control mid-edit).
+                s += "|as" + (ctl.Settings != null && ctl.Settings.AutoStartNextRound ? 1 : 0);
+            }
             // Client's (read-only) Settings tab: refresh when the host's synced settings change. NOT for the host -
             // their Settings tab is being edited and must not rebuild mid-edit (it would reset the control under them).
             if (_tab == PhoneScreens.TabSettings && !ctl.IsHost) s += "|" + (st.SettingsBlob ?? "");

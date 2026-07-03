@@ -192,6 +192,11 @@ namespace PropHunt.Game
         internal int SecondsLeft =>
             _state.PhaseEndsAtUnix <= 0 ? 0 : (int)Math.Max(0, _state.PhaseEndsAtUnix - NowUnix());
 
+        /// <summary>Seconds until the next round actually starts, composed across RoundEnd -> Safehouse -> doors so it
+        /// ticks down as ONE countdown (see <see cref="RoundLogic.SecondsUntilNextRound"/>). -1 = no predictable next
+        /// round (Single, or a manual Safehouse waiting on the host).</summary>
+        internal int SecondsUntilNextRound => RoundLogic.SecondsUntilNextRound(_state, _settings, NowUnix());
+
         private static long NowUnix() => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
         /// <summary>Local reveal cue when a taunt fires (host direct; clients via the P2P handler): flash the HUD
@@ -315,6 +320,8 @@ namespace PropHunt.Game
             _decoy = new DecoyController();
             _picker = new PropPicker(this);
             _highlighter = new PropHighlighter(this);
+            PropHunt.View.EyeBlink.ResetState();   // clear any static blink/blindfold state leaked by an abnormal prior teardown
+            PropHunt.View.BodyCam.Stop();          // and any leaked body-cam camera override
             _thirdPerson = new PropHunt.View.ThirdPersonController(this);
             _catch = new CatchController(this);
             _passthrough = new PropPassthrough(this);
@@ -350,6 +357,8 @@ namespace PropHunt.Game
             _decoy = new DecoyController();
             _picker = new PropPicker(this);
             _highlighter = new PropHighlighter(this);
+            PropHunt.View.EyeBlink.ResetState();   // clear any static blink/blindfold state leaked by an abnormal prior teardown
+            PropHunt.View.BodyCam.Stop();          // and any leaked body-cam camera override
             _thirdPerson = new PropHunt.View.ThirdPersonController(this);
             _catch = new CatchController(this);
             _passthrough = new PropPassthrough(this);
@@ -493,8 +502,7 @@ namespace PropHunt.Game
                     // indexes by rank - so positions are random (host isn't always point 1) yet distinct + agreed on.
                     int idx = ShuffledSpawnIndex(rank, pts.Count, _state.SafehouseSeed);
                     var sp = pts[idx];
-                    RoundEnvironment.TeleportLocalTo(sp.Pos + UnityEngine.Vector3.up * 1f);
-                    try { var lp = Player.Local; if (lp != null) lp.transform.rotation = UnityEngine.Quaternion.Euler(0f, sp.Yaw, 0f); } catch { }
+                    RoundEnvironment.TeleportLocalTo(sp.Pos + UnityEngine.Vector3.up * 1f, sp.Yaw);   // face + move together, hidden by the blink
                     Core.Log.Msg($"[PropHunt] entered safehouse '{code}' (authored point {idx + 1}/{pts.Count}, rank {rank}, seed {_state.SafehouseSeed}).");
                     return;
                 }
@@ -650,6 +658,9 @@ namespace PropHunt.Game
             if (_stateVar == null) { EnsureStateVar(); if (_stateVar == null) return; }
             if (!_handlersRegistered) EnsureHandlers();
 
+            // drive the music-bus cross-fade every frame (fade down at the hunt, back up otherwise); cheap no-op when idle.
+            PropHunt.Music.RoundMusicController.Tick(dt);
+
             if (_isHost && _matchStarted)
             {
                 bool changed = RoundLogic.SyncRoster(_state, GetMemberIds());
@@ -696,19 +707,21 @@ namespace PropHunt.Game
 #if DEBUG
                     if (LocalRole == PlayerRole.Hider) DumpPropDebug();
 #endif
-                    // round-start music (reused game track); local per client, driven by the synced phase edge.
-                    PropHunt.Music.RoundMusicController.Play(PropHunt.Config.PropHuntPreferences.HidingMusicTrack);
                 }
-                if (_state.Phase == RoundPhase.Hunting)
-                    // Hunt begins (hunters unblinded): FADE the music out so hunters can hear the hiders' whistles
-                    // precisely. Stop() ramps the hiding track down over its native fade-out; the hunt stays quiet.
-                    PropHunt.Music.RoundMusicController.Stop();
-                // back in the safehouse / between rounds -> reset everyone to first person (a pulled-back
-                // third-person view from the last round must not carry into the lobby) + stop the round music.
+                // back in the safehouse / between rounds -> reset everyone to first person (a pulled-back third-person
+                // view from the last round must not carry into the lobby).
                 if (_state.Phase == RoundPhase.Safehouse || _state.Phase == RoundPhase.RoundEnd || _state.Phase == RoundPhase.MatchEnd)
-                {
                     _thirdPerson?.ForceOff();
-                    PropHunt.Music.RoundMusicController.Stop();
+                // MUSIC (one continuous track): the SAME track stays enabled for the whole session and NEVER restarts
+                // on a phase change. The hunt DUCKS the music volume bus to 0 (whistles are on the FX bus, unaffected)
+                // instead of stopping the track, so it keeps playing silently and RESUMES SEAMLESSLY at round end
+                // rather than restarting. Driven per client off the synced phase edge - no netcode. Skipped entirely
+                // when no music track is configured (the game's own audio is left alone).
+                var musicTrack = PropHunt.Config.PropHuntPreferences.MusicTrack;
+                if (!string.IsNullOrEmpty(musicTrack))
+                {
+                    if (_state.Phase == RoundPhase.Hunting) PropHunt.Music.RoundMusicController.MuteForHunt();
+                    else PropHunt.Music.RoundMusicController.Play(musicTrack);
                 }
                 // arming/disarming the local hunter is role-driven, not phase-edge driven -> ApplyLocalEffects
             }
@@ -780,7 +793,9 @@ namespace PropHunt.Game
             try { _border?.Dispose(); } catch { }
             try { _tauntWheel?.Dispose(); } catch { }
             try { PropHunt.Music.RoundMusicController.Stop(); } catch { }   // hand music back to the game
-            try { if (_localDownedApplied) { _localDownedApplied = false; Player.Local?.SendPassOutRecovery(); Player.Activate(); } } catch { }   // stand up + restore control if we tore down mid-ragdoll (clear flag first so it resets even if an RPC throws)
+            try { if (_localDownedApplied) { _localDownedApplied = false; Player.Local?.SendPassOutRecovery(); Player.Activate(); FreezeLocalRoot(false); } } catch { }   // stand up + restore control + re-enable the controller if we tore down mid-ragdoll (clear flag first so it resets even if an RPC throws)
+            try { PropHunt.View.BodyCam.Stop(); } catch { }                 // restore first person if we tore down mid-ragdoll body-cam
+            try { PropHunt.View.EyeBlink.ResetState(); } catch { }          // clear any blink/blindfold static state + ensure the eyes are open
             try { Quests.GuideQuest.Stop(); } catch { }   // remove the local guidance quest on session teardown
             _disguise = null;
             _decoy = null;
@@ -963,16 +978,20 @@ namespace PropHunt.Game
                 {
                     lp.SendPassOut();   // networked ragdoll (replicates to everyone). Its owner-side ExitAll disables
                                         // look/move/inventory during the knockdown - desirable while down.
+                    PropHunt.View.BodyCam.Start();   // pull the LOCAL camera out to third person so you watch your own body drop and know you're down
+                    FreezeLocalRoot(true);   // stop our own still-active CharacterController from dragging the ragdoll forward, so the redirected spine impulse decides the fall
                     SetFx("KNOCKED DOWN", new Color(0.95f, 0.55f, 0.2f));
                 }
                 else
                 {
                     lp.SendPassOutRecovery();   // un-ragdoll everywhere
+                    FreezeLocalRoot(false);     // re-enable the local CharacterController we disabled while downed
                     // PassOutRecovery does NOT re-enable control - vanilla relies on PassOutScreen.Close() -> Activate(),
                     // which we suppress (PassOutScreenGatePatch). So restore control ourselves: Player.Activate() is the
                     // exact inverse of the ExitAll that SendPassOut ran (canLook + CanMove + inventory + crosshair +
                     // LockMouse). Without this the camera stays locked ("canLook=false") after standing up.
                     Player.Activate();
+                    PropHunt.View.BodyCam.Stop();   // ease the camera back to first person now the body is upright (re-hides own body + re-enables look)
                 }
             }
             catch (Exception e) { Core.LogDebug("[PropHunt] ragdoll drive failed: " + e.Message); }
@@ -1141,37 +1160,18 @@ namespace PropHunt.Game
         private void HandleClaimTag(ulong hunter, ulong victim, Vector3 aimDir)
         {
             if (!_isHost || _state.Phase != RoundPhase.Hunting) return;
-            // host-side geometry re-validation - never trust the client's ray
+            // TRUST THE CLIENT'S HIT. The client only sends this claim after its OWN SphereCast actually struck the
+            // victim's prop hitbox / capsule (that is exactly what shows the hitmarker), so the client already did the
+            // authoritative aim-hit detection. The host previously RE-derived the geometry from the victim's CAPSULE
+            // position vs the aim and rejected on a lateral cone - but the disguise prop renders OFFSET from the capsule,
+            // so at close range (standing on the prop) and with aim/body divergence at long range that cone
+            // false-rejected clearly-landed shots (hitmarker shown, but no damage). We drop the geometry gate and just
+            // apply the hit: RoundLogic.ApplyCatch still enforces phase==Hunting + that the victim is a live hider.
+            // Casual co-op, so trusting the client's ray is the right trade-off; aimDir stays in the message for a
+            // possible future host-side raycast check but no longer gates the hit.
             PlayerRegistry.Refresh();
             var hp = PlayerRegistry.Get(hunter);
             var vp = PlayerRegistry.Get(victim);
-            if (hp != null && vp != null)
-            {
-                // No distance gate - hunters fire projectile weapons, so a hit counts at any range. The host still
-                // re-validates the AIM via the lateral-offset gate below (the shot must actually be on the prop).
-                // lateral-offset gate: a hider behind a large prop should be catchable from a wider angle
-                // than a tiny prop. maxLateral is scaled to the victim's prop size with a generous tolerance
-                // (+0.5m) to account for camera-vs-body-forward divergence.
-                float victimPropSize = PropHunt.Disguise.PropCatalog.SizeOf(PropIdOf(victim));
-                // Validate against the client's CAMERA AIM (the direction the shot was actually fired), NOT the body
-                // forward. While a player stands still the body facing diverges from where they look, so a body-forward
-                // cone grows with distance and falsely rejects long-range hits (moving toward the target aligned the
-                // body, which is why it only worked up close). aimDir is the camera forward the client sent; fall back
-                // to the body forward only for an old client that sent none.
-                var hunterFwd = (aimDir.sqrMagnitude > 0.01f) ? aimDir.normalized : hp.transform.forward;
-                var delta = vp.transform.position - hp.transform.position;
-                float along = UnityEngine.Vector3.Dot(delta, hunterFwd);
-                var lateral = delta - hunterFwd * along;
-                float lateralDist = lateral.magnitude;
-                // Allowed lateral offset SCALES with distance (a cone, not a fixed radius): a bigger prop is catchable
-                // from a wider angle. prop-size base + ~14% of the forward distance keeps it bounded.
-                float maxLateral = UnityEngine.Mathf.Clamp(victimPropSize * 0.4f, 0.15f, 2.0f) + 0.75f + UnityEngine.Mathf.Max(0f, along) * 0.14f;
-                if (lateralDist > maxLateral)
-                {
-                    Core.LogDebug($"[PropHunt] tag rejected: lateral {lateralDist:F2}m > {maxLateral:F2}m (propSize={victimPropSize:F2})");
-                    return;
-                }
-            }
             if (RoundLogic.ApplyCatch(_state, _settings, hunter, victim, NowUnix()))
             {
                 bool caught = RoundLogic.IsCaught(_state, victim);
@@ -1188,43 +1188,25 @@ namespace PropHunt.Game
             }
         }
 
-        /// <summary>Host: validate + apply a friendly-fire hit from one hunter on another. Re-validates the aim with a
-        /// lateral-offset cone (like <see cref="HandleClaimTag"/>, but a human-body base since hunters wear no prop),
-        /// then routes through <see cref="RoundLogic.ApplyHitHunter"/>. Plays blood on every accepted hit and, on the
-        /// knockdown hit, a stun cue; the ragdoll itself is driven on the victim's own client from the synced Downed
-        /// flag (see <see cref="DriveLocalRagdoll"/>). Never trusts the client's ray.</summary>
+        /// <summary>Host: apply a friendly-fire hit from one hunter on another. Trusts the client's resolved hit (same
+        /// reasoning as <see cref="HandleClaimTag"/> - no host geometry re-validation, which false-rejected landed
+        /// shots). <see cref="RoundLogic.ApplyHitHunter"/> still gates FriendlyFire + that both are live hunters. Plays
+        /// blood on every accepted hit and, on the knockdown hit, a stun cue; the ragdoll is driven on the victim's own
+        /// client from the synced Downed flag (see <see cref="DriveLocalRagdoll"/>).</summary>
         private void HandleHitHunter(ulong shooter, ulong victim, Vector3 aimDir)
         {
             if (!_isHost || _state.Phase != RoundPhase.Hunting || !_settings.FriendlyFire) return;
             PlayerRegistry.Refresh();
             var hp = PlayerRegistry.Get(shooter);
             var vp = PlayerRegistry.Get(victim);
-            // Require BOTH players resolved/online so the geometry gate always runs - otherwise a client could target a
-            // just-disconnected hunter (still in GameState until the next SyncRoster) and skip the aim validation.
-            if (hp == null || vp == null)
-            {
-                Core.LogDebug($"[PropHunt] FF hit rejected: shooter/victim not resolved (hp={hp != null}, vp={vp != null}).");
-                return;
-            }
-            // validate against the client's CAMERA AIM (the shot direction), not the body facing (long-range fix - see HandleClaimTag).
-            var hunterFwd = (aimDir.sqrMagnitude > 0.01f) ? aimDir.normalized : hp.transform.forward;
-            var delta = vp.transform.position - hp.transform.position;
-            float along = UnityEngine.Vector3.Dot(delta, hunterFwd);
-            var lateral = delta - hunterFwd * along;
-            float maxLateral = 0.9f + UnityEngine.Mathf.Max(0f, along) * 0.14f;   // human-body base + a widening cone with range
-            if (lateral.magnitude > maxLateral)
-            {
-                Core.LogDebug($"[PropHunt] FF hit rejected: lateral {lateral.magnitude:F2}m > {maxLateral:F2}m");
-                return;
-            }
             if (RoundLogic.ApplyHitHunter(_state, _settings, shooter, victim, NowUnix(), out bool newlyDowned))
             {
-                var vpos = vp.transform.position;
+                var vpos = vp != null ? vp.transform.position : (hp != null ? hp.transform.position : Vector3.zero);
                 // blood spurt on the hit hunter (pure feedback; the gun does no real damage - see DisableVanillaPlayerDeath).
                 try { vp?.Health?.PlayBloodMist(); } catch { }
                 if (newlyDowned)
                 {
-                    SetKnockback(victim, vp.transform.position - hp.transform.position);   // ragdoll away from the shooter
+                    if (hp != null && vp != null) SetKnockback(victim, vp.transform.position - hp.transform.position);   // ragdoll away from the shooter
                     // reuse the concussion "stun" cue (sound + STUNNED flash for nearby hunters); the ragdoll is driven
                     // on the victim's own client off the synced Downed flag.
                     BroadcastFx(new StunFxMessage { ThrowerId = shooter, X = vpos.x, Y = vpos.y, Z = vpos.z });
@@ -1388,6 +1370,7 @@ namespace PropHunt.Game
         /// safehouse whose interior spawn sits near one edge) strands the hider outside the wall within seconds and
         /// eliminates them. 50m is the smallest that reliably contains the smallest safehouse + its immediate yard.</summary>
         private const float MinPlayAreaRadius = 50f;
+        private const string TrashGrabberId = "trashgrabber";   // vanilla item id (DragManager checks ItemInstance.ID == "trashgrabber")
 
         // ---- local effects (freeze + blind hunters during hiding), applied only on change ----
 
@@ -1414,11 +1397,21 @@ namespace PropHunt.Game
             SetBlind(blind);
             SetHotbar(hotbar);
 
-            // arm/disarm is role-driven (the single authority): a hunter holds exactly one weapon during the hunt;
-            // anyone who stops being a hunter (Continuous swap, or any non-hunter) is stripped, so the gun never
-            // persists or stacks across rounds. Both calls are idempotent (GetAmountOfItem guards).
-            if (role == PlayerRole.Hunter && phase == RoundPhase.Hunting) RoundEnvironment.GiveWeapon(_settings.HunterWeapon);
-            else if (role != PlayerRole.Hunter) RoundEnvironment.RemoveWeapon(_settings.HunterWeapon);
+            // arm/disarm is role-driven (the single authority): a hunter holds their weapon PLUS the trash grabber
+            // during the hunt; anyone who stops being a hunter (Continuous swap, or any non-hunter) is stripped, so
+            // nothing persists or stacks across rounds. All calls are idempotent (GetAmountOfItem guards).
+            // The trash grabber lets hunters clear trash so hiders can't permanently hide as litter on the open street;
+            // it's a separate tool (Equippable_TrashGrabber) so using it never triggers the weapon-fire catch ray.
+            if (role == PlayerRole.Hunter && phase == RoundPhase.Hunting)
+            {
+                RoundEnvironment.GiveWeapon(_settings.HunterWeapon);
+                RoundEnvironment.GiveWeapon(TrashGrabberId);
+            }
+            else if (role != PlayerRole.Hunter)
+            {
+                RoundEnvironment.RemoveWeapon(_settings.HunterWeapon);
+                RoundEnvironment.RemoveWeapon(TrashGrabberId);
+            }
 
             // a new hunter starts in first person (the catch/fire raycast comes from the camera); they can still
             // toggle 3rd person with V. Without this, a hider caught into a hunter stays stuck in the pulled-back view.
@@ -1454,16 +1447,26 @@ namespace PropHunt.Game
             catch (Exception e) { Core.LogDebug("[PropHunt] SetFrozen failed: " + e.Message); }
         }
 
+        /// <summary>Freeze/unfreeze the LOCAL player root by toggling its CharacterController during a knockdown. Vanilla
+        /// pass-out never disables the owner's controller, so it keeps sliding the root toward the player's facing and
+        /// drags the ragdoll anchor with it - which overrides the directional knockback impulse and makes the OWNER'S
+        /// OWN body always topple forward (observers have no local controller, so they see the correct direction). With
+        /// the controller off, the root stays put and the redirected <see cref="Patches.PassOutKnockbackPatch"/> spine
+        /// impulse decides the fall. Purely local; re-enabled on recovery.</summary>
+        private void FreezeLocalRoot(bool freeze)
+        {
+            try { var pm = PlayerSingleton<PlayerMovement>.Instance; if (pm != null && pm.Controller != null) pm.Controller.enabled = !freeze; }
+            catch (Exception e) { Core.LogDebug("[PropHunt] FreezeLocalRoot failed: " + e.Message); }
+        }
+
         private void SetBlind(bool blind)
         {
             if (blind == _appliedBlind) return;
             _appliedBlind = blind;
-            try
-            {
-                var ov = Singleton<BlackOverlay>.Instance;
-                if (ov != null) { if (blind) ov.Open(0.25f); else ov.Close(0.25f); }
-            }
-            catch (Exception e) { Core.LogDebug("[PropHunt] SetBlind failed: " + e.Message); }
+            // Close the hunter's EYES for the hide phase (and open them when the hunt begins) - feels far cleaner than
+            // slapping a black screen over the view. EyeBlink drives the vanilla eyelid overlay locally.
+            if (blind) PropHunt.View.EyeBlink.Blind();
+            else PropHunt.View.EyeBlink.Unblind();
         }
     }
 }

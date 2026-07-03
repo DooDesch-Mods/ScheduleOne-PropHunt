@@ -34,6 +34,7 @@ namespace PropHunt.View
         {
             try
             {
+                if (BodyCam.Active) return;   // a downed player's body-cam owns the camera + own-body visibility - stand down
                 if (Input.GetKeyDown(KeyBinds.ThirdPerson) && Allowed) _on = !_on;
                 bool active = _on && Allowed;
                 ThirdPersonView.Active = active;

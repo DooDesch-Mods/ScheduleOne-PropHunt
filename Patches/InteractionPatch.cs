@@ -2,6 +2,7 @@ using HarmonyLib;
 using Il2CppScheduleOne.Interaction;
 using Il2CppScheduleOne.ItemFramework;
 using Il2CppScheduleOne.Dragging;
+using Il2CppScheduleOne.Equipping;
 using PropHunt.Game;
 
 namespace PropHunt.Patches
@@ -40,10 +41,24 @@ namespace PropHunt.Patches
                 if (!RoundInteractionGate.RoundActive) return true;
                 var hovered = __instance.HoveredInteractableObject;
                 if (hovered == null) return true;
+                // A hunter holding the trash grabber MUST be able to grab trash (it clears hiding spots). Trash pickup
+                // runs through the trash's Draggable interaction (TrashItem.Interacted -> PickupTrash), which IsPickup
+                // would otherwise block. Allow it when the grabber is equipped AND the hovered object is REAL trash.
+                // A disguised hider is a prop clone, NOT a TrashItem, so this never grabs a hider (they're still caught
+                // with the gun); and the prompt stays hidden below, so a missing prompt can't out a hider.
+                if (Equippable_TrashGrabber.IsEquipped && IsTrash(hovered)) return true;
                 if (IsPickup(hovered)) return false;   // block picking up a prop; doors / others still interact
             }
             catch { }
             return true;
+        }
+
+        /// <summary>True if the interactable belongs to a real trash item (grabbable by the trash grabber). A disguised
+        /// hider is a prop clone, not a TrashItem, so this is false for them.</summary>
+        private static bool IsTrash(InteractableObject io)
+        {
+            try { return io.GetComponentInParent<Il2CppScheduleOne.Trash.TrashItem>() != null; }
+            catch { return false; }
         }
 
         /// <summary>True if the interactable belongs to a pickup or draggable world item (vs a door, switch, etc.).</summary>

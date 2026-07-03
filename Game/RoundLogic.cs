@@ -166,12 +166,41 @@ namespace PropHunt.Game
             }
         }
 
+        /// <summary>Broadcast window (seconds) after the host/auto confirms the next round, before the doors open into
+        /// Hiding - lets every client receive the "ready" state first.</summary>
+        internal const int DoorsOpenSeconds = 3;
+
         /// <summary>Host confirmed the next-round settings - open the doors after a short broadcast window so every
         /// client has the "ready" state before the round starts.</summary>
         internal static void ConfirmSafehouseReady(GameState s, long now)
         {
             s.SafehouseReady = true;
-            s.PhaseEndsAtUnix = now + 3;
+            s.PhaseEndsAtUnix = now + DoorsOpenSeconds;
+        }
+
+        /// <summary>Seconds until the NEXT round actually starts (Hiding), composed across the remaining between-round
+        /// phases so it counts down MONOTONICALLY instead of resetting per phase: RoundEnd scoreboard -> auto-start
+        /// Safehouse pause -> doors-opening window all roll into one number. Returns -1 when there is no predictable
+        /// next round (Single match, or a manual Safehouse where the host decides when to start). Pure + clamped, so
+        /// the HUD can poll it every frame.</summary>
+        internal static int SecondsUntilNextRound(GameState s, RoundSettings set, long now)
+        {
+            if (set == null || set.Structure != RoundStructure.Continuous) return -1;
+            int cur = s.PhaseEndsAtUnix > 0 ? (int)Math.Max(0, s.PhaseEndsAtUnix - now) : 0;
+            switch (s.Phase)
+            {
+                case RoundPhase.RoundEnd:
+                    // scoreboard remaining, then (auto) the whole Safehouse pause + doors window still to come
+                    if (!set.AutoStartNextRound) return s.PhaseEndsAtUnix > 0 ? cur : -1;
+                    return cur + AutoStartPauseSeconds + DoorsOpenSeconds;
+                case RoundPhase.Safehouse:
+                    if (s.SafehouseReady) return cur;                                    // doors opening -> just this window
+                    if (set.AutoStartNextRound && s.RoundNumber >= 1 && s.PhaseEndsAtUnix > 0)
+                        return cur + DoorsOpenSeconds;                                    // auto pause + the doors window to come
+                    return -1;                                                           // manual lobby (round 0 / auto off): host decides
+                default:
+                    return -1;
+            }
         }
 
         /// <summary>Advance the round machine one tick. Returns true if the state changed (re-publish). Also stands
