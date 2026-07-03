@@ -661,14 +661,19 @@ namespace PropHunt.Game
             // drive the music-bus cross-fade every frame (fade down at the hunt, back up otherwise); cheap no-op when idle.
             PropHunt.Music.RoundMusicController.Tick(dt);
 
-            if (_isHost && _matchStarted)
+            if (_isHost)
             {
+                // Keep the roster live even BEFORE the match starts (in the pre-match Lobby) so the Stats/Players tabs
+                // show every joiner, not just the host. The round machine (TickHost) still only runs once started.
                 bool changed = RoundLogic.SyncRoster(_state, GetMemberIds());
-                // pre-select the safehouse (size-based) BEFORE TickHost may transition RoundEnd -> Safehouse,
-                // so the pure RoundLogic can read the chosen code without any engine/Property dependency.
-                if (_state.Phase == RoundPhase.RoundEnd && _settings.Structure == RoundStructure.Continuous && !SafehouseSelector.Fits(_state.SafehouseCode, _state.Players.Count))
-                    _state.SafehouseCode = SafehouseSelector.SelectForPlayerCount(_state.Players.Count);
-                if (RoundLogic.TickHost(_state, _settings, NowUnix())) changed = true;
+                if (_matchStarted)
+                {
+                    // pre-select the safehouse (size-based) BEFORE TickHost may transition RoundEnd -> Safehouse,
+                    // so the pure RoundLogic can read the chosen code without any engine/Property dependency.
+                    if (_state.Phase == RoundPhase.RoundEnd && _settings.Structure == RoundStructure.Continuous && !SafehouseSelector.Fits(_state.SafehouseCode, _state.Players.Count))
+                        _state.SafehouseCode = SafehouseSelector.SelectForPlayerCount(_state.Players.Count);
+                    if (RoundLogic.TickHost(_state, _settings, NowUnix())) changed = true;
+                }
                 if (changed) PushState();
             }
 
@@ -1078,7 +1083,7 @@ namespace PropHunt.Game
         {
             float maxDim = PropHunt.Disguise.PropCatalog.SizeOf(propId);
             int hp = UnityEngine.Mathf.RoundToInt(maxDim * UnityEngine.Mathf.Max(1, _settings.HitsToCatch));
-            return UnityEngine.Mathf.Clamp(hp, 1, 25);
+            return UnityEngine.Mathf.Clamp(hp, 1, UnityEngine.Mathf.Max(1, _settings.HiderMaxHp));   // size-scaled HP, capped at the host's Max hider HP
         }
 
         private void HandleLock(ulong sender, bool locked)

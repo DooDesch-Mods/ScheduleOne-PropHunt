@@ -32,6 +32,7 @@ namespace PropHunt.Config
         private static MelonPreferences_Entry<string> _hunterWeapon;
         private static MelonPreferences_Entry<bool> _friendlyFire;
         private static MelonPreferences_Entry<int> _hunterHitsToDown;
+        private static MelonPreferences_Entry<int> _hiderMaxHp;
         private static MelonPreferences_Entry<float> _hunterDownBaseSeconds;
         private static MelonPreferences_Entry<float> _hunterDownMaxSeconds;
         private static MelonPreferences_Entry<float> _concussStunSeconds;
@@ -72,7 +73,9 @@ namespace PropHunt.Config
             _tagRange = CreateEntry("TagRange", 4f, "Catch range (metres)",
                 "How close a hunter must be, looking at a hider, to catch them.");
             _hitsToCatch = CreateEntry("HitsToCatch", 2, "Prop HP per metre",
-                "Disguise HP scales with prop size: a prop needs round(largest dimension * this) hits to catch (clamped 1-25). Bigger props tank far more shots.");
+                "Disguise HP scales with prop size: a prop needs round(largest dimension * this) hits to catch, capped by Max hider HP. Bigger props tank more shots.");
+            _hiderMaxHp = CreateEntry("HiderMaxHp", 4, "Max hider HP",
+                "The most HP any prop disguise can have. Size still scales HP (via Prop HP per metre) up to this cap.");
             _maxPropChanges = CreateEntry("MaxPropChanges", 5, "Max prop changes per round",
                 "How many times a hider may (re)pick a prop each round. Each change resets their HP. 0 = unlimited.");
             _maxDecoys = CreateEntry("MaxDecoys", 4, "Decoys per prop",
@@ -95,7 +98,7 @@ namespace PropHunt.Config
                 "Item id given to each hunter at hunt start (e.g. pumpshotgun, m1911, machete). Empty = none.");
             _friendlyFire = CreateEntry("FriendlyFire", true, "Friendly fire (hunters)",
                 "Whether hunters can knock each other down with friendly fire (ragdoll, never kill).");
-            _hunterHitsToDown = CreateEntry("HunterHitsToDown", 3, "Friendly hits to down",
+            _hunterHitsToDown = CreateEntry("HunterHitsToDown", 4, "Friendly hits to down",
                 "Friendly-fire hits a hunter takes before being knocked down (their HP).");
             _hunterDownBaseSeconds = CreateEntry("HunterDownBaseSeconds", 3f, "Knockdown time (seconds)",
                 "How long a hunter is ragdolled when first knocked down.");
@@ -148,6 +151,7 @@ namespace PropHunt.Config
         internal static int RoundsBeforeSwap => Mathf.Max(1, _roundsBeforeSwap?.Value ?? 1);
         internal static float TagRange => Mathf.Max(0.5f, _tagRange?.Value ?? 4f);
         internal static int HitsToCatch => Mathf.Max(1, _hitsToCatch?.Value ?? 2);
+        internal static int HiderMaxHp => Mathf.Clamp(_hiderMaxHp?.Value ?? 4, 1, 25);
         internal static int MaxPropChanges => Mathf.Max(0, _maxPropChanges?.Value ?? 5);
         internal static int MaxDecoys => Mathf.Max(0, _maxDecoys?.Value ?? 4);
         internal static int ConcussCharges => Mathf.Max(0, _concussCharges?.Value ?? 1);
@@ -202,6 +206,7 @@ namespace PropHunt.Config
                 RoundsBeforeSwap = RoundsBeforeSwap,
                 TagRange = TagRange,
                 HitsToCatch = HitsToCatch,
+                HiderMaxHp = HiderMaxHp,
                 MaxPropChanges = MaxPropChanges,
                 MaxDecoys = MaxDecoys,
                 ConcussCharges = ConcussCharges,

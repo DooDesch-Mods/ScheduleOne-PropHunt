@@ -20,7 +20,8 @@ namespace PropHunt.Game
         internal int TauntIntervalSeconds = 30;
         internal float WhistleStaggerSeconds = 0.3f;   // gap between each hider's sound in the global whistle sweep (CoD WWII style)
         internal float PlayAreaRadius = 75f;
-        internal int HitsToCatch = 2;           // prop HP per metre of size: MaxHits = round(maxDimension * this), clamped
+        internal int HitsToCatch = 2;           // prop HP per metre of size: MaxHits = round(maxDimension * this), capped by HiderMaxHp
+        internal int HiderMaxHp = 4;            // cap on a hider's prop HP - the size-scaled value is clamped to this (host-configurable)
         internal int MaxPropChanges = 5;        // how many times a hider may (re)pick a prop per round (0 = unlimited); each change resets HP
         internal int MaxDecoys = 4;             // decoys ([Q]) a hider may drop PER PROP (refills on prop change; 0 = none)
         internal int ConcussCharges = 1;        // concussions ([G]) a hider may use PER PROP (refills on prop change, CoD-style; 0 = none)
@@ -62,6 +63,7 @@ namespace PropHunt.Game
                 "wstag=" + WhistleStaggerSeconds.ToString(ci),
                 "area=" + PlayAreaRadius.ToString(ci),
                 "hits=" + HitsToCatch.ToString(ci),
+                "hidermaxhp=" + HiderMaxHp.ToString(ci),
                 "chg=" + MaxPropChanges.ToString(ci),
                 "decoy=" + MaxDecoys.ToString(ci),
                 "conc=" + ConcussCharges.ToString(ci),
@@ -120,6 +122,7 @@ namespace PropHunt.Game
                 case "wstag": if (float.TryParse(v, NumberStyles.Float, ci, out var wst)) WhistleStaggerSeconds = wst; break;
                 case "area": if (float.TryParse(v, NumberStyles.Float, ci, out var ar)) PlayAreaRadius = ar; break;
                 case "hits": if (int.TryParse(v, NumberStyles.Integer, ci, out var ht)) HitsToCatch = ht; break;
+                case "hidermaxhp": if (int.TryParse(v, NumberStyles.Integer, ci, out var hmh)) HiderMaxHp = hmh; break;
                 case "chg": if (int.TryParse(v, NumberStyles.Integer, ci, out var cg)) MaxPropChanges = cg; break;
                 case "decoy": if (int.TryParse(v, NumberStyles.Integer, ci, out var dc)) MaxDecoys = dc; break;
                 case "conc": if (int.TryParse(v, NumberStyles.Integer, ci, out var cc)) ConcussCharges = cc; break;

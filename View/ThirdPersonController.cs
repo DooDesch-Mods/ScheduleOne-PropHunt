@@ -17,6 +17,8 @@ namespace PropHunt.View
         private bool _on;
         private bool? _appliedArmsVisible;
         private ViewmodelAvatar _viewmodel;
+        private float _scrollAccum;   // fractional mouse-wheel notches not yet consumed (hi-res wheels/trackpads emit &lt;1)
+        private float _zoomVel;       // SmoothDamp velocity for the zoom distance
 
         internal ThirdPersonController(GameModeController ctl) { _ctl = ctl; }
 
@@ -55,13 +57,34 @@ namespace PropHunt.View
         {
             try
             {
+                // 1) auto-frame the BASE distance/height to the prop's size (undisguised -> a sensible default).
                 float size = _ctl.LocalPropId >= 0 ? PropHunt.Disguise.PropCatalog.SizeOf(_ctl.LocalPropId) : 0f;
                 if (size > 0f)
                 {
-                    ThirdPersonView.Distance = Mathf.Clamp(size * 1.7f + 1.0f, 1.6f, 9f);
+                    ThirdPersonView.BaseDistance = Mathf.Clamp(size * 1.7f + 1.0f, 1.6f, 9f);
                     ThirdPersonView.Height = Mathf.Clamp(size * 0.4f, 0.2f, 2f);
                 }
-                else { ThirdPersonView.Distance = 2.8f; ThirdPersonView.Height = 0.4f; }
+                else { ThirdPersonView.BaseDistance = 2.8f; ThirdPersonView.Height = 0.4f; }
+
+                // 2) mouse-wheel zoom (only in this hider-only third-person view, so it never fights the hotbar scroll -
+                //    a disguised hider has no hotbar anyway). Accumulate fractional notches, apply a MULTIPLICATIVE step
+                //    (feels consistent from a tiny prop to a huge one), clamp RELATIVE to the auto distance.
+                _scrollAccum += Input.mouseScrollDelta.y;
+                int guard = 0;
+                while (Mathf.Abs(_scrollAccum) >= 1f && guard++ < 6)
+                {
+                    float notch = Mathf.Sign(_scrollAccum);   // scroll UP (+) = zoom IN, scroll DOWN (-) = zoom OUT
+                    ThirdPersonView.ZoomMultiplier = Mathf.Clamp(
+                        ThirdPersonView.ZoomMultiplier * Mathf.Pow(1f + ThirdPersonView.ZoomStepPercent, -notch),
+                        ThirdPersonView.ZoomMultiplierMin, ThirdPersonView.ZoomMultiplierMax);
+                    _scrollAccum -= notch;
+                }
+
+                // 3) smoothly approach the zoom-applied, globally-clamped target distance (never jump the camera). The
+                //    RELATIVE multiplier persists across prop changes on purpose - a chosen framing carries over safely.
+                float wanted = Mathf.Clamp(ThirdPersonView.BaseDistance * ThirdPersonView.ZoomMultiplier,
+                                           ThirdPersonView.GlobalMinDistance, ThirdPersonView.GlobalMaxDistance);
+                ThirdPersonView.Distance = Mathf.SmoothDamp(ThirdPersonView.Distance, wanted, ref _zoomVel, 0.12f);
             }
             catch { }
         }
@@ -94,6 +117,8 @@ namespace PropHunt.View
         {
             _on = false;
             ThirdPersonView.Active = false;
+            ThirdPersonView.ZoomMultiplier = 1f;   // new session starts at the auto default zoom
+            _scrollAccum = 0f;
             SetArmsVisible(true);
             SetOwnBodyVisible(false);   // back to standard first person (don't see your own body)
         }

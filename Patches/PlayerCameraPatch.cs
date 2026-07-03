@@ -15,12 +15,14 @@ namespace PropHunt.Patches
     [HarmonyPatch(typeof(PlayerCamera), "LateUpdate")]
     internal static class PlayerCameraThirdPersonPatch
     {
+        private static float _tpResolved;   // smoothed rendered third-person distance (snap-in on walls, ease-out otherwise)
+
         private static void Postfix(PlayerCamera __instance)
         {
             // A downed player's body-cam owns the camera: aim it at their own ragdoll (position is set by the game's
             // PlayerCamera.OverrideTransform; we only re-aim here, after LateUpdate, so the aim tracks the settling body).
             if (BodyCam.Active) { BodyCam.Track(__instance); return; }
-            if (!SpectatorCam.Active && !ThirdPersonView.Active) return;
+            if (!SpectatorCam.Active && !ThirdPersonView.Active) { _tpResolved = 0f; return; }
             try
             {
                 var cam = __instance.Camera;
@@ -48,10 +50,15 @@ namespace PropHunt.Patches
                 if (!ThirdPersonView.Active) return;
                 Vector3 eye = t.position;
                 Vector3 back = -t.forward;
-                float dist = ThirdPersonView.Distance;
-                if (Physics.Raycast(eye, back, out var hit, dist + 0.3f))
-                    dist = Mathf.Max(0.3f, hit.distance - 0.3f);   // don't push through a wall behind the player
-                t.position = eye + back * dist + Vector3.up * ThirdPersonView.Height;
+                float wallDist = ThirdPersonView.Distance;
+                if (Physics.Raycast(eye, back, out var hit, wallDist + 0.3f))
+                    wallDist = Mathf.Max(0.3f, hit.distance - 0.3f);   // don't push through a wall behind the player
+                // Snap IN the instant a wall appears (never render a frame through geometry) but EASE back out when it
+                // clears or the player zooms out, so the pull-back never pops. (Distance is already smoothed upstream.)
+                if (_tpResolved <= 0f) _tpResolved = wallDist;
+                float lambda = wallDist < _tpResolved ? 40f : 8f;
+                _tpResolved = Mathf.Lerp(_tpResolved, wallDist, 1f - Mathf.Exp(-lambda * Time.deltaTime));
+                t.position = eye + back * _tpResolved + Vector3.up * ThirdPersonView.Height;
                 // rotation is left as the game set it, so mouse-look still aims the view forward
             }
             catch { }

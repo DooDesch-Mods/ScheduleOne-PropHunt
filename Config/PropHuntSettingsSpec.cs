@@ -40,6 +40,7 @@ namespace PropHunt.Config
 
                 // --- Props ---
                 IntSlider("Props", "hits",    "Prop toughness",   "Bigger props are naturally tankier at higher values (HP per metre).", 1, 10, 1, null, PropHuntPreferences.HitsToCatch),
+                IntSlider("Props", "hidermaxhp", "Max hider HP",  "The most HP any prop disguise can have - size still scales HP up to this cap.", 1, 10, 1, null, PropHuntPreferences.HiderMaxHp),
                 IntSlider("Props", "chg",     "Max prop changes", "Re-picks per round; each resets HP (0 = unlimited).",   0, 20, 1, null, PropHuntPreferences.MaxPropChanges),
                 Toggle   ("Props", "freechg", "Unlimited changes while hiding", "Prop changes during the hiding phase are unlimited; the limit applies only once the hunt starts.", PropHuntPreferences.FreeChangesInHiding),
                 Toggle   ("Props", "rnd",     "Random prop [2]",  "Let hiders press [2] to become a random prop.",         PropHuntPreferences.AllowRandomChange),
