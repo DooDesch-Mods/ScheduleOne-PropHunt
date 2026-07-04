@@ -12,6 +12,11 @@
     <Compile Remove="Workspace/**/*.cs" />
   </ItemGroup>
 
+  <!-- Shared "eyes close -> act -> open" transition primitive (DooDesch.Transition). Own namespace, NOT embedded in
+       SideHustle.dll (unlike DooDesch.UI), so compiling it here creates no duplicate type. MUST come AFTER the
+       Workspace Remove above so CI does not strip the included files. -->
+  <Import Project="$(MSBuildThisFileDirectory)../Workspace/build/ScreenTransition.props" Condition="Exists('$(MSBuildThisFileDirectory)../Workspace/build/ScreenTransition.props')" />
+
   <!-- NOTE: PropHunt does NOT compile the DooDesch.UI source itself (no DooDeschUI.props import). It already
        references SideHustle.dll, which embeds the DooDesch.UI design system (Theme/Components are public there),
        so the in-game phone app uses those types straight from SideHustle.dll. Re-compiling them here would create
