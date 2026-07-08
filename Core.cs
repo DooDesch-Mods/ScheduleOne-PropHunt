@@ -2,7 +2,7 @@ using System;
 using MelonLoader;
 using PropHunt.Config;
 
-[assembly: MelonInfo(typeof(PropHunt.Core), "PropHunt", "0.1.0", "DooDesch", null)]
+[assembly: MelonInfo(typeof(PropHunt.Core), "PropHunt", "1.0.0", "DooDesch", "https://github.com/DooDesch-Mods/ScheduleOne-PropHunt")]
 [assembly: MelonGame("TVGS", "Schedule I")]
 [assembly: MelonOptionalDependencies("SideHustle")]   // PropHunt is launched from the Side Hustle gamemode hub
 

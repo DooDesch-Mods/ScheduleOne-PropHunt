@@ -4,8 +4,14 @@ obj/
 
 # IDE
 .vs/
+.claude/
 *.user
 *.suo
+
+# Release artifacts
+release/
+*.zip
+thunderstore-package/
 
 # OS
 Thumbs.db
