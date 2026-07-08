@@ -74,6 +74,9 @@ namespace PropHunt
                     BlockSaveDuringSession = true,
                     SuppressNpcCombatReactions = true,
                     DisableVanillaPlayerDeath = true,
+                    // Default the host form to "Required mods only" so everyone plays on an identical, clean set
+                    // (fewer "we're all on different mods" desyncs). The host can still switch back before starting.
+                    DefaultRequiredModsOnly = true,
                     // Keep PropHunt's session clean: disable unrelated gameplay/world mods that could interfere,
                     // but allow a few harmless ones to stay. PropHunt's own mod, S1API and the Side Hustle hub are
                     // always kept (essentials); SteamNetworkLib is a UserLib that is never disabled; and BiggerLobbies
