@@ -131,6 +131,7 @@ Press `H` any time for the in-game controls overlay.
   plus SteamNetworkLib and BiggerLobbies.
 - **[Side Hustle](https://github.com/DooDesch-Mods/ScheduleOne-SideHustle)** - the gamemode
   hub PropHunt runs inside.
+- **Testers** - DonyThePony, fadestyle, xAkitoh, godofn00bs. Thanks for the playtesting.
 
 ## License
 

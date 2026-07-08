@@ -47,4 +47,6 @@ A mod manager installs all of these automatically.
 
 Everyone in the lobby needs the same mods and the same PropHunt build.
 
+Thanks to the beta testers: DonyThePony, fadestyle, xAkitoh, godofn00bs.
+
 Provided as-is under the MIT License. Built on [S1API](https://github.com/ifBars/S1API) by ifBars.
