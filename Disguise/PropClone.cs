@@ -366,6 +366,7 @@ namespace PropHunt.Disguise
                 if (mf.GetComponentInParent<Il2CppScheduleOne.Tiles.FootprintTile>() != null) return true;
                 if (mf.GetComponentInParent<Il2CppScheduleOne.Tiles.TileAppearance>() != null) return true;
                 if (mf.GetComponentInParent<Il2CppScheduleOne.Building.ActivateDuringBuild>() != null) return true;
+                if (mf.GetComponentInParent<Il2CppScheduleOne.Building.OverrideGhostMaterial>() != null) return true;   // build-only "yellow box" overlay - keeps the jukebox from floating (its low mesh dragged min.y down)
             }
             catch { }
             return false;
@@ -449,6 +450,12 @@ namespace PropHunt.Disguise
                 if (trs != null) for (int i = 0; i < trs.Length; i++)
                 { try { if (trs[i] != null && !trs[i].gameObject.activeSelf) trs[i].gameObject.SetActive(true); } catch { } }
 
+                // Regenerate any kept text meshes (a sign's runtime-set label): the clone was built inactive, so TMP
+                // never generated its mesh; now that the objects are active, force it so the text shows on the disguise.
+                var tmps = go.GetComponentsInChildren<Il2CppTMPro.TMP_Text>(true);
+                if (tmps != null) for (int i = 0; i < tmps.Length; i++)
+                { try { if (tmps[i] != null) tmps[i].ForceMeshUpdate(false, false); } catch { } }
+
                 // Deliberately do NOT blanket-enable disabled renderers. A renderer left DISABLED in the source is an
                 // intentional PROXY - an interaction/collision-visualiser box (the "Cube" on an ATM / mailbox / vehicle);
                 // force-enabling those spawned a stray white box over the prop. A distance-CULLED VISUAL instead keeps
@@ -520,6 +527,12 @@ namespace PropHunt.Disguise
                 var adb = go.GetComponentsInChildren<Il2CppScheduleOne.Building.ActivateDuringBuild>(true);
                 if (adb != null) for (int i = 0; i < adb.Length; i++)
                 { try { if (adb[i] != null) Object.DestroyImmediate(adb[i].gameObject); } catch { } }
+                // (c) build-only coloured placement overlays (the "yellow box" on e.g. MixingStationMk2): a mesh flagged
+                //     OverrideGhostMaterial keeps its authored material during placement (BuildManager skips recolouring
+                //     it) and is INACTIVE in the placed prefab, so the EnableAllVisuals activation sweep would un-hide it.
+                var ogm = go.GetComponentsInChildren<Il2CppScheduleOne.Building.OverrideGhostMaterial>(true);
+                if (ogm != null) for (int i = 0; i < ogm.Length; i++)
+                { try { if (ogm[i] != null) Object.DestroyImmediate(ogm[i].gameObject); } catch { } }
             }
             catch { }
 
@@ -546,7 +559,20 @@ namespace PropHunt.Disguise
             // every game script + FishNet NetworkBehaviour (all derive from MonoBehaviour). Destroy each while the
             // clone is inactive so its Awake never runs.
             var mbs = go.GetComponentsInChildren<MonoBehaviour>(true);
-            if (mbs != null) for (int i = 0; i < mbs.Length; i++) { try { if (mbs[i] != null) Object.DestroyImmediate(mbs[i]); } catch { } }
+            if (mbs != null) for (int i = 0; i < mbs.Length; i++)
+            {
+                try
+                {
+                    var mb = mbs[i];
+                    if (mb == null) continue;
+                    // Keep text renderers (a prop's runtime-set label, e.g. the roadsign's "Curfew tonight ..."): TMP is
+                    // a MonoBehaviour, so the blanket sweep would destroy it. It carries no networking / game-logic Awake,
+                    // and the clone activates it afterwards so the text mesh regenerates. See EnableAllVisuals.
+                    if (mb.TryCast<Il2CppTMPro.TMP_Text>() != null) continue;
+                    Object.DestroyImmediate(mb);
+                }
+                catch { }
+            }
         }
     }
 }

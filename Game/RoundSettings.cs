@@ -16,6 +16,7 @@ namespace PropHunt.Game
         internal int RoundEndSeconds = 15;
         internal int PlayersPerHunter = 5;
         internal int RoundsBeforeSwap = 1;
+        internal int HiderSpeedPercent = 90;    // hiders move at this % of hunter speed (100 = same); applied client-local per role
         internal float TagRange = 4f;
         internal int TauntIntervalSeconds = 30;
         internal float WhistleStaggerSeconds = 0.3f;   // gap between each hider's sound in the global whistle sweep (CoD WWII style)
@@ -58,6 +59,7 @@ namespace PropHunt.Game
                 "end=" + RoundEndSeconds.ToString(ci),
                 "pph=" + PlayersPerHunter.ToString(ci),
                 "swap=" + RoundsBeforeSwap.ToString(ci),
+                "hiderspeed=" + HiderSpeedPercent.ToString(ci),
                 "tag=" + TagRange.ToString(ci),
                 "taunt=" + TauntIntervalSeconds.ToString(ci),
                 "wstag=" + WhistleStaggerSeconds.ToString(ci),
@@ -117,6 +119,7 @@ namespace PropHunt.Game
                 case "end": if (int.TryParse(v, NumberStyles.Integer, ci, out var en)) RoundEndSeconds = en; break;
                 case "pph": if (int.TryParse(v, NumberStyles.Integer, ci, out var pph)) PlayersPerHunter = pph; break;
                 case "swap": if (int.TryParse(v, NumberStyles.Integer, ci, out var sw)) RoundsBeforeSwap = sw; break;
+                case "hiderspeed": if (int.TryParse(v, NumberStyles.Integer, ci, out var hsp)) HiderSpeedPercent = hsp; break;
                 case "tag": if (float.TryParse(v, NumberStyles.Float, ci, out var tg)) TagRange = tg; break;
                 case "taunt": if (int.TryParse(v, NumberStyles.Integer, ci, out var ta)) TauntIntervalSeconds = ta; break;
                 case "wstag": if (float.TryParse(v, NumberStyles.Float, ci, out var wst)) WhistleStaggerSeconds = wst; break;

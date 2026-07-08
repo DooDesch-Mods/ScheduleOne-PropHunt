@@ -31,7 +31,7 @@ namespace PropHunt.Phone
             SmoothScroll.Attach(scroll);   // smooth wheel glide for every phone list (driven by PropHuntPhoneApp.Tick)
             switch (tab)
             {
-                case TabPlayers: BuildPlayers(list, ctl); break;
+                case TabPlayers: BuildPlayers(list, ctl, isHost); break;
                 case TabSettings: BuildSettings(list, ctl, isHost); break;
                 case TabStats: BuildStats(list, ctl); break;
                 default: BuildMatch(list, ctl, isHost, dialogRoot); break;
@@ -133,8 +133,8 @@ namespace PropHunt.Phone
             Label(list, head, Theme.H2, c, FontStyle.Bold, TextAnchor.MiddleCenter);
         }
 
-        // ---------------------------------------------------------------- Players tab (live read-only roster) -----
-        private static void BuildPlayers(Transform list, GameModeController ctl)
+        // ---------------------------------------------------------------- Players tab (live roster; host can kick) -----
+        private static void BuildPlayers(Transform list, GameModeController ctl, bool isHost)
         {
             try { PlayerRegistry.Refresh(); } catch { }
             var st = ctl.State;
@@ -163,7 +163,14 @@ namespace PropHunt.Phone
                 RoleChip(p, out string chip, out Color fill, out Color txt);
                 ChipCol(row.transform, chip, fill, txt, 78f);
 
-                Col(row.transform, DetailFor(ctl, p, phase, isMe), Theme.TextMuted, 140f, 0f, TextAnchor.MiddleRight, FontStyle.Normal, Theme.Caption);
+                Col(row.transform, DetailFor(ctl, p, phase, isMe), Theme.TextMuted, isHost && !isMe ? 96f : 140f, 0f, TextAnchor.MiddleRight, FontStyle.Normal, Theme.Caption);
+
+                // The host may remove a player from the session (host-authoritative; the framework runs the actual kick).
+                if (isHost && !isMe && p.SteamId != 0)
+                {
+                    ulong target = p.SteamId;
+                    KickCol(row.transform, () => ctl.KickPlayer(target));
+                }
             }
 
             // The roster never reveals a living hider's prop or position to others (that would let hunters cheat
@@ -192,10 +199,12 @@ namespace PropHunt.Phone
         // ---------------------------------------------------------------- Settings tab (host edits between rounds) -
         private static void BuildSettings(Transform list, GameModeController ctl, bool isHost)
         {
-            bool editable = isHost && (ctl.Phase == RoundPhase.Lobby || ctl.Phase == RoundPhase.Safehouse);
+            // The host can tune settings in ANY phase (including mid-hunt). It is safe: the app excludes the host's own
+            // settings from its refresh fingerprint so a live edit never resets the control, and most keys are consumed
+            // at round boundaries (a few - tag range / taunt / concuss - apply live), so "next round" is the honest note.
+            bool editable = isHost;
 
             if (!isHost) Label(list, "VIEW ONLY  -  the host runs the match.", Theme.Body, Theme.WarningText, FontStyle.Bold);
-            else if (!editable) Label(list, "Settings are locked during a round. Edit them between rounds.", Theme.Body, Theme.WarningText, FontStyle.Bold);
             else Label(list, "Changes apply to the next round.", Theme.Caption, Theme.TextMuted);
 
             var cur = ctl.Settings.ToValues();
@@ -417,6 +426,17 @@ namespace PropHunt.Phone
             var t = UIFactory.Text("t", text, p.transform, Theme.Caption, TextAnchor.MiddleCenter, FontStyle.Bold);
             t.color = textColor; t.raycastTarget = false;
             var rt = t.rectTransform; rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+        }
+
+        // A compact fixed-width "Kick" button that sits inside a player row (host-only).
+        private static void KickCol(Transform row, System.Action onClick)
+        {
+            var (go, btn, txt) = UIFactory.ButtonWithLabel("kick", "Kick", row, Theme.DangerSubtle, 0, 26f);
+            var le = go.AddComponent<LayoutElement>();
+            le.minWidth = 52f; le.preferredWidth = 52f; le.flexibleWidth = 0; le.minHeight = 26f; le.preferredHeight = 26f;
+            var img = go.GetComponent<Image>(); if (img != null) { img.sprite = Theme.RoundedSprite(); img.type = Image.Type.Sliced; }
+            if (txt != null) { txt.color = Theme.DangerText; txt.fontSize = Theme.Caption; }
+            if (onClick != null) btn.onClick.AddListener((UnityAction)(() => { try { onClick(); } catch { } }));
         }
 
         private static void RoleChip(PlayerState p, out string text, out Color fill, out Color txt)

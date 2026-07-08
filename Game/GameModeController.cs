@@ -1028,6 +1028,15 @@ namespace PropHunt.Game
             else SendToHost(new OutOfBoundsMessage());
         }
 
+        /// <summary>Host: remove a player from the session by their Steam id, via the Side Hustle framework helper
+        /// (host-authoritative FishNet kick). No-op for non-hosts and never kicks the host itself.</summary>
+        internal void KickPlayer(ulong steamId)
+        {
+            if (!_isHost || steamId == 0 || steamId == LocalId) return;
+            try { SideHustle.API.KickPlayer(steamId, "Kicked by host"); }
+            catch (Exception e) { Core.LogDebug("[PropHunt] kick failed: " + e.Message); }
+        }
+
         // host-only: last unix time each hider was AWARDED a taunt point, to cap taunt scoring at once per 15s
         // (the taunt sound/cue still plays every time - only the score is rate-limited).
         private readonly System.Collections.Generic.Dictionary<ulong, long> _lastTauntScoreUnix = new System.Collections.Generic.Dictionary<ulong, long>();
@@ -1401,6 +1410,12 @@ namespace PropHunt.Game
             SetFrozen(frozen);
             SetBlind(blind);
             SetHotbar(hotbar);
+
+            // Hiders move a touch slower than hunters (host-configurable, only during the active round). Client-local:
+            // only the local player's Move() reads StaticMoveSpeedMultiplier, so this genuinely slows the local hider
+            // and then syncs. Composed with the CTRL slow-walk by SlowWalk so the two never clobber each other.
+            bool activeHider = role == PlayerRole.Hider && (phase == RoundPhase.Hiding || phase == RoundPhase.Hunting);
+            Patches.SlowWalk.SetRoleFactor(activeHider ? UnityEngine.Mathf.Clamp(_settings.HiderSpeedPercent / 100f, 0.5f, 1f) : 1f);
 
             // arm/disarm is role-driven (the single authority): a hunter holds their weapon PLUS the trash grabber
             // during the hunt; anyone who stops being a hunter (Continuous swap, or any non-hunter) is stripped, so

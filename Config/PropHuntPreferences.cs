@@ -18,6 +18,7 @@ namespace PropHunt.Config
         private static MelonPreferences_Entry<int> _roundEndSeconds;
         private static MelonPreferences_Entry<int> _playersPerHunter;
         private static MelonPreferences_Entry<int> _roundsBeforeSwap;
+        private static MelonPreferences_Entry<int> _hiderSpeedPercent;
         private static MelonPreferences_Entry<float> _tagRange;
         private static MelonPreferences_Entry<int> _hitsToCatch;
         private static MelonPreferences_Entry<int> _maxPropChanges;
@@ -70,6 +71,8 @@ namespace PropHunt.Config
                 "Roughly one hunter is assigned for this many players (min one hunter). e.g. 5 = 1 hunter at 2-5 players, 2 at 6-10.");
             _roundsBeforeSwap = CreateEntry("RoundsBeforeSwap", 1, "Rounds before role swap",
                 "How many rounds to play before rotating who hunts (round-robin).");
+            _hiderSpeedPercent = CreateEntry("HiderSpeedPercent", 90, "Hider speed (% of hunter)",
+                "Hiders move at this percent of hunter speed (70-100; 100 = same). Lower makes hiders easier to catch.");
             _tagRange = CreateEntry("TagRange", 4f, "Catch range (metres)",
                 "How close a hunter must be, looking at a hider, to catch them.");
             _hitsToCatch = CreateEntry("HitsToCatch", 2, "Prop HP per metre",
@@ -149,6 +152,7 @@ namespace PropHunt.Config
         internal static int RoundEndSeconds => Mathf.Clamp(_roundEndSeconds?.Value ?? 15, 5, 60);
         internal static int PlayersPerHunter => Mathf.Max(1, _playersPerHunter?.Value ?? 5);
         internal static int RoundsBeforeSwap => Mathf.Max(1, _roundsBeforeSwap?.Value ?? 1);
+        internal static int HiderSpeedPercent => Mathf.Clamp(_hiderSpeedPercent?.Value ?? 90, 50, 100);
         internal static float TagRange => Mathf.Max(0.5f, _tagRange?.Value ?? 4f);
         internal static int HitsToCatch => Mathf.Max(1, _hitsToCatch?.Value ?? 2);
         internal static int HiderMaxHp => Mathf.Clamp(_hiderMaxHp?.Value ?? 4, 1, 25);
@@ -204,6 +208,7 @@ namespace PropHunt.Config
                 RoundEndSeconds = RoundEndSeconds,
                 PlayersPerHunter = PlayersPerHunter,
                 RoundsBeforeSwap = RoundsBeforeSwap,
+                HiderSpeedPercent = HiderSpeedPercent,
                 TagRange = TagRange,
                 HitsToCatch = HitsToCatch,
                 HiderMaxHp = HiderMaxHp,

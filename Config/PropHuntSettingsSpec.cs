@@ -31,6 +31,7 @@ namespace PropHunt.Config
 
                 // --- Roles & Combat ---
                 IntSlider("Roles & Combat", "pph",    "Hunter ratio",  "1 hunter per N players, rounded up.",            2, 10, 1, null, PropHuntPreferences.PlayersPerHunter),
+                IntSlider("Roles & Combat", "hiderspeed", "Hider speed", "Hiders move at this % of hunter speed (100 = same).", 70, 100, 5, "%", PropHuntPreferences.HiderSpeedPercent),
                 Dropdown ("Roles & Combat", "weapon", "Hunter weapon", "Weapon each hunter gets when the hunt starts.",
                           w.opts, w.vals,                                                                    PropHuntPreferences.HunterWeapon),
                 Toggle   ("Roles & Combat", "ff",     "Friendly fire", "Hunters can knock each other down (ragdoll, never kill).", PropHuntPreferences.FriendlyFire),
@@ -39,7 +40,7 @@ namespace PropHunt.Config
                 IntSlider("Roles & Combat", "downx",  "Max knockdown time", "Cap on ragdoll time; each extra hit while down extends toward this.", 1, 30, 1, "s", (int)PropHuntPreferences.HunterDownMaxSeconds),
 
                 // --- Props ---
-                IntSlider("Props", "hits",    "Prop toughness",   "Bigger props are naturally tankier at higher values (HP per metre).", 1, 10, 1, null, PropHuntPreferences.HitsToCatch),
+                IntSlider("Props", "hits",    "Prop toughness",   "Bigger props are naturally tougher at higher values (HP per metre).", 1, 10, 1, null, PropHuntPreferences.HitsToCatch),
                 IntSlider("Props", "hidermaxhp", "Max hider HP",  "The most HP any prop disguise can have - size still scales HP up to this cap.", 1, 10, 1, null, PropHuntPreferences.HiderMaxHp),
                 IntSlider("Props", "chg",     "Max prop changes", "Re-picks per round; each resets HP (0 = unlimited).",   0, 20, 1, null, PropHuntPreferences.MaxPropChanges),
                 Toggle   ("Props", "freechg", "Unlimited changes while hiding", "Prop changes during the hiding phase are unlimited; the limit applies only once the hunt starts.", PropHuntPreferences.FreeChangesInHiding),

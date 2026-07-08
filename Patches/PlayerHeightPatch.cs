@@ -17,27 +17,59 @@ namespace PropHunt.Patches
     }
 
     /// <summary>
-    /// Slow-walk for a disguised hider: while CTRL is held we halve the local player's move speed (instead of the
-    /// vanilla crouch, which we block). Driven each frame by PropPicker; uses the global StaticMoveSpeedMultiplier
-    /// (only the local player's movement is computed on this client). Always restored when not slow-walking.
+    /// Local-player move-speed control for PropHunt, the single owner of the global StaticMoveSpeedMultiplier during a
+    /// round. Composes TWO factors so they never clobber each other:
+    ///   - a per-role BASE (<see cref="SetRoleFactor"/>): hiders move a bit slower than hunters (host-configurable),
+    ///   - the CTRL crouch-walk (<see cref="Set"/>): a disguised hider halves speed instead of the blocked crouch.
+    /// Only the local player's Move() reads StaticMoveSpeedMultiplier on this client, so this genuinely slows the
+    /// local player (which then syncs to everyone) - it is not merely cosmetic. Always restored to vanilla when idle.
     /// </summary>
     internal static class SlowWalk
     {
-        private const float Factor = 0.5f;   // half normal speed
+        private const float CrouchFactor = 0.5f;   // half normal speed while crouch-walking (CTRL)
+        private static float _roleFactor = 1f;     // per-role base: 1.0 = normal, <1.0 = slower (hiders)
+        private static bool _slow;                 // CTRL crouch-walk held
         private static bool _applied;
-        private static float _orig = 1f;
+        private static float _base = 1f;           // the vanilla multiplier we compose our factors onto
 
+        /// <summary>The persistent per-role speed base (1.0 = normal; &lt;1.0 slows the local player). Set on role change.</summary>
+        internal static void SetRoleFactor(float factor)
+        {
+            _roleFactor = factor <= 0f ? 1f : factor;
+            Apply();
+        }
+
+        /// <summary>Crouch-walk toggle (CTRL), driven each frame by PropPicker while a disguised hider.</summary>
         internal static void Set(bool slow)
+        {
+            _slow = slow;
+            Apply();
+        }
+
+        private static void Apply()
         {
             try
             {
-                if (slow && !_applied) { _orig = PlayerMovement.StaticMoveSpeedMultiplier; PlayerMovement.StaticMoveSpeedMultiplier = _orig * Factor; _applied = true; }
-                else if (!slow && _applied) { PlayerMovement.StaticMoveSpeedMultiplier = _orig; _applied = false; }
+                float mult = _roleFactor * (_slow ? CrouchFactor : 1f);
+                if (mult > 0.999f && mult < 1.001f)   // nothing to apply -> back to vanilla
+                {
+                    if (_applied) { PlayerMovement.StaticMoveSpeedMultiplier = _base; _applied = false; }
+                    return;
+                }
+                if (!_applied) { _base = PlayerMovement.StaticMoveSpeedMultiplier; _applied = true; }   // capture vanilla once
+                PlayerMovement.StaticMoveSpeedMultiplier = _base * mult;
             }
             catch { _applied = false; }
         }
 
-        internal static void Restore() => Set(false);
+        /// <summary>Full reset to vanilla speed (crouch off + role factor cleared). Called when leaving the
+        /// active-hider state and on session teardown.</summary>
+        internal static void Restore()
+        {
+            _slow = false;
+            _roleFactor = 1f;
+            Apply();
+        }
     }
 
     /// <summary>
