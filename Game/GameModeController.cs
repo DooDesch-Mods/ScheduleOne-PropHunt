@@ -23,7 +23,7 @@ namespace PropHunt.Game
     /// then publishes the snapshot through a single HostSyncVar. CLIENTS apply the synced state and render.
     /// This class is the engine adapter: networking, the SteamId&lt;-&gt;Player map + catch geometry, local
     /// freeze/blind effects, and the disguise/catch/play-area/taunt sub-controllers. All durable decisions
-    /// live in RoundLogic (headlessly unit-tested); here they are wired to I/O.
+    /// live in RoundLogic; here they are wired to I/O.
     /// </summary>
     internal sealed class GameModeController
     {

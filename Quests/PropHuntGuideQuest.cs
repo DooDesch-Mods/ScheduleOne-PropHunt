@@ -10,7 +10,7 @@ namespace PropHunt.Quests
     /// ONCE and never completed; <see cref="GuideQuest"/> adds one objective ENTRY per host action ("Start the match",
     /// "Start round N") and checks each off as it happens, so the journal reads as a progression of completed objectives.
     ///
-    /// Two vanilla quest rules drive the design (verified in the decompiled game code):
+    /// Two vanilla quest rules drive the design:
     ///  - A quest auto-ends only when ALL its entries are Completed. A never-completed ANCHOR entry (added here, left
     ///    Inactive) therefore keeps the quest alive forever - and an Inactive entry shows no HUD row, so it is invisible.
     ///  - An entry's visible checkmark animation fires only on an Active -> Completed transition. So a new objective
