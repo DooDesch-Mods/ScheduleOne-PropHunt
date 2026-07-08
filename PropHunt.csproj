@@ -12,10 +12,8 @@
     <Compile Remove="Workspace/**/*.cs" />
   </ItemGroup>
 
-  <!-- Shared "eyes close -> act -> open" transition primitive (DooDesch.Transition). Own namespace, NOT embedded in
-       SideHustle.dll (unlike DooDesch.UI), so compiling it here creates no duplicate type. MUST come AFTER the
-       Workspace Remove above so CI does not strip the included files. -->
-  <Import Project="$(MSBuildThisFileDirectory)../Workspace/build/ScreenTransition.props" Condition="Exists('$(MSBuildThisFileDirectory)../Workspace/build/ScreenTransition.props')" />
+  <!-- The DooDesch.Transition primitive (used by View/EyeBlink.cs) is imported below, AFTER the WorkspaceLibPath
+       PropertyGroup - it must be, so the props path resolves via $(WorkspaceLibPath)/.. in CI (see that import). -->
 
   <!-- NOTE: PropHunt does NOT compile the DooDesch.UI source itself (no DooDeschUI.props import). It already
        references SideHustle.dll, which embeds the DooDesch.UI design system (Theme/Components are public there),
@@ -71,6 +69,14 @@
     <GameManagedPath>$(WorkspaceLibPath)/$(Backend)/game</GameManagedPath>
     <MelonLoaderPath>$(WorkspaceLibPath)/$(Backend)/melonloader</MelonLoaderPath>
   </PropertyGroup>
+
+  <!-- Shared "eyes close -> act -> open" transition primitive (DooDesch.Transition), compiled as linked source
+       (Workspace/transition/{Veil,ScreenTransition}.cs). Own namespace, NOT embedded in SideHustle.dll (unlike
+       DooDesch.UI), so no duplicate type. Resolved via $(WorkspaceLibPath)/.. so the SAME line works locally
+       (Workspace = sibling folder) and in CI (Workspace = subfolder checkout, WorkspaceLibPath passed via /p:) -
+       a plain ../Workspace path resolves one level too high in CI and silently skips the import. Comes after the
+       Workspace Remove above so CI does not strip the included files. -->
+  <Import Project="$(WorkspaceLibPath)/../build/ScreenTransition.props" Condition="Exists('$(WorkspaceLibPath)/../build/ScreenTransition.props')" />
 
   <!-- The one shipped asset: the precompiled outline-shader AssetBundle, embedded into the DLL when present
        (resource name = PropHunt.Assets.Bundles.propoutline, loaded by Disguise/OutlineShader.cs). Exists-guarded
