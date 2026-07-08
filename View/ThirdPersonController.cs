@@ -32,6 +32,9 @@ namespace PropHunt.View
         /// next Tick applies it. The player can re-toggle with V.</summary>
         internal void ForceOff() => _on = false;
 
+        /// <summary>Default a hider to third person at round start so they can see their disguise; V still toggles back.</summary>
+        internal void ForceOn() => _on = true;
+
         internal void Tick()
         {
             try

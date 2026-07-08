@@ -34,6 +34,7 @@ namespace PropHunt.Game
         private readonly bool _isHost;
         private RoundSettings _settings = new RoundSettings();
         private bool _settingsDirty;        // host edited a setting via the phone -> re-publish to clients (throttled)
+        private string _armedWeaponId;      // the hunter weapon id we actually granted locally (to strip the OLD one if the host swaps it mid-match)
         private float _lastSettingsPush;
         private GameState _state = new GameState();
         private HostSyncVar<string> _stateVar;
@@ -240,11 +241,11 @@ namespace PropHunt.Game
             try { Taunt.TauntSounds.PlayFx(caught ? CatchClips : HitClips, pos, 0.8f); } catch { }
             ulong me = LocalId;
 #if DEBUG
-            // DEBUG-ONLY: the hunter's hit/catch flash reveals which props are real hiders - a cheat in real play -
-            // so it ships only in Debug for testing. The victim's own status flash (below) is legitimate and stays.
+            // DEBUG-ONLY: the on-screen HIT/CAUGHT text is test feedback (the hunter's flash also reveals which props
+            // are real hiders), so it ships only in Debug. In Release the HP bar + scoreboard carry the real info.
             if (me == hunterId) SetFx(caught ? "CATCH!" : "HIT", new Color(0.3f, 1f, 0.5f));
-#endif
             if (me == victimId) SetFx(caught ? "CAUGHT!" : "HIT!", Color.red);
+#endif
         }
 
         /// <summary>A concussion went off: play a stun SFX at the centre; the thrower gets confirmation, a local
@@ -674,7 +675,14 @@ namespace PropHunt.Game
                         _state.SafehouseCode = SafehouseSelector.SelectForPlayerCount(_state.Players.Count);
                     if (RoundLogic.TickHost(_state, _settings, NowUnix())) changed = true;
                 }
-                if (changed) PushState();
+                if (changed)
+                {
+                    // carry any live host edit with every state push (incl. an auto round-transition), so a setting
+                    // changed mid-round can never reach clients a round late.
+                    _state.SettingsBlob = _settings.Serialize();
+                    _settingsDirty = false;
+                    PushState();
+                }
             }
 
             // Host: re-publish phone-edited settings so clients see them live (throttled, runs in any phase incl. the
@@ -1424,18 +1432,28 @@ namespace PropHunt.Game
             // it's a separate tool (Equippable_TrashGrabber) so using it never triggers the weapon-fire catch ray.
             if (role == PlayerRole.Hunter && phase == RoundPhase.Hunting)
             {
+                // if the host changed the weapon mid-match, strip the weapon we actually granted last round before
+                // handing out the new one (RemoveWeapon strips by id, so it would otherwise leave the old gun behind).
+                if (!string.IsNullOrEmpty(_armedWeaponId) && _armedWeaponId != _settings.HunterWeapon)
+                    RoundEnvironment.RemoveWeapon(_armedWeaponId);
                 RoundEnvironment.GiveWeapon(_settings.HunterWeapon);
                 RoundEnvironment.GiveWeapon(TrashGrabberId);
+                _armedWeaponId = _settings.HunterWeapon;
             }
             else if (role != PlayerRole.Hunter)
             {
                 RoundEnvironment.RemoveWeapon(_settings.HunterWeapon);
+                if (!string.IsNullOrEmpty(_armedWeaponId) && _armedWeaponId != _settings.HunterWeapon)
+                    RoundEnvironment.RemoveWeapon(_armedWeaponId);
                 RoundEnvironment.RemoveWeapon(TrashGrabberId);
+                _armedWeaponId = null;
             }
 
             // a new hunter starts in first person (the catch/fire raycast comes from the camera); they can still
             // toggle 3rd person with V. Without this, a hider caught into a hunter stays stuck in the pulled-back view.
+            // A hider defaults to third person at round start so they can see their disguise (V still toggles back).
             if (role == PlayerRole.Hunter) _thirdPerson?.ForceOff();
+            else if (role == PlayerRole.Hider && (phase == RoundPhase.Hiding || phase == RoundPhase.Hunting)) _thirdPerson?.ForceOn();
         }
 
         private void RestoreLocalEffects()

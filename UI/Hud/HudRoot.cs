@@ -263,8 +263,9 @@ namespace PropHunt.UI.Hud
             {
                 var s = ctl.Settings;
                 string pn = ctl.LocalPropName ?? "a prop";
-                string chg = s.MaxPropChanges > 0 ? $"{Mathf.Max(0, s.MaxPropChanges - ctl.LocalChanges)} changes left" : "unlimited changes";
-                SetText(_transform, ref _cTransform, $"You are now: {pn}   ({ctl.LocalMaxHits} HP, {chg})");
+                // HP lives on the HpBar (shown during the hunt); the banner drops it and foregrounds the change counter.
+                string chg = s.MaxPropChanges > 0 ? $"{Mathf.Max(0, s.MaxPropChanges - ctl.LocalChanges)} CHANGES LEFT" : "UNLIMITED CHANGES";
+                SetText(_transform, ref _cTransform, $"You are now: {pn}   -   {chg}");
                 SetActive(_transform.gameObject, ref _aTransform, true);
 
                 string decoy = s.MaxDecoys > 0 ? $"[{KeyBinds.Name(KeyBinds.Decoy)}] Decoy ({Mathf.Max(0, s.MaxDecoys - ctl.LocalDecoysUsed)})" : "";

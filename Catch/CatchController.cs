@@ -71,6 +71,7 @@ namespace PropHunt.Catch
                 for (int i = 0; i < hits.Length; i++)
                 {
                     var h = hits[i];
+                    if (!HasLineOfSight(t.position, h.point)) continue;   // a wall between shooter and this hit -> no through-wall hit
                     if (IsDecoy(h.transform, out int decoyIdx))
                     {
                         SpawnPropHitFx(h.point);   // immediate local hit feedback on the decoy (it reads as a real prop)
@@ -120,6 +121,19 @@ namespace PropHunt.Catch
         }
 
         // ---- helpers ----
+
+        // True if nothing SOLID sits between the shooter's eye and the hit point (a wall blocks the shot). Triggers are
+        // ignored (the prop hitboxes + decoys are triggers), so only real level geometry occludes; a blocker at ~the hit
+        // point is the target itself, not a wall (0.35 = the sweep radius). Fail-open on error so shots never silently die.
+        private static bool HasLineOfSight(Vector3 from, Vector3 to)
+        {
+            try
+            {
+                if (!Physics.Linecast(from, to, out var block, ~0, QueryTriggerInteraction.Ignore)) return true;   // clear line
+                return block.distance >= (to - from).magnitude - 0.35f;   // blocker at/after the hit point = the target, not a wall
+            }
+            catch { return true; }
+        }
 
         /// <summary>Show the game's impact particle at a world point (on the prop), so a hit registers visibly for
         /// the hunter without spawning blood on the hidden player.</summary>

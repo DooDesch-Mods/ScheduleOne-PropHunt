@@ -75,4 +75,16 @@ namespace PropHunt.Patches
             return false;
         }
     }
+
+    /// <summary>
+    /// During a round, block the vanilla right-click-hold "pick up / destroy" of world buildables (mailboxes, trash
+    /// cans, props, ...). It otherwise lets a player dismantle the very objects hiders blend in with - including
+    /// removing props from the safehouse. The hider's own tooling is direct key reads (PropPicker), not this path.
+    /// Trash pickup goes through the Draggable interaction (still allowed above), not this destroy loop. No-op outside a round.
+    /// </summary>
+    [HarmonyPatch(typeof(InteractionManager), "CheckRightClick")]
+    internal static class BlockRightClickPickupPatch
+    {
+        private static bool Prefix() => !RoundInteractionGate.RoundActive;   // false -> skip the whole right-click destroy loop
+    }
 }

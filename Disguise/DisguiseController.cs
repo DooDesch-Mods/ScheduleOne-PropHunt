@@ -25,6 +25,7 @@ namespace PropHunt.Disguise
         private readonly Dictionary<ulong, AvatarSettings> _nakedOriginal = new Dictionary<ulong, AvatarSettings>();
         private readonly HashSet<ulong> _naked = new HashSet<ulong>();
         private readonly HashSet<ulong> _warnedUnresolved = new HashSet<ulong>();   // log "can't resolve" once per player, not per frame
+        private const float HiderScale = 0.7f;   // an undisguised hider's HUMAN model renders at 70% so hunters can tell them from a full-size hunter
         private bool _warnedHashMismatch;
 
         internal void Apply(GameState state)
@@ -54,6 +55,7 @@ namespace PropHunt.Disguise
                     var player = (ps.SteamId == localId && localPlayer != null) ? localPlayer : PlayerRegistry.Get(ps.SteamId);
                     bool liveHider = ps.Role == PlayerRole.Hider && !ps.Eliminated && inRound;
                     bool disguised = liveHider && ps.PropId >= 0;
+                    bool caughtOut = ps.Role == PlayerRole.Hider && ps.Eliminated && inRound;   // Spectator-caught: sit out invisibly (Infection makes them a Hunter, not this)
                     if (player == null)
                     {
                         // Log ONCE per unresolved player, not every frame. A crashed/disconnected client left as a
@@ -65,11 +67,25 @@ namespace PropHunt.Disguise
                         continue;
                     }
                     _warnedUnresolved.Remove(ps.SteamId);   // resolved now -> a future drop warns once again
+
+                    // a caught hider (Spectator mode) sits out INVISIBLY on every client - not as a normal walking
+                    // character (the old else-path restored their clothed body). Round-end (inRound=false) re-shows them.
+                    if (caughtOut)
+                    {
+                        RemoveProp(ps.SteamId, player);
+                        SetHiderScale(player, 1f);
+                        SetBodyVisible(player, false, ps.SteamId == localId);
+                        continue;
+                    }
+
                     // naked FIRST (rebuilds the avatar -> body visible), then the prop hides the body if disguised
                     if (liveHider) EnsureNaked(ps.SteamId, player);
                     else RestoreAppearance(ps.SteamId, player);
                     if (disguised) EnsureProp(ps.SteamId, player, ps.PropId);
                     else RemoveProp(ps.SteamId, player);
+                    // an undisguised hider's HUMAN body renders at 70% (so hunters can tell them from a full hunter);
+                    // the disguised body is hidden anyway. Applied AFTER the avatar (re)build so a rebuild can't reset it.
+                    SetHiderScale(player, liveHider ? HiderScale : 1f);
                 }
 
                 // tidy disguises + restore appearance for players gone from the snapshot
@@ -278,6 +294,20 @@ namespace PropHunt.Disguise
             _nakedOriginal.Remove(id);
         }
 
+        // Scale a player's VISUAL avatar (NOT the CharacterController - movement/grounding stay full-size). Reads the
+        // live transform each tick so an avatar rebuild (naked swap) can't leave it at the wrong scale. Local per client.
+        private static void SetHiderScale(Player player, float scale)
+        {
+            try
+            {
+                var av = player != null ? player.Avatar : null;
+                if (av == null || av.transform == null) return;
+                var target = Vector3.one * scale;
+                if (av.transform.localScale != target) av.transform.localScale = target;
+            }
+            catch { }
+        }
+
         private static void SetBodyVisible(Player player, bool visible, bool isLocal)
         {
             try { player.SetThirdPersonMeshesVisibility(visible); } catch { }
@@ -316,7 +346,7 @@ namespace PropHunt.Disguise
                     for (int i = 0; i < list.Count; i++)
                     {
                         var p = list[i];
-                        if (p != null) { SetBodyVisible(p, true, p == Player.Local); }
+                        if (p != null) { SetBodyVisible(p, true, p == Player.Local); SetHiderScale(p, 1f); }
                     }
             }
             catch { }

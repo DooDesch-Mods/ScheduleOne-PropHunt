@@ -337,11 +337,19 @@ namespace PropHunt.Disguise
                     cull2 = cull * cull; haveRef = true;
                 }
 
+                // buildable prefabs carry build-only overlay meshes that are INACTIVE in the placed item (grid ghosts,
+                // the coloured "yellow box", unbuilt-size variants); they'd drag min.y below the visible base and float
+                // the prop (e.g. GoldenToilet). Skip inactive SOURCE meshes for buildables only - world: objects can be
+                // legitimately distance-culled inactive in the live scene, so don't apply it there. activeSelf (not
+                // activeInHierarchy): a BuiltItem prefab template has no valid scene, so activeInHierarchy is false for all.
+                bool buildable = e.Key != null && e.Key.StartsWith(PropSources.BuildablePrefix);
+
                 bool any = false;
                 for (int i = 0; i < mfs.Length; i++)
                 {
                     var mf = mfs[i];
                     if (mf == null || mf.sharedMesh == null) continue;
+                    if (buildable && !mf.gameObject.activeSelf) continue;
                     var mr = mf.GetComponent<MeshRenderer>();
                     if (mr == null || mr.sharedMaterial == null) continue;              // non-visual proxy
                     if (PropCatalog.IsJunkMeshName(mf.sharedMesh.name)) continue;
