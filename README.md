@@ -8,7 +8,7 @@
 > timer runs out. Hosted and launched from the [Side Hustle](https://github.com/DooDesch-Mods/ScheduleOne-SideHustle)
 > menu and run from your in-game phone. Built on [S1API](https://github.com/ifBars/S1API).
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
 ![Game](https://img.shields.io/badge/game-Schedule%20I-purple)
 ![MelonLoader](https://img.shields.io/badge/MelonLoader-0.7.3+-green)
 ![S1API](https://img.shields.io/badge/S1API-required-orange)
@@ -35,8 +35,8 @@
   scoreboard) but only the host changes the rules or kicks a player.
 - **Made for a full lobby.** Public lobbies let non-friends join straight from the lobby
   browser - as far as I can tell nobody else has gotten public lobbies working for Schedule I
-  yet. With BiggerLobbies you can fill up to 20 players. Hiders play in third person; you get
-  a spectator cam once you are caught.
+  yet. Side Hustle raises the lobby cap for you, so you can fill a big lobby. Hiders play in
+  third person; you get a spectator cam once you are caught.
 
 ## Requirements
 
@@ -45,23 +45,21 @@
 | Schedule I | `0.4.5f2` (IL2CPP, current Steam public build) |
 | MelonLoader | `0.7.3+` |
 | S1API | [ifBars/S1API_Forked](https://thunderstore.io/c/schedule-i/p/ifBars/S1API_Forked/) - the Schedule I modding API |
-| Side Hustle | [DooDesch/SideHustle](https://thunderstore.io/c/schedule-i/p/DooDesch/SideHustle/) - the gamemode hub PropHunt launches from |
+| Side Hustle | [DooDesch/SideHustle](https://thunderstore.io/c/schedule-i/p/DooDesch/SideHustle/) - the gamemode hub PropHunt launches from; also raises the lobby cap for you |
 | SteamNetworkLib | [ifBars/SteamNetworkLib_Il2Cpp](https://thunderstore.io/c/schedule-i/p/ifBars/SteamNetworkLib_Il2Cpp/) - multiplayer state sync |
-| BiggerLobbies | [ifBars/BiggerLobbies](https://thunderstore.io/c/schedule-i/p/ifBars/BiggerLobbies/) - raises the lobby cap to 20 |
 
 ## Installation
 
 ### Recommended: a Thunderstore mod manager
 
 Install with a mod manager (r2modman / Gale) from the Schedule I community; the
-dependencies (MelonLoader, S1API, Side Hustle, SteamNetworkLib, BiggerLobbies) are pulled
+dependencies (MelonLoader, S1API, Side Hustle, SteamNetworkLib) are pulled
 in automatically.
 
 ### Manual
 
 1. Install **MelonLoader 0.7.3** for Schedule I and launch the game once.
-2. Install **S1API**, **Side Hustle**, **SteamNetworkLib** and **BiggerLobbies** per their
-   own instructions.
+2. Install **S1API**, **Side Hustle** and **SteamNetworkLib** per their own instructions.
 3. Drop **`PropHunt.dll`** into your Schedule I `Mods/` folder.
 
 Everyone who plays together needs the **same mods and the same build** - the game warns
@@ -133,7 +131,7 @@ Press `H` any time for the in-game controls overlay.
 
 - **DooDesch** - mod author.
 - **[ifBars/S1API](https://github.com/ifBars/S1API)** - the modding API this is built on,
-  plus SteamNetworkLib and BiggerLobbies.
+  plus SteamNetworkLib.
 - **[Side Hustle](https://github.com/DooDesch-Mods/ScheduleOne-SideHustle)** - the gamemode
   hub PropHunt runs inside.
 - **Testers** - DonyThePony, fadestyle, xAkitoh, godofn00bs. Thanks for the playtesting.

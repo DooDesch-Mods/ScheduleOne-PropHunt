@@ -8,7 +8,7 @@ traffic cone) and blend into the map; hunters get a weapon and track them down b
 timer runs out. Hosted and launched from the [Side Hustle](https://thunderstore.io/c/schedule-i/p/DooDesch/SideHustle/)
 menu and run from your in-game phone. Built on [S1API](https://github.com/ifBars/S1API).
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
 ![Game](https://img.shields.io/badge/game-Schedule%20I-purple)
 ![MelonLoader](https://img.shields.io/badge/MelonLoader-0.7.3+-green)
 ![S1API](https://img.shields.io/badge/S1API-required-orange)
@@ -28,8 +28,8 @@ menu and run from your in-game phone. Built on [S1API](https://github.com/ifBars
   only the host changes the rules or kicks players.
 - **Made for a full lobby.** Public lobbies let non-friends join straight from the lobby
   browser - as far as I can tell nobody else has gotten public lobbies working for Schedule I
-  yet. With BiggerLobbies you can fill up to 20 players, and hiders play in third person with
-  a spectator cam once caught.
+  yet. Side Hustle raises the lobby cap for you, so you can fill a big lobby; hiders play in
+  third person with a spectator cam once caught.
 
 ## Presets
 
@@ -45,9 +45,8 @@ Pick one on the host form and start - no config files, and you can still tweak a
 
 - [MelonLoader](https://github.com/LavaGang/MelonLoader) `0.7.3+` - the mod loader.
 - [S1API](https://github.com/ifBars/S1API) (ifBars-S1API_Forked) - the Schedule I modding API.
-- [Side Hustle](https://thunderstore.io/c/schedule-i/p/DooDesch/SideHustle/) - the gamemode hub PropHunt launches from.
+- [Side Hustle](https://thunderstore.io/c/schedule-i/p/DooDesch/SideHustle/) - the gamemode hub PropHunt launches from; also raises the lobby cap for you.
 - [SteamNetworkLib](https://thunderstore.io/c/schedule-i/p/ifBars/SteamNetworkLib_Il2Cpp/) - multiplayer state sync.
-- [BiggerLobbies](https://thunderstore.io/c/schedule-i/p/ifBars/BiggerLobbies/) - raises the lobby cap to 20.
 
 A mod manager installs all of these automatically.
 

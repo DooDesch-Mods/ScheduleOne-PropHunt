@@ -205,9 +205,8 @@ jobs:
           deps: |
             LavaGang-MelonLoader-0.7.3
             ifBars-S1API_Forked-3.0.5
-            DooDesch-SideHustle-1.5.3
+            DooDesch-SideHustle-1.6.0
             ifBars-SteamNetworkLib_Il2Cpp-1.5.0
-            ifBars-BiggerLobbies-1.0.0
           categories: |
             Mods
 

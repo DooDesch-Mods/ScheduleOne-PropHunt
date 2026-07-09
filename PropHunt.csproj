@@ -30,7 +30,9 @@
     Runtime dependencies (installed by every player, not all referenced at build time):
       - S1API           (referenced below - foundation layer)
       - SteamNetworkLib  (referenced below once its DLL is in Workspace/lib/<backend>/steamnetworklib - state sync)
-      - BiggerLobbies    (runtime-only, NOT referenced - raises the co-op cap to 20)
+
+    The co-op cap is raised natively by Side Hustle's embedded FullHouse engine (a hard dependency already),
+    so PropHunt no longer needs the external BiggerLobbies mod.
   -->
 
   <PropertyGroup>
@@ -45,9 +47,9 @@
     <RootNamespace>PropHunt</RootNamespace>
     <AssemblyName>PropHunt</AssemblyName>
     <NeutralLanguage>en-US</NeutralLanguage>
-    <Version>1.0.1</Version>
-    <AssemblyVersion>1.0.1.0</AssemblyVersion>
-    <FileVersion>1.0.1.0</FileVersion>
+    <Version>1.1.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
     <!-- Suppress MSB3277/MSB3245 noise from il2cpp interop transitive refs -->
     <NoWarn>$(NoWarn);MSB3277;MSB3245</NoWarn>
 

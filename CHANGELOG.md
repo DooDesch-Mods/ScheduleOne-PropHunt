@@ -4,6 +4,12 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-09
+
+### Changed
+- Bigger lobbies now come straight from Side Hustle, so PropHunt no longer needs the separate BiggerLobbies
+  mod - one less thing to install. Side Hustle raises the lobby cap for you.
+
 ## [1.0.1] - 2026-07-09
 
 ### Changed
