@@ -4,6 +4,13 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-07-09
+
+### Changed
+- Hid the two unfinished experimental presets ("Blend In", "Closing Time") from the host
+  form so every preset you can pick is fully playable. They return once their headline
+  mechanic (NPC disguise / shrinking play area) is ready.
+
 ## [1.0.0] - 2026-07-08
 
 First public release.

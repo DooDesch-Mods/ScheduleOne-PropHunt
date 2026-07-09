@@ -2,12 +2,13 @@
 
 > 🛟 **Need help or found a bug?** Get support at [support.doodesch.de](https://support.doodesch.de).
 
-> A multiplayer prop-hunt gamemode for Schedule I. Hiders disguise as everyday props
-> and blend into the world; hunters get a weapon and track them down before the timer
-> runs out. Hosted and launched from the [Side Hustle](https://github.com/DooDesch-Mods/ScheduleOne-SideHustle)
+> A multiplayer prop-hunt gamemode for Schedule I - as far as I know the first prop hunt for
+> this game. Hiders look at any world prop and become an exact copy of it (a crate, a bin, a
+> traffic cone) and blend into the map; hunters get a weapon and track them down before the
+> timer runs out. Hosted and launched from the [Side Hustle](https://github.com/DooDesch-Mods/ScheduleOne-SideHustle)
 > menu and run from your in-game phone. Built on [S1API](https://github.com/ifBars/S1API).
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.0.1-blue)
 ![Game](https://img.shields.io/badge/game-Schedule%20I-purple)
 ![MelonLoader](https://img.shields.io/badge/MelonLoader-0.7.3+-green)
 ![S1API](https://img.shields.io/badge/S1API-required-orange)
@@ -32,9 +33,10 @@
   hunter's weapon, play-area size, taunts, time of day and more - all set in-game from the
   PropHunt phone app, with presets. Everyone else sees the live state (players, timer,
   scoreboard) but only the host changes the rules or kicks a player.
-- **Made for a full lobby.** Public lobbies let non-friends join, and with BiggerLobbies
-  you can fill up to 20 players. Hiders play in third person; you get a spectator cam once
-  you are caught.
+- **Made for a full lobby.** Public lobbies let non-friends join straight from the lobby
+  browser - as far as I can tell nobody else has gotten public lobbies working for Schedule I
+  yet. With BiggerLobbies you can fill up to 20 players. Hiders play in third person; you get
+  a spectator cam once you are caught.
 
 ## Requirements
 
@@ -85,6 +87,9 @@ development builds and are not shipped in the release.
    start hosting. Invite friends via Steam, or they use *Join*.
 3. **Join:** choose *Join* and pick the host's lobby.
 4. The host starts the match and each round from the in-game **PropHunt phone app**.
+
+It's built for a group, so grab a few friends or open a public lobby. Looking for people to
+play with (or need a hand setting it up)? Hop in the [Discord](https://discord.gg/aN3u7BTa3h).
 
 ### Controls
 

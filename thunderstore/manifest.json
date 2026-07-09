@@ -1,6 +1,6 @@
 {
   "name": "PropHunt",
-  "version_number": "1.0.0",
+  "version_number": "1.0.1",
   "website_url": "https://github.com/DooDesch-Mods/ScheduleOne-PropHunt",
   "description": "Multiplayer prop hunt for Schedule I: hiders disguise as props and blend in while hunters track them down. Hosted from the Side Hustle menu.",
   "dependencies": [

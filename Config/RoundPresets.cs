@@ -17,6 +17,12 @@ namespace PropHunt.Config
         internal static SettingPreset[] Build()
         {
             var basePresets = BuildBase();
+#if !DEBUG
+            // Experimental presets ("Blend In", "Closing Time") ship their headline mechanic (NPC disguise /
+            // shrinking area) later, so keep them out of the public host form - nobody should be able to pick a
+            // half-finished mode. They stay available in Debug builds for authoring and testing.
+            basePresets = System.Array.FindAll(basePresets, p => !p.Experimental);
+#endif
             var custom = BuildCustom();
             if (custom == null) return basePresets;
             var list = new List<SettingPreset>(basePresets.Length + 1) { custom };
