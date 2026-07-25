@@ -37,7 +37,7 @@ namespace PropHunt.UI
                 }
                 _lastPhase = phase;
 
-                if (Input.GetKeyDown(KeyBinds.Help)) _helpOpen = !_helpOpen;
+                if (KeyBinds.Down(KeyBinds.Help)) _helpOpen = !_helpOpen;
                 if (_cardActive) UpdateCardDismiss();
             }
             catch { }

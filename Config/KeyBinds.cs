@@ -28,6 +28,27 @@ namespace PropHunt.Config
         internal const KeyCode SpectatorToggle = KeyCode.Alpha4;    // switch follow-cam <-> freecam
         internal const KeyCode SpectatorNext   = KeyCode.Mouse0;    // cycle to the next player
 
+        /// <summary>
+        /// True while the player is typing into a text field. The game keeps this flag for its own inputs (phone,
+        /// console, rename fields) and any modded field that attaches vanilla's InputFieldAttachment - the Side
+        /// Hustle messenger does. Without checking it, typing "hey" fires the controls overlay, a decoy and a
+        /// prop swap while the player writes a message.
+        /// </summary>
+        internal static bool Typing
+        {
+            get { try { return Il2CppScheduleOne.GameInput.IsTyping; } catch { return false; } }
+        }
+
+        /// <summary>Key press, ignored while typing. Every gameplay hotkey goes through this.</summary>
+        internal static bool Down(KeyCode k) => !Typing && Input.GetKeyDown(k);
+
+        /// <summary>Key held, ignored while typing (a held modifier must not survive into a chat message).</summary>
+        internal static bool Held(KeyCode k) => !Typing && Input.GetKey(k);
+
+        /// <summary>Key release - deliberately NOT gated: a key pressed before the player started typing still has
+        /// to release, or a held state (taunt wheel, rotate) stays stuck open.</summary>
+        internal static bool Up(KeyCode k) => Input.GetKeyUp(k);
+
         /// <summary>Short human label for a key, for the role card / controls overlay (so the help text is
         /// derived from the actual bind above, never a hand-typed copy that can drift).</summary>
         internal static string Name(KeyCode k)

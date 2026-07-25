@@ -35,13 +35,13 @@ namespace PropHunt.View
                 else if (!should && _active) { Exit(); return; }
                 if (!_active) { HudText = null; return; }
 
-                if (Input.GetKeyDown(KeyBinds.SpectatorToggle)) ToggleMode();
+                if (KeyBinds.Down(KeyBinds.SpectatorToggle)) ToggleMode();
 
                 if (_freecam) { HudText = "FREECAM   [4] follow-cam"; return; }
 
                 if (Time.time >= _nextRefresh) { _nextRefresh = Time.time + 1f; PlayerRegistry.Refresh(); }
                 EnsureTarget();
-                if (Input.GetKeyDown(KeyBinds.SpectatorNext)) CycleTarget();
+                if (KeyBinds.Down(KeyBinds.SpectatorNext)) CycleTarget();
                 UpdateFollowCam();
             }
             catch (System.Exception e) { Core.LogDebug("[PropHunt] spectator tick failed: " + e.Message); }

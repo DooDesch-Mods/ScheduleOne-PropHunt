@@ -43,7 +43,7 @@ namespace PropHunt.Disguise
             bool hiderInRound = (_ctl.Phase == RoundPhase.Hiding || _ctl.Phase == RoundPhase.Hunting)
                                 && _ctl.LocalRole == PlayerRole.Hider && PropCatalog.Count > 0;
             // local toggle: a hider can hide the becomable-prop markers to blend into the environment better
-            if (hiderInRound && Input.GetKeyDown(Config.KeyBinds.HighlightToggle)) _enabled = !_enabled;
+            if (hiderInRound && Config.KeyBinds.Down(Config.KeyBinds.HighlightToggle)) _enabled = !_enabled;
             bool want = hiderInRound && _enabled;
             if (!want) { if (_active) { ClearAll(); _lastLoggedCount = -1; } _active = false; return; }
             _active = true;

@@ -49,7 +49,7 @@ namespace PropHunt.Disguise
                 if (!canPick) { if (_rotating) StopRotating(); Patches.SlowWalk.Restore(); return; }
 
                 // [Ctrl] held = slow-walk at half speed (replaces the blocked crouch); only while disguised
-                Patches.SlowWalk.Set(_ctl.LocalPropId >= 0 && Input.GetKey(KeyBinds.SlowWalk));
+                Patches.SlowWalk.Set(_ctl.LocalPropId >= 0 && KeyBinds.Held(KeyBinds.SlowWalk));
                 // [1] manual taunt + the hold-to-pick wheel is handled by TauntWheel (ticked by the controller).
 #if DEBUG
                 if (CurrentTargetId != _lastLoggedId)
@@ -60,17 +60,17 @@ namespace PropHunt.Disguise
                         : "[PropHunt] crosshair -> <nothing becomable>");
                 }
 #endif
-                if (Input.GetKeyDown(KeyBinds.Become) && CurrentTargetId >= 0)
+                if (KeyBinds.Down(KeyBinds.Become) && CurrentTargetId >= 0)
                 {
                     _ctl.RequestSelectProp(CurrentTargetId);
                     Core.LogDebug($"[PropHunt] selected prop {CurrentTargetId} ({CurrentTargetName}).");
                 }
                 // [2] become a random prop (no aiming needed) - only when the host allows it
-                if (Input.GetKeyDown(KeyBinds.RandomProp) && (_ctl.Settings == null || _ctl.Settings.AllowRandomChange))
+                if (KeyBinds.Down(KeyBinds.RandomProp) && (_ctl.Settings == null || _ctl.Settings.AllowRandomChange))
                 { _ctl.RequestSelectRandomProp(); Core.LogDebug("[PropHunt] random prop requested ([2])."); }
                 // [Q] drop a decoy of the current prop;  [G] concussion grenade (stun nearby hunters)
-                if (Input.GetKeyDown(KeyBinds.Decoy) && _ctl.LocalPropId >= 0) { _ctl.RequestDropDecoy(); Core.LogDebug("[PropHunt] decoy requested ([Q])."); }
-                if (Input.GetKeyDown(KeyBinds.Concussion)) { _ctl.RequestConcuss(); Core.LogDebug("[PropHunt] concussion requested ([G])."); }
+                if (KeyBinds.Down(KeyBinds.Decoy) && _ctl.LocalPropId >= 0) { _ctl.RequestDropDecoy(); Core.LogDebug("[PropHunt] decoy requested ([Q])."); }
+                if (KeyBinds.Down(KeyBinds.Concussion)) { _ctl.RequestConcuss(); Core.LogDebug("[PropHunt] concussion requested ([G])."); }
                 // [F] held + mouse = rotate the prop's facing (camera locked while rotating)
                 HandleRotate();
             }
@@ -81,7 +81,7 @@ namespace PropHunt.Disguise
         /// the mouse only turns the prop; the yaw applies locally each frame and syncs to the host throttled.</summary>
         private void HandleRotate()
         {
-            bool holding = Input.GetKey(KeyBinds.Rotate) && _ctl.LocalPropId >= 0;
+            bool holding = KeyBinds.Held(KeyBinds.Rotate) && _ctl.LocalPropId >= 0;
             if (holding)
             {
                 if (!_rotating) { _rotating = true; _yaw = _ctl.LocalPropYaw; SetCanLook(false); _nextYawSend = Time.time; }

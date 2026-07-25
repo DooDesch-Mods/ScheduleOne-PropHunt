@@ -4,6 +4,12 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-07-26
+
+### Fixed
+- Typing a message in a phone app no longer triggers PropHunt's controls. Writing "hey" opened the controls
+  overlay, dropped a decoy and swapped your prop, because every hotkey listened while you were typing.
+
 ## [1.1.0] - 2026-07-09
 
 ### Changed

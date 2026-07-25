@@ -43,14 +43,14 @@ namespace PropHunt.Taunt
 
             try
             {
-                if (Input.GetKeyDown(KeyBinds.Taunt)) _downAt = Time.time;
+                if (KeyBinds.Down(KeyBinds.Taunt)) _downAt = Time.time;
 
-                if (!_open && _downAt >= 0f && Input.GetKey(KeyBinds.Taunt) && Time.time - _downAt >= HoldThreshold)
+                if (!_open && _downAt >= 0f && KeyBinds.Held(KeyBinds.Taunt) && Time.time - _downAt >= HoldThreshold)
                     Open();
 
                 if (_open) UpdateAim();
 
-                if (Input.GetKeyUp(KeyBinds.Taunt))
+                if (KeyBinds.Up(KeyBinds.Taunt))
                 {
                     if (_open) Close(true);                                       // commit highlighted
                     else if (_downAt >= 0f) _ctl.RequestManualTaunt(_selectedSound);   // tap -> play selected (null = default)
