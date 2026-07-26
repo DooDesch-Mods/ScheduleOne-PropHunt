@@ -2,13 +2,17 @@
 
 > 🛟 **Need help or found a bug?** Get support at [support.doodesch.de/prophunt](https://support.doodesch.de/prophunt).
 
-A multiplayer prop-hunt gamemode for Schedule I - as far as I know the first prop hunt for
-this game. Hiders look at any world prop and become an exact copy of it (a crate, a bin, a
-traffic cone) and blend into the map; hunters get a weapon and track them down before the
-timer runs out. Hosted and launched from the [Side Hustle](https://thunderstore.io/c/schedule-i/p/DooDesch/SideHustle/)
-menu and run from your in-game phone. Built on [S1API](https://github.com/ifBars/S1API).
+> A multiplayer prop-hunt gamemode for Schedule I - as far as I know the first prop hunt for
+> this game. Hiders look at any world prop and become an exact copy of it (a crate, a bin, a
+> traffic cone) and blend into the map; hunters get a weapon and track them down before the
+> timer runs out. Hosted and launched from the [Side Hustle](https://thunderstore.io/c/schedule-i/p/DooDesch/SideHustle/)
+> menu and run from your in-game phone. Built on [S1API](https://github.com/ifBars/S1API).
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue)
+> 🌐 **Looking for a round?** Open PropHunt lobbies are listed live at
+> **[SideHustle.doodesch.de](https://sidehustle.doodesch.de)** - how many players are in, and what the session runs.
+> You still join from the Side Hustle menu in-game.
+
+![Version](https://img.shields.io/badge/version-1.1.1-blue)
 ![Game](https://img.shields.io/badge/game-Schedule%20I-purple)
 ![MelonLoader](https://img.shields.io/badge/MelonLoader-0.7.3+-green)
 ![S1API](https://img.shields.io/badge/S1API-required-orange)
