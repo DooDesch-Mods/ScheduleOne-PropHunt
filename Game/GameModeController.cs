@@ -335,6 +335,7 @@ namespace PropHunt.Game
             _state = new GameState { Phase = RoundPhase.Lobby, SettingsBlob = _settings.Serialize(), CatalogHash = PropCatalog.Hash };
             RoundLogic.SyncRoster(_state, GetMemberIds());
             PushState();
+            BroadcastPropPool(force: true);   // tell joiners which props they may become before anyone can pick one
             Core.Log.Msg($"[PropHunt] host session started (Lobby). Settings: {_settings}");
         }
 
@@ -646,6 +647,41 @@ namespace PropHunt.Game
             try { PropHuntNet.Client?.BroadcastMessage(new SafehouseDoorLockMessage { PropertyCode = code, Locked = locked }); } catch { }
         }
 
+        private int _sentPoolHash = int.MinValue;   // last pool we told clients about, so we only resend on a change
+
+        /// <summary>Host: publish the props WE can render, which is the set hiders are allowed to pick from.
+        ///
+        /// Sent when the session starts and again whenever our own catalog changes - walking into a building streams
+        /// its interior in, and those props become available to everyone rather than only to whoever is standing
+        /// inside. Cheap to repeat: it only goes out when the content signature actually moved.</summary>
+        private void BroadcastPropPool(bool force = false)
+        {
+            if (!_isHost) return;
+            try
+            {
+                int h = PropCatalog.Hash;
+                if (!force && h == _sentPoolHash) return;
+                _sentPoolHash = h;
+                var ids = PropCatalog.AllIds();
+                PropHuntNet.Client?.BroadcastMessage(new PropPoolMessage { Ids = ids });
+                Core.LogDebug($"[PropHunt] prop pool published: {ids.Count} prop(s), hash {h}.");
+            }
+            catch (Exception e) { Core.Log.Warning("[PropHunt] publishing the prop pool failed: " + e.Message); }
+        }
+
+        /// <summary>Client: adopt the host's pool. From here a hider is only offered props the host can draw too, so
+        /// a disguise can no longer turn into nothing on the host's screen.</summary>
+        private void HandlePropPool(List<int> ids)
+        {
+            if (_isHost || ids == null) return;
+            try
+            {
+                if (!PropCatalog.SetHostPool(new HashSet<int>(ids))) return;
+                Core.Log.Msg($"[PropHunt] host prop pool: {ids.Count} prop(s); {PropCatalog.BecomableCount()} of our {PropCatalog.Count} are usable.");
+            }
+            catch (Exception e) { Core.Log.Warning("[PropHunt] adopting the host prop pool failed: " + e.Message); }
+        }
+
         /// <summary>Client handler: apply a door lock/open the host pushed.</summary>
         private void HandleSafehouseDoorLock(string code, bool locked)
         {
@@ -667,6 +703,9 @@ namespace PropHunt.Game
                 // Keep the roster live even BEFORE the match starts (in the pre-match Lobby) so the Stats/Players tabs
                 // show every joiner, not just the host. The round machine (TickHost) still only runs once started.
                 bool changed = RoundLogic.SyncRoster(_state, GetMemberIds());
+                // A joiner has no pool until we send it one, and the send is a no-op unless the roster or our own
+                // catalog actually moved - so this costs a hash compare on an ordinary tick.
+                if (changed) BroadcastPropPool(force: true);
                 if (_matchStarted)
                 {
                     // pre-select the safehouse (size-based) BEFORE TickHost may transition RoundEnd -> Safehouse,
@@ -712,6 +751,7 @@ namespace PropHunt.Game
                     // rebuild at the same lifecycle point -> matching deterministic ids/hash.
                     PropCatalog.Build();
                     if (_isHost && _state.CatalogHash != PropCatalog.Hash) { _state.CatalogHash = PropCatalog.Hash; PushState(); }
+                    BroadcastPropPool();   // the rebuild may have picked up interiors that streamed in since
                     // Coming from the safehouse, players are ALREADY inside it (= the play-area centre) and its doors
                     // just opened, so they walk out into the surrounding map - NO teleport. Otherwise (round 1) gather
                     // everyone at the area centre.
@@ -818,6 +858,9 @@ namespace PropHunt.Game
             try { PropHunt.View.BodyCam.Stop(); } catch { }                 // restore first person if we tore down mid-ragdoll body-cam
             try { PropHunt.View.EyeBlink.ResetState(); } catch { }          // clear any blink/blindfold static state + ensure the eyes are open
             try { Quests.GuideQuest.Stop(); } catch { }   // remove the local guidance quest on session teardown
+            // A pool belongs to the host we were playing with; carrying it into the next session would silently
+            // shrink what we may become there.
+            try { PropCatalog.ClearHostPool(); } catch { }
             _disguise = null;
             _decoy = null;
             _picker = null;
@@ -897,6 +940,7 @@ namespace PropHunt.Game
                 c.RegisterMessageHandler<StunFxMessage>((m, s) => Active?.NotifyStunFx(m.ThrowerId, new Vector3(m.X, m.Y, m.Z)));
                 c.RegisterMessageHandler<DecoyFxMessage>((m, s) => Active?.NotifyDecoyFx(m.HunterId, new Vector3(m.X, m.Y, m.Z)));
                 c.RegisterMessageHandler<SafehouseDoorLockMessage>((m, s) => Active?.HandleSafehouseDoorLock(m.PropertyCode, m.Locked));
+                c.RegisterMessageHandler<PropPoolMessage>((m, s) => Active?.HandlePropPool(m.Ids));
                 _handlersRegistered = true;
                 Core.LogDebug("[PropHunt] P2P handlers registered.");
             }
@@ -1195,6 +1239,14 @@ namespace PropHunt.Game
         private void HandleSelectProp(ulong sender, int propId)
         {
             if (!_isHost) return;
+            // Last line of defence: a prop we cannot draw would leave the hider looking like a player to everyone
+            // watching through us. Clients are already gated on the published pool, so this only catches a stale one.
+            if (propId >= 0 && PropCatalog.ById(propId) == null)
+            {
+                Core.Log.Warning($"[PropHunt] host: rejected prop {propId} from {sender} - not in the host catalog.");
+                BroadcastPropPool(force: true);   // their pool is out of date; hand them the current one
+                return;
+            }
             int maxHits = ComputeMaxHits(propId);
             bool freeChange = _settings.FreeChangesInHiding && _state.Phase == RoundPhase.Hiding;
             bool ok = RoundLogic.ApplySelectProp(_state, sender, propId, maxHits, _settings.MaxPropChanges, freeChange);

@@ -5,6 +5,9 @@ using PropHunt.Config;
 [assembly: MelonInfo(typeof(PropHunt.Core), "PropHunt", "1.1.1", "DooDesch", "https://github.com/DooDesch-Mods/ScheduleOne-PropHunt")]
 [assembly: MelonGame("TVGS", "Schedule I")]
 [assembly: MelonOptionalDependencies("SideHustle")]   // PropHunt is launched from the Side Hustle gamemode hub
+// WhatsDab carries the in-round chat. Declared as an additional dependency so MelonLoader loads it BEFORE PropHunt;
+// it is a hard requirement of the gamemode and is also listed in the Side Hustle mod policy below.
+[assembly: MelonAdditionalDependencies("WhatsDab")]
 
 namespace PropHunt
 {
@@ -94,10 +97,14 @@ namespace PropHunt
                             "Snitch",        // performance profiler - useful for tuning, no gameplay effect
                             "Inkorporated",  // custom tattoos (cosmetic)
                             "Inkubator"      // tattoo editor (cosmetic; only matched if the player has it installed)
-                        }
-                        // RequiredMods intentionally left empty: PropHunt's hard dependencies (S1API,
-                        // SteamNetworkLib) are always present, and BiggerLobbies is optional - it raises the lobby
-                        // cap when installed but PropHunt runs without it. Nothing here forces or blocks a mod.
+                        },
+                        // WhatsDab carries the in-round chat every player is expected to have, so it is required
+                        // rather than merely allowed: if it is installed but disabled Side Hustle switches it back on,
+                        // and if it is missing the player is told to install it before the round starts instead of
+                        // finding out mid-game that they cannot talk to anyone.
+                        RequiredMods = new[] { "WhatsDab" }
+                        // PropHunt's other hard dependencies (S1API, SteamNetworkLib) are always present and never
+                        // disabled, so they do not belong here - listing them could falsely block the launch.
                     }
                 };
                 SideHustle.API.Register(_descriptor);

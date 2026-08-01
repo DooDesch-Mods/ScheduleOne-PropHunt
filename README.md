@@ -51,6 +51,7 @@
 | S1API | [ifBars/S1API_Forked](https://thunderstore.io/c/schedule-i/p/ifBars/S1API_Forked/) - the Schedule I modding API |
 | Side Hustle | [DooDesch/SideHustle](https://thunderstore.io/c/schedule-i/p/DooDesch/SideHustle/) - the gamemode hub PropHunt launches from; also raises the lobby cap for you |
 | SteamNetworkLib | [ifBars/SteamNetworkLib_Il2Cpp](https://thunderstore.io/c/schedule-i/p/ifBars/SteamNetworkLib_Il2Cpp/) - multiplayer state sync |
+| WhatsDab | [DooDesch/WhatsDab](https://thunderstore.io/c/schedule-i/p/DooDesch/WhatsDab/) - the in-round chat |
 
 ## Installation
 

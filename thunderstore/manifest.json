@@ -6,8 +6,9 @@
   "dependencies": [
     "LavaGang-MelonLoader-0.7.3",
     "ifBars-S1API_Forked-3.1.1",
-    "DooDesch-SideHustle-1.6.0",
-    "ifBars-SteamNetworkLib_Il2Cpp-1.5.0"
+    "ifBars-SteamNetworkLib_Il2Cpp-1.5.0",
+    "DooDesch-SideHustle-2.2.0",
+    "DooDesch-WhatsDab-1.0.2"
   ],
   "contributors": [
     "DooDesch"

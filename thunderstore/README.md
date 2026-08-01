@@ -51,6 +51,7 @@ Pick one on the host form and start - no config files, and you can still tweak a
 - [S1API](https://github.com/ifBars/S1API) (ifBars-S1API_Forked) - the Schedule I modding API.
 - [Side Hustle](https://thunderstore.io/c/schedule-i/p/DooDesch/SideHustle/) - the gamemode hub PropHunt launches from; also raises the lobby cap for you.
 - [SteamNetworkLib](https://thunderstore.io/c/schedule-i/p/ifBars/SteamNetworkLib_Il2Cpp/) - multiplayer state sync.
+- [WhatsDab](https://thunderstore.io/c/schedule-i/p/DooDesch/WhatsDab/) - the in-round chat.
 
 A mod manager installs all of these automatically.
 

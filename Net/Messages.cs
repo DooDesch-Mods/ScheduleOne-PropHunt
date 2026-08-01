@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using SteamNetworkLib.Models;
@@ -226,6 +227,35 @@ namespace PropHunt.Net
         {
             var p = MsgCodec.Str(data).Split(';');
             if (p.Length >= 4) { HunterId = MsgCodec.U(p[0]); X = MsgCodec.F(p[1]); Y = MsgCodec.F(p[2]); Z = MsgCodec.F(p[3]); }
+        }
+    }
+
+    /// <summary>Host -> all: the prop ids the host can render, which is the pool hiders may pick from.
+    ///
+    /// Each machine builds its catalog from its own loaded scene, and those are not the same - Schedule I streams
+    /// building interiors, so a player inside one sees props nobody outside has. Becoming one of those made the hider
+    /// invisible-as-a-prop on the host. The host's set is the common ground, and it is re-sent whenever it grows
+    /// (the host walks into an interior of its own), so the pool widens during a round instead of being frozen at
+    /// whatever was loaded when the session started.</summary>
+    public class PropPoolMessage : P2PMessage
+    {
+        public override string MessageType => "PH_POOL";
+        public List<int> Ids { get; set; } = new List<int>();
+
+        public override byte[] Serialize()
+        {
+            var sb = new StringBuilder(Ids.Count * 10);
+            for (int i = 0; i < Ids.Count; i++) { if (i > 0) sb.Append(';'); sb.Append(MsgCodec.Of(Ids[i])); }
+            // never empty: SteamNetworkLib drops empty-body messages, and "no props" is a real state to transmit
+            return MsgCodec.Bytes(sb.Length == 0 ? "-" : sb.ToString());
+        }
+
+        public override void Deserialize(byte[] data)
+        {
+            Ids = new List<int>();
+            var s = MsgCodec.Str(data);
+            if (string.IsNullOrEmpty(s) || s == "-") return;
+            foreach (var part in s.Split(';')) if (part.Length > 0) Ids.Add(MsgCodec.I(part));
         }
     }
 

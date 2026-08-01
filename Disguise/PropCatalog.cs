@@ -58,6 +58,56 @@ namespace PropHunt.Disguise
         internal static bool Curated => _curation.Count > 0;
         internal static PropEntry ById(int id) => _byId.TryGetValue(id, out var e) ? e : null;
 
+        // ---- host-authoritative pool -----------------------------------------------------------------------
+
+        /// <summary>The prop ids the HOST has in its own catalog, or null before the host has told us.
+        ///
+        /// Every machine scans its own loaded scene, and the scene is not the same everywhere: Schedule I streams
+        /// building interiors, so a player standing inside one sees props nobody outside can see. A hider who becomes
+        /// one of those turns into nothing at all on the host's screen. Restricting the becomable pool to what the
+        /// host can also render is what keeps a disguise meaningful for everyone.</summary>
+        private static HashSet<int> _hostPool;
+
+        /// <summary>Ids the host knows. Null on the host itself and before the first catalog broadcast arrives.</summary>
+        internal static HashSet<int> HostPool => _hostPool;
+
+        /// <summary>Adopt the host's prop pool (client side). Returns true when it actually changed something.</summary>
+        internal static bool SetHostPool(HashSet<int> ids)
+        {
+            if (ids == null || ids.Count == 0) return false;
+            if (_hostPool != null && _hostPool.Count == ids.Count && _hostPool.SetEquals(ids)) return false;
+            _hostPool = ids;
+            return true;
+        }
+
+        internal static void ClearHostPool() => _hostPool = null;
+
+        /// <summary>Can this prop be BECOME right now - i.e. is it in our catalog and, on a client, also in the
+        /// host's? A prop only we can see is still rendered if someone else somehow picks it; it is just never
+        /// offered, so nobody can walk into the mismatch on purpose.</summary>
+        internal static bool IsBecomable(int id)
+        {
+            if (!_byId.ContainsKey(id)) return false;
+            return _hostPool == null || _hostPool.Contains(id);
+        }
+
+        /// <summary>Every id in our own catalog - what the host sends to its clients.</summary>
+        internal static List<int> AllIds()
+        {
+            var ids = new List<int>(_entries.Count);
+            foreach (var e in _entries) ids.Add(e.Id);
+            return ids;
+        }
+
+        /// <summary>How many of our props survive the host's pool - the size of the pool a hider actually picks from.</summary>
+        internal static int BecomableCount()
+        {
+            if (_hostPool == null) return _entries.Count;
+            int n = 0;
+            foreach (var e in _entries) if (_hostPool.Contains(e.Id)) n++;
+            return n;
+        }
+
         /// <summary>Content-signature key for a mesh. Combines name, vertex count, and quantised bounds so two
         /// different meshes that share a name (e.g. "Base", "Cube") produce different keys. All components are
         /// baked into the asset - identical on host and client and across all instances of the same prop type.</summary>
@@ -629,12 +679,21 @@ namespace PropHunt.Disguise
             }
         }
 
+        /// <summary>A signature of WHAT is in the catalog, independent of the order it was scanned in.
+        ///
+        /// The order matters here because the scan order is not reproducible: two builds on the same machine, over the
+        /// same 187 props, produced two different hashes and every client reported a false "catalog mismatch". Sorting
+        /// the per-entry hashes first makes the signature depend on content alone, which is the only thing two
+        /// machines can agree on.</summary>
         private static void ComputeHash()
         {
+            var keys = new List<int>(_entries.Count);
+            foreach (var e in _entries) keys.Add(StableHash(e.Key));
+            keys.Sort();
             unchecked
             {
                 int h = 17;
-                foreach (var e in _entries) h = h * 31 + StableHash(e.Key);
+                for (int i = 0; i < keys.Count; i++) h = h * 31 + keys[i];
                 _hash = h;
             }
         }
