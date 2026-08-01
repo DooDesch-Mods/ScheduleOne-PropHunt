@@ -283,6 +283,11 @@ namespace PropHunt.Game
         {
             Core.Log.Msg($"[PropHunt] props: catalog={PropCatalog.Count} hash={PropCatalog.Hash} stateHash={_state.CatalogHash} " +
                          $"phase={_state.Phase} role={LocalRole} highlighted={(_highlighter != null ? _highlighter.HighlightedCount : 0)}");
+            // The pool is the usual reason a prop refuses to be taken, so say plainly whether one is in force and how
+            // much of our catalog it leaves us.
+            Core.Log.Msg(PropCatalog.HostPool == null
+                ? "[PropHunt] props: no host pool (we are the host, or it has not arrived yet) - all of our props are becomable."
+                : $"[PropHunt] props: host pool {PropCatalog.HostPool.Count} prop(s) -> {PropCatalog.BecomableCount()} of our {PropCatalog.Count} are becomable.");
             string tgt = _picker?.CurrentTargetName;
             Core.Log.Msg($"[PropHunt] props: crosshair -> {(tgt != null ? $"'{tgt}' (id {_picker.CurrentTargetId})" : "<nothing becomable>")}");
             try

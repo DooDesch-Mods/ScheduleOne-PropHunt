@@ -2,7 +2,7 @@ using System;
 using MelonLoader;
 using PropHunt.Config;
 
-[assembly: MelonInfo(typeof(PropHunt.Core), "PropHunt", "1.1.1", "DooDesch", "https://github.com/DooDesch-Mods/ScheduleOne-PropHunt")]
+[assembly: MelonInfo(typeof(PropHunt.Core), "PropHunt", "1.2.0", "DooDesch", "https://github.com/DooDesch-Mods/ScheduleOne-PropHunt")]
 [assembly: MelonGame("TVGS", "Schedule I")]
 [assembly: MelonOptionalDependencies("SideHustle")]   // PropHunt is launched from the Side Hustle gamemode hub
 // WhatsDab carries the in-round chat. Declared as an additional dependency so MelonLoader loads it BEFORE PropHunt;
