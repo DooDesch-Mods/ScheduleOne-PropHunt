@@ -90,7 +90,10 @@ namespace PropHunt.Disguise
                     if (mf.GetComponent<MeshRenderer>() == null) continue;
                     if (mf.GetComponentInParent<Player>() != null) continue;    // a disguise riding a player, not a world prop
                     if (IsOurClone(mf.transform)) continue;                     // our own decoy/disguise/shell clones
-                    if (PropCatalog.IdForMeshFilter(mf) < 0) continue;          // not a becomable prop (scene mesh OR composite veh:/reg:/world:)
+                    // Highlight only what can actually be become. Beyond "is it a prop at all" that now includes the
+                    // host's pool: a prop only WE can see would light up invitingly and then refuse to be taken.
+                    int hid = PropCatalog.IdForMeshFilter(mf);
+                    if (hid < 0 || !PropCatalog.IsBecomable(hid)) continue;
                     if (!seen.Add(mf.gameObject.GetInstanceID())) continue;
                     _candidates.Add(mf);
                 }

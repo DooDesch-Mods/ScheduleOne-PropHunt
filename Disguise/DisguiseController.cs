@@ -33,12 +33,16 @@ namespace PropHunt.Disguise
             if (state == null) return;
             try
             {
-                // A prop-catalog hash mismatch (host vs local) is the surviving "disguises may differ" check; the
-                // broader "everyone must be on the same build" version check now lives in Side Hustle at the join layer.
-                if (!_warnedHashMismatch && state.CatalogHash != 0 && state.CatalogHash != PropCatalog.Hash)
+                // Two catalogs are EXPECTED to differ now - each machine scans its own loaded scene and the game
+                // streams interiors, so standing in different places is enough. What matters is whether enough of
+                // the host's pool survives locally to still have something to hide as; a bare hash comparison only
+                // produced noise. (The "everyone on the same build" check lives in Side Hustle at the join layer.)
+                if (!_warnedHashMismatch && PropCatalog.HostPool != null && PropCatalog.Count > 0
+                    && PropCatalog.BecomableCount() < PropCatalog.Count / 2)
                 {
                     _warnedHashMismatch = true;
-                    Core.Log.Warning($"[PropHunt] prop-catalog hash mismatch (host {state.CatalogHash} vs local {PropCatalog.Hash}) - disguises may differ.");
+                    Core.Log.Warning($"[PropHunt] only {PropCatalog.BecomableCount()} of our {PropCatalog.Count} props are in the host's pool " +
+                                     "- the worlds differ a lot, so there is little to hide as.");
                 }
 
                 PlayerRegistry.Refresh();
