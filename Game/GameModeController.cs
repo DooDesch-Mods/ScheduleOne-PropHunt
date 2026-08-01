@@ -982,6 +982,10 @@ namespace PropHunt.Game
         private int _lastShotFrame = -1;
         private bool _localDownedApplied;               // edge-detect our OWN Downed flag (drives camera + control lock)
         private readonly HashSet<ulong> _ragdolled = new HashSet<ulong>();   // who we currently show limp, so each edge fires once
+        // Scratch buffers, reused every tick so the per-frame drive allocates nothing.
+        private readonly List<ulong> _pendingRagdoll = new List<ulong>();
+        private readonly List<ulong> _pendingStandUp = new List<ulong>();
+        private readonly List<ulong> _stale = new List<ulong>();
 
         private const float KnockImpulse = 30f;         // matches the impulse vanilla puts on a falling body
 
@@ -998,19 +1002,44 @@ namespace PropHunt.Game
         {
             try
             {
+                // Collect the edges first, act after. Ragdoll/StandUp touch the avatar and can spawn or despawn
+                // objects, which must not happen while we are still walking the state dictionary.
                 foreach (var kv in _state.Players)
                 {
                     ulong id = kv.Key;
-                    bool downed = kv.Value.Downed;
-                    if (downed == _ragdolled.Contains(id)) continue;   // no edge for this player
-
-                    var pl = PlayerRegistry.Get(id);
-                    if (pl == null) continue;                          // out of range / not spawned yet - retry next tick
-
-                    if (downed) { _ragdolled.Add(id); Ragdoll(pl, kv.Value.KnockX, kv.Value.KnockZ); }
-                    else { _ragdolled.Remove(id); StandUp(pl); }
+                    if (kv.Value.Downed == _ragdolled.Contains(id)) continue;   // no edge for this player
+                    (kv.Value.Downed ? _pendingRagdoll : _pendingStandUp).Add(id);
                 }
-                if (_ragdolled.Count > 0) _ragdolled.RemoveWhere(id => !_state.Players.ContainsKey(id));
+
+                foreach (ulong id in _pendingRagdoll)
+                {
+                    var pl = PlayerRegistry.Get(id);
+                    if (pl == null || !_state.Players.TryGetValue(id, out var st)) continue;   // not spawned here yet - retry next tick
+                    if (Ragdoll(pl, st.KnockX, st.KnockZ)) _ragdolled.Add(id);                 // only remember what actually took
+                }
+                foreach (ulong id in _pendingStandUp)
+                {
+                    var pl = PlayerRegistry.Get(id);
+                    if (pl == null) continue;      // body out of reach - stay marked and stand it up when it returns
+                    if (StandUp(pl)) _ragdolled.Remove(id);
+                }
+                _pendingRagdoll.Clear();
+                _pendingStandUp.Clear();
+
+                // A player who left the round while limp: stand the body back up if it is still here, so a disconnect
+                // (or a state reset) cannot leave a corpse lying in the world for everyone else.
+                if (_ragdolled.Count > 0)
+                {
+                    _stale.Clear();
+                    foreach (ulong id in _ragdolled) if (!_state.Players.ContainsKey(id)) _stale.Add(id);
+                    foreach (ulong id in _stale)
+                    {
+                        var pl = PlayerRegistry.Get(id);
+                        // Keep the id until the body is either upright again or genuinely gone - dropping it while a
+                        // limp body is still in the world would strand that body with nothing left to stand it up.
+                        if (pl == null || StandUp(pl)) _ragdolled.Remove(id);
+                    }
+                }
             }
             catch (Exception e) { Core.LogDebug("[PropHunt] ragdoll drive failed: " + e.Message); }
 
@@ -1019,33 +1048,45 @@ namespace PropHunt.Game
 
         /// <summary>Drop a player limp and shove the body in the synced knockback direction (away from the attacker).
         /// Mirrors what vanilla does when a player dies (Player.OnDied): SetRagdolled + a spine impulse + a little
-        /// random torque so the tumble does not look mechanical. A zero direction falls straight down.</summary>
-        private static void Ragdoll(Player pl, float kx, float kz)
+        /// random torque so the tumble does not look mechanical. A zero direction falls straight down.
+        ///
+        /// Returns false when the limp did not take. The caller only records the player as ragdolled on a true, so a
+        /// transient failure is retried next tick instead of being remembered as done.</summary>
+        private static bool Ragdoll(Player pl, float kx, float kz)
         {
             try
             {
                 pl.SetRagdolled(true);
                 var rb = pl.Avatar?.MiddleSpineRB;
-                if (rb == null) return;
+                if (rb == null) return true;   // limp applied; only the shove is missing
                 var dir = new Vector3(kx, 0f, kz);
                 if (dir.sqrMagnitude > 0.0001f) rb.AddForce(dir.normalized * KnockImpulse, ForceMode.VelocityChange);
                 rb.AddRelativeTorque(new Vector3(0f, UnityEngine.Random.Range(-1f, 1f), UnityEngine.Random.Range(-1f, 1f)) * 10f, ForceMode.VelocityChange);
+                return true;
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] ragdoll failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("[PropHunt] ragdoll failed: " + e.Message); return false; }
         }
 
-        private static void StandUp(Player pl)
+        /// <summary>Stand a body back up. Returns false when it did not take, so the caller keeps the player marked
+        /// and tries again rather than leaving them limp forever.</summary>
+        private static bool StandUp(Player pl)
         {
-            try { pl.SetRagdolled(false); }
-            catch (Exception e) { Core.LogDebug("[PropHunt] stand-up failed: " + e.Message); }
+            try { pl.SetRagdolled(false); return true; }
+            catch (Exception e) { Core.LogDebug("[PropHunt] stand-up failed: " + e.Message); return false; }
         }
 
         /// <summary>The half of a knockdown that only applies to OUR player: freeze the character controller so it
-        /// cannot drag the limp body around, take control away, and pull the camera out so you can see yourself drop.</summary>
+        /// cannot drag the limp body around, take control away, and pull the camera out so you can see yourself drop.
+        ///
+        /// The edge is only latched once the local player actually exists. A knockdown can be synced to us while the
+        /// scene is still coming up, and every effect below silently no-ops without a local player - latching first
+        /// would swallow the edge for good and leave us running around while the body lies limp.</summary>
         private void DriveLocalDownedView()
         {
             bool downed = LocalDowned;
             if (downed == _localDownedApplied) return;
+            if (Player.Local == null) return;   // not ready - keep the edge pending and try again next tick
+
             _localDownedApplied = downed;
             try
             {
