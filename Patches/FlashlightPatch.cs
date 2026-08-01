@@ -1,14 +1,18 @@
 using HarmonyLib;
 using PropHunt.Game;
+// Not a `using Il2CppScheduleOne.UI.Phone;` - that would make the bare name `Phone` ambiguous with PropHunt's own
+// Phone namespace (CS0118), so the patch target is spelled out below.
+using VanillaPhone = Il2CppScheduleOne.UI.Phone.Phone;
 
 namespace PropHunt.Patches
 {
     /// <summary>
     /// During a PropHunt round, [F] is the "rotate prop" key - it must not also toggle the game's flashlight
-    /// (F is the vanilla flashlight bind). The flashlight is driven by the input handler
-    /// <c>GameInput.OnToggleFlashlight</c>; we cancel it while a round is active. No-op outside a round.
+    /// (F is the vanilla flashlight bind). Since 0.4.6f11 the flashlight lives on the phone: <c>Phone</c> polls its own
+    /// <c>InputActionReference</c> every frame and calls <c>Phone.ToggleFlashlight</c>. Cancel that call while a round
+    /// is active. No-op outside a round.
     /// </summary>
-    [HarmonyPatch(typeof(Il2CppScheduleOne.GameInput), nameof(Il2CppScheduleOne.GameInput.OnToggleFlashlight))]
+    [HarmonyPatch(typeof(VanillaPhone), "ToggleFlashlight")]
     internal static class FlashlightSuppressPatch
     {
         private static bool Prefix()

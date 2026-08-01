@@ -760,7 +760,7 @@ namespace PropHunt.Game
             _taunt?.Tick();
             _disguise?.Apply(_state);
             _decoy?.Apply(_state);
-            DriveLocalRagdoll();   // ragdoll/stand-up the local player when the synced Downed flag flips (FF-KO / concussion)
+            DriveRagdolls();   // ragdoll/stand-up every player whose synced Downed flag flipped (FF-KO / concussion)
 
             int lpid = LocalPropId;
             if (lpid != _lastLocalProp)
@@ -806,7 +806,15 @@ namespace PropHunt.Game
             try { _border?.Dispose(); } catch { }
             try { _tauntWheel?.Dispose(); } catch { }
             try { PropHunt.Music.RoundMusicController.Stop(); } catch { }   // hand music back to the game
-            try { if (_localDownedApplied) { _localDownedApplied = false; Player.Local?.SendPassOutRecovery(); Player.Activate(); FreezeLocalRoot(false); } } catch { }   // stand up + restore control + re-enable the controller if we tore down mid-ragdoll (clear flag first so it resets even if an RPC throws)
+            // Stand everyone back up + restore control if we tore down mid-knockdown (clear the sets first, so the state
+            // resets even if one of the bodies has already been destroyed).
+            try
+            {
+                var stuck = new List<ulong>(_ragdolled); _ragdolled.Clear();
+                foreach (var id in stuck) { var pl = PlayerRegistry.Get(id); if (pl != null) StandUp(pl); }
+            }
+            catch { }
+            try { if (_localDownedApplied) { _localDownedApplied = false; FreezeLocalRoot(false); SetLocalControl(true); } } catch { }
             try { PropHunt.View.BodyCam.Stop(); } catch { }                 // restore first person if we tore down mid-ragdoll body-cam
             try { PropHunt.View.EyeBlink.ResetState(); } catch { }          // clear any blink/blindfold static state + ensure the eyes are open
             try { Quests.GuideQuest.Stop(); } catch { }   // remove the local guidance quest on session teardown
@@ -972,42 +980,102 @@ namespace PropHunt.Game
         }
 
         private int _lastShotFrame = -1;
-        private bool _localDownedApplied;   // edge-detect the synced Downed flag so we ragdoll/recover the owner exactly once
+        private bool _localDownedApplied;               // edge-detect our OWN Downed flag (drives camera + control lock)
+        private readonly HashSet<ulong> _ragdolled = new HashSet<ulong>();   // who we currently show limp, so each edge fires once
 
-        /// <summary>Drive the native ragdoll on the LOCAL (owner) player from the synced Downed flag. The host owns the
-        /// Downed state (friendly-fire KO or concussion), but the native <c>PassOut</c> RPC is owner-gated + ExcludeOwner,
-        /// so only the downed player's OWN client can trigger the limp that replicates to everyone. We therefore watch
-        /// our own Downed edge here: rising -> SendPassOut (ragdoll), falling -> SendPassOutRecovery (stand up in place).</summary>
-        private void DriveLocalRagdoll()
+        private const float KnockImpulse = 30f;         // matches the impulse vanilla puts on a falling body
+
+        /// <summary>Ragdoll every player whose synced Downed flag says so, and stand the rest back up.
+        ///
+        /// The host owns the Downed state (friendly-fire KO or concussion) and syncs it, together with the knockback
+        /// direction, to every client - so replication is already done and each client simply mirrors the flags onto the
+        /// bodies it can see. That is why this needs no RPC: 0.4.6f11 deleted the whole pass-out system
+        /// (<c>Player.PassOut</c>, <c>SendPassOut</c>, <c>PassOutScreen</c>, the energy meter), and the networked limp
+        /// went with it. What survived is the death path's own recipe - <c>Player.SetRagdolled</c> plus a spine impulse -
+        /// which is local, cheap, and also fixes the fall direction natively: vanilla always toppled a body forward, so
+        /// we used to need a second patch to cancel that. Here the impulse simply IS the knockback direction.</summary>
+        private void DriveRagdolls()
+        {
+            try
+            {
+                foreach (var kv in _state.Players)
+                {
+                    ulong id = kv.Key;
+                    bool downed = kv.Value.Downed;
+                    if (downed == _ragdolled.Contains(id)) continue;   // no edge for this player
+
+                    var pl = PlayerRegistry.Get(id);
+                    if (pl == null) continue;                          // out of range / not spawned yet - retry next tick
+
+                    if (downed) { _ragdolled.Add(id); Ragdoll(pl, kv.Value.KnockX, kv.Value.KnockZ); }
+                    else { _ragdolled.Remove(id); StandUp(pl); }
+                }
+                if (_ragdolled.Count > 0) _ragdolled.RemoveWhere(id => !_state.Players.ContainsKey(id));
+            }
+            catch (Exception e) { Core.LogDebug("[PropHunt] ragdoll drive failed: " + e.Message); }
+
+            DriveLocalDownedView();
+        }
+
+        /// <summary>Drop a player limp and shove the body in the synced knockback direction (away from the attacker).
+        /// Mirrors what vanilla does when a player dies (Player.OnDied): SetRagdolled + a spine impulse + a little
+        /// random torque so the tumble does not look mechanical. A zero direction falls straight down.</summary>
+        private static void Ragdoll(Player pl, float kx, float kz)
+        {
+            try
+            {
+                pl.SetRagdolled(true);
+                var rb = pl.Avatar?.MiddleSpineRB;
+                if (rb == null) return;
+                var dir = new Vector3(kx, 0f, kz);
+                if (dir.sqrMagnitude > 0.0001f) rb.AddForce(dir.normalized * KnockImpulse, ForceMode.VelocityChange);
+                rb.AddRelativeTorque(new Vector3(0f, UnityEngine.Random.Range(-1f, 1f), UnityEngine.Random.Range(-1f, 1f)) * 10f, ForceMode.VelocityChange);
+            }
+            catch (Exception e) { Core.LogDebug("[PropHunt] ragdoll failed: " + e.Message); }
+        }
+
+        private static void StandUp(Player pl)
+        {
+            try { pl.SetRagdolled(false); }
+            catch (Exception e) { Core.LogDebug("[PropHunt] stand-up failed: " + e.Message); }
+        }
+
+        /// <summary>The half of a knockdown that only applies to OUR player: freeze the character controller so it
+        /// cannot drag the limp body around, take control away, and pull the camera out so you can see yourself drop.</summary>
+        private void DriveLocalDownedView()
         {
             bool downed = LocalDowned;
             if (downed == _localDownedApplied) return;
             _localDownedApplied = downed;
             try
             {
-                var lp = Player.Local;
-                if (lp == null) return;
                 if (downed)
                 {
-                    lp.SendPassOut();   // networked ragdoll (replicates to everyone). Its owner-side ExitAll disables
-                                        // look/move/inventory during the knockdown - desirable while down.
-                    PropHunt.View.BodyCam.Start();   // pull the LOCAL camera out to third person so you watch your own body drop and know you're down
-                    FreezeLocalRoot(true);   // stop our own still-active CharacterController from dragging the ragdoll forward, so the redirected spine impulse decides the fall
+                    SetLocalControl(false);
+                    PropHunt.View.BodyCam.Start();   // third person, so you watch your own body drop and know you're down
+                    FreezeLocalRoot(true);           // our CharacterController is still active and would drag the ragdoll forward
                     SetFx("KNOCKED DOWN", new Color(0.95f, 0.55f, 0.2f));
                 }
                 else
                 {
-                    lp.SendPassOutRecovery();   // un-ragdoll everywhere
-                    FreezeLocalRoot(false);     // re-enable the local CharacterController we disabled while downed
-                    // PassOutRecovery does NOT re-enable control - vanilla relies on PassOutScreen.Close() -> Activate(),
-                    // which we suppress (PassOutScreenGatePatch). So restore control ourselves: Player.Activate() is the
-                    // exact inverse of the ExitAll that SendPassOut ran (canLook + CanMove + inventory + crosshair +
-                    // LockMouse). Without this the camera stays locked ("canLook=false") after standing up.
-                    Player.Activate();
-                    PropHunt.View.BodyCam.Stop();   // ease the camera back to first person now the body is upright (re-hides own body + re-enables look)
+                    FreezeLocalRoot(false);
+                    SetLocalControl(true);
+                    PropHunt.View.BodyCam.Stop();    // ease back to first person now the body is upright
                 }
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] ragdoll drive failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("[PropHunt] downed view failed: " + e.Message); }
+        }
+
+        /// <summary>Take local control away and hand it back. This used to be <c>Player.Deactivate</c>/<c>Activate</c>,
+        /// which 0.4.6f11 removed; these are the same four levers those static helpers pulled, so a knockdown still
+        /// locks look, movement, inventory and the crosshair exactly as before. The mouse is deliberately left locked
+        /// (we never free it) so the knockdown does not pop a cursor into the middle of a round.</summary>
+        private static void SetLocalControl(bool enabled)
+        {
+            try { PlayerSingleton<PlayerCamera>.Instance?.SetCanLook(enabled); } catch { }
+            try { var m = PlayerSingleton<PlayerMovement>.Instance; if (m != null) m.CanMove = enabled; } catch { }
+            try { PlayerSingleton<PlayerInventory>.Instance?.SetInventoryEnabled(enabled); } catch { }
+            try { Singleton<HUD>.Instance?.SetCrosshairVisible(enabled); } catch { }
         }
 
         /// <summary>The local hunter FIRED a real, ammo/aim/cooldown-gated shot (driven by the weapon-fire Harmony
@@ -1240,8 +1308,8 @@ namespace PropHunt.Game
         }
 
         /// <summary>Set the synced horizontal knockback direction for a player's ragdoll (away from the attacker), read
-        /// by <see cref="Patches.PassOutKnockbackPatch"/> on every client so the body falls in the hit direction instead
-        /// of the vanilla always-forward faint. <paramref name="dir"/> is a world vector attacker-&gt;victim (y ignored).</summary>
+        /// by <see cref="DriveRagdolls"/> on every client so the body falls in the hit direction.
+        /// <paramref name="dir"/> is a world vector attacker-&gt;victim (y ignored).</summary>
         internal void SetKnockback(ulong id, Vector3 dir)
         {
             if (!_state.Players.TryGetValue(id, out var p)) return;
@@ -1485,12 +1553,11 @@ namespace PropHunt.Game
             catch (Exception e) { Core.LogDebug("[PropHunt] SetFrozen failed: " + e.Message); }
         }
 
-        /// <summary>Freeze/unfreeze the LOCAL player root by toggling its CharacterController during a knockdown. Vanilla
-        /// pass-out never disables the owner's controller, so it keeps sliding the root toward the player's facing and
-        /// drags the ragdoll anchor with it - which overrides the directional knockback impulse and makes the OWNER'S
-        /// OWN body always topple forward (observers have no local controller, so they see the correct direction). With
-        /// the controller off, the root stays put and the redirected <see cref="Patches.PassOutKnockbackPatch"/> spine
-        /// impulse decides the fall. Purely local; re-enabled on recovery.</summary>
+        /// <summary>Freeze/unfreeze the LOCAL player root by toggling its CharacterController during a knockdown. The
+        /// controller stays active while ragdolled and keeps sliding the root toward the player's facing, dragging the
+        /// ragdoll anchor with it - which overrides the knockback impulse and makes the OWNER'S OWN body always topple
+        /// forward (observers have no local controller, so they see the correct direction). With the controller off the
+        /// root stays put and the spine impulse from <see cref="Ragdoll"/> decides the fall. Local; undone on recovery.</summary>
         private void FreezeLocalRoot(bool freeze)
         {
             try { var pm = PlayerSingleton<PlayerMovement>.Instance; if (pm != null && pm.Controller != null) pm.Controller.enabled = !freeze; }

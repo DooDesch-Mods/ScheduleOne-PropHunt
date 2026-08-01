@@ -31,16 +31,20 @@ namespace PropHunt
             // NOT here at load. Patching the game's gameplay methods while the Side Hustle hub builds its menu UI
             // intermittently hard-crashes the game, and these patches only do anything during an in-game round anyway.
 
-            RegisterWithSideHustle();
+            // The try/catch has to sit HERE, around the call, not inside RegisterWithSideHustle: that method touches
+            // SideHustle types in its signature-level body, so a missing SideHustle.dll throws while the JIT prepares
+            // the method - before any handler inside it exists. Guarding the call site is what actually keeps
+            // OnInitializeMelon alive when the optional dependency is absent.
+            try { RegisterWithSideHustle(); }
+            catch (Exception e) { Log.Warning("Side Hustle not available - PropHunt runs without the hub entry: " + e.Message); }
 
             Log.Msg($"PropHunt initialized. Enabled={PropHuntPreferences.Enabled}");
         }
 
         /// <summary>
-        /// Register PropHunt as a multiplayer + world gamemode in the Side Hustle hub. Wrapped in try/catch so
-        /// PropHunt still loads cleanly if Side Hustle is not installed (it is an optional dependency). Registration
-        /// is load-order independent. The launch callbacks bootstrap networking and the session; the full round
-        /// machine (roles/disguise/catch) lands with the gameplay phase.
+        /// Register PropHunt as a multiplayer + world gamemode in the Side Hustle hub. Registration is load-order
+        /// independent. The launch callbacks bootstrap networking and the session; the full round machine
+        /// (roles/disguise/catch) lands with the gameplay phase. Call it from inside a try/catch - see the call site.
         /// </summary>
         private static void RegisterWithSideHustle()
         {

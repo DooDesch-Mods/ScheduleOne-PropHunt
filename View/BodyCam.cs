@@ -9,8 +9,8 @@ namespace PropHunt.View
     /// Faded mod's bodycam - <c>PlayerCamera.OverrideTransform</c> for the pulled-out position (built-in ease +
     /// canLook off) plus a per-frame <c>Transform.LookAt(Avatar.CenterPointTransform)</c> for the aim, restored via
     /// <c>StopTransformOverride(reenableCameraLook: true)</c> (never leaves the camera stuck). Purely local + cosmetic
-    /// and only ever driven for <see cref="Player.Local"/>; it rides on top of PropHunt's existing networked
-    /// <c>SendPassOut</c> ragdoll (this class only moves the local camera, not the body).
+    /// and only ever driven for <see cref="Player.Local"/>; it rides on top of the ragdoll PropHunt drives from the
+    /// synced Downed flag (this class only moves the local camera, not the body).
     /// </summary>
     internal static class BodyCam
     {
@@ -40,7 +40,6 @@ namespace PropHunt.View
                 UnityEngine.Vector3 pull = body + back * PullBack + UnityEngine.Vector3.up * Lift;
                 UnityEngine.Quaternion look = UnityEngine.Quaternion.LookRotation((body - pull).normalized, UnityEngine.Vector3.up);
                 lp.SetVisibleToLocalPlayer(true);              // un-hide our own avatar from our own camera
-                cam.blockNextStopTransformOverride = false;    // guarantee our Stop() isn't swallowed by a stray earlier value
                 cam.OverrideTransform(pull, look, StartLerp, false);   // detach + world-space ease-out; also sets canLook = false
                 _active = true;
             }

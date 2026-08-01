@@ -1,5 +1,6 @@
 using System;
 using Il2CppScheduleOne.Audio;
+using Il2CppScheduleOne.Core.Audio;   // EAudioType moved to the ScheduleOne.Core assembly in 0.4.6f11
 using Il2CppScheduleOne.DevUtilities;
 
 namespace PropHunt.Music

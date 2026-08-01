@@ -272,7 +272,10 @@ namespace PropHunt.Disguise
                 var orig = av.CurrentSettings;
                 if (orig == null) return;   // avatar not ready yet - retry next tick
                 _nakedOriginal[id] = orig;
-                av.LoadNakedSettings(orig, 19);   // 19 = the game's underwear cutoff (CharacterCustomizationUI)
+                // keepOldLayers: false - the parameter is new in 0.4.6f11 and merges the previous body layers back in;
+                // keeping them would put the clothing we are stripping straight back on. 19 = the game's underwear
+                // cutoff (CharacterCustomizationUI).
+                av.LoadNakedSettings(orig, false, 19);
                 _naked.Add(id);
                 Core.LogDebug($"[PropHunt] appearance: {id} -> naked");
             }
