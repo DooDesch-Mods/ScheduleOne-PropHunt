@@ -1599,9 +1599,29 @@ namespace PropHunt.Game
         /// ragdoll anchor with it - which overrides the knockback impulse and makes the OWNER'S OWN body always topple
         /// forward (observers have no local controller, so they see the correct direction). With the controller off the
         /// root stays put and the spine impulse from <see cref="Ragdoll"/> decides the fall. Local; undone on recovery.</summary>
+        private bool _rootFrozenByUs;   // only hand the controller back if WE were the ones who took it away
+
         private void FreezeLocalRoot(bool freeze)
         {
-            try { var pm = PlayerSingleton<PlayerMovement>.Instance; if (pm != null && pm.Controller != null) pm.Controller.enabled = !freeze; }
+            try
+            {
+                var pm = PlayerSingleton<PlayerMovement>.Instance;
+                if (pm == null || pm.Controller == null) return;
+
+                if (freeze)
+                {
+                    // Someone else may already have it off - a skateboard disables the controller deliberately while
+                    // mounted. Remember only the case where the disable is ours, so recovery cannot re-enable a
+                    // controller the game wants off and drop the player off the board.
+                    _rootFrozenByUs = pm.Controller.enabled;
+                    pm.Controller.enabled = false;
+                }
+                else if (_rootFrozenByUs)
+                {
+                    _rootFrozenByUs = false;
+                    pm.Controller.enabled = true;
+                }
+            }
             catch (Exception e) { Core.LogDebug("[PropHunt] FreezeLocalRoot failed: " + e.Message); }
         }
 
