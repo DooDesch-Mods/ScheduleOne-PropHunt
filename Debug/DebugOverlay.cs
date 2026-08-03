@@ -22,6 +22,7 @@ namespace PropHunt.Debug
 
         // styling
         private static GUIStyle _style;
+        private static GUIStyle _bgStyle;
         private static Texture2D _bg;
 
         /// <summary>Toggle from the phdebug console command. Debounced because Console.SubmitCommand fires twice.</summary>
@@ -51,7 +52,10 @@ namespace PropHunt.Debug
             const float w = 440f, pad = 8f, lh = 15f;
             float h = pad * 2 + lines.Count * lh;
             var box = new Rect(6f, 6f, w, h);
-            GUI.DrawTexture(box, _bg);
+            // GUI.DrawTexture is stripped out of the IL2CPP build: calling it throws "Method unstripping failed",
+            // and since this runs from OnGUI it throws again every frame - thousands of log lines within seconds.
+            // GUI.Box with a background-only style paints the same rectangle through a method that survived.
+            GUI.Box(box, GUIContent.none, _bgStyle);
             for (int i = 0; i < lines.Count; i++)
             {
                 _style.normal.textColor = lines[i].col;
@@ -206,6 +210,12 @@ namespace PropHunt.Debug
                 _bg.SetPixel(0, 0, new Color(0f, 0f, 0f, 0.72f));
                 _bg.Apply();
                 UnityEngine.Object.DontDestroyOnLoad(_bg);
+            }
+            if (_bgStyle == null)
+            {
+                // Drawn via GUI.Box, not GUI.DrawTexture - see DrawGui.
+                _bgStyle = new GUIStyle();
+                _bgStyle.normal.background = _bg;
             }
         }
     }
