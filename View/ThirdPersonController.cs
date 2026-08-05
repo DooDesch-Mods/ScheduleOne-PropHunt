@@ -24,7 +24,10 @@ namespace PropHunt.View
 
         // hunters aim catch raycasts from the camera, so they are locked to first person; only hiders may use
         // the third-person inspection view (to see their own prop disguise).
-        private bool Allowed => _ctl.RoundActive && _ctl.LocalRole != PlayerRole.Hunter && !_ctl.LocalSpectating;
+        // The lobby counts when a prop is on: trying one on means seeing it, and RoundActive deliberately excludes
+        // the lobby - which is why ForceOn() set the flag there and nothing ever became visible.
+        private bool Allowed => (_ctl.RoundActive || _ctl.LocalLobbyProp >= 0)
+                                && _ctl.LocalRole != PlayerRole.Hunter && !_ctl.LocalSpectating;
 
         internal bool IsOn => _on && Allowed;
 
@@ -48,7 +51,7 @@ namespace PropHunt.View
                 // Show your OWN body to your camera only in third person AND when not disguised (a disguised hider
                 // should see their prop, not their body). First person / disguised -> hidden (no floating head).
                 // Re-applied EVERY frame (not change-tracked) because the game resets local visibility each frame.
-                SetOwnBodyVisible(active && _ctl.LocalPropId < 0);
+                SetOwnBodyVisible(active && _ctl.WornPropId < 0);
             }
             catch { }
         }
@@ -61,7 +64,8 @@ namespace PropHunt.View
             try
             {
                 // 1) auto-frame the BASE distance/height to the prop's size (undisguised -> a sensible default).
-                float size = _ctl.LocalPropId >= 0 ? PropHunt.Disguise.PropCatalog.SizeOf(_ctl.LocalPropId) : 0f;
+                int worn = _ctl.WornPropId;
+                float size = worn >= 0 ? PropHunt.Disguise.PropCatalog.SizeOf(worn) : 0f;
                 if (size > 0f)
                 {
                     ThirdPersonView.BaseDistance = Mathf.Clamp(size * 1.7f + 1.0f, 1.6f, 9f);

@@ -53,8 +53,12 @@ namespace PropHunt.Game
             if (hunters >= count) hunters = Math.Max(1, count - 1);
             int rotation = (round - 1) / Math.Max(1, set.RoundsBeforeSwap);
 
+            // The match's random starting point (see GameState.RoleOffset) rides ON TOP of the rotation, so who hunts
+            // first varies per match while everyone still takes their turn in order afterwards. Non-negative because a
+            // negative modulo in C# would index backwards off the list.
+            int start = rotation + Math.Abs(s.RoleOffset);
             var hunterSet = new HashSet<ulong>();
-            for (int i = 0; i < hunters; i++) hunterSet.Add(ids[(rotation + i) % count]);
+            for (int i = 0; i < hunters; i++) hunterSet.Add(ids[(start + i) % count]);
 
             foreach (var id in ids)
             {
@@ -73,6 +77,10 @@ namespace PropHunt.Game
             foreach (var p in s.Players.Values)
                 if (p.Role == PlayerRole.Hider) { p.PropId = -1; p.Locked = false; p.Eliminated = false; p.Hits = 0; p.MaxHits = 1; p.Changes = 0; p.PropYaw = 0f; p.DecoysUsed = 0; p.ConcussUsed = 0; }
             if (set.RemoveDecoysBetweenRounds) s.Decoys.Clear();   // host setting (default on); false = decoys carry over
+            // The dressing room closes when the round opens. Leaving these set would have hunters wearing whatever they
+            // were trying on, since nothing in the round path reads this field.
+            s.LobbyProps = "";
+            s.RotationSeconds = set.PropRotationSeconds;   // this round runs on the interval as it stood at the start
             s.Winner = -1;
             s.Phase = RoundPhase.Hiding;
             s.PhaseEndsAtUnix = now + Math.Max(1, set.HideSeconds);
@@ -201,6 +209,62 @@ namespace PropHunt.Game
                 default:
                     return -1;
             }
+        }
+
+        /// <summary>When the Hunting phase began, in HOST time - mark 0 of the whistle grid. Falls back to deriving it
+        /// from the phase deadline for a snapshot old enough to predate the field.</summary>
+        internal static long HuntStartUnix(GameState s, RoundSettings set, long now)
+        {
+            if (s == null) return now;
+            if (s.HuntStartUnix > 0) return s.HuntStartUnix;
+            return s.PhaseEndsAtUnix > 0 && set != null ? s.PhaseEndsAtUnix - set.HuntSeconds : now;
+        }
+
+        /// <summary>A repeating grid of marks: mark 0 sits at <paramref name="anchor"/> (the start of the hunt), then
+        /// every <paramref name="interval"/> seconds. Returns the first mark STRICTLY after <paramref name="now"/>.
+        ///
+        /// This is the single definition used by every periodic round event - the whistle and the prop rotation - and
+        /// by the HUD countdowns for them. When the host and the HUD each derived their own schedule they drifted
+        /// apart, and the whistle sounded while the countdown still showed seconds remaining. A host that stalls past
+        /// several marks skips to the next future one instead of firing a burst of catch-ups.</summary>
+        internal static long NextGridMark(long anchor, int interval, long now)
+        {
+            if (interval <= 0) return -1;
+            if (now < anchor) return anchor;
+            long elapsed = now - anchor;
+            return anchor + interval * ((elapsed / interval) + 1);
+        }
+
+        /// <summary>Seconds until the next global whistle, or -1 when none is pending (not Hunting, taunts off, or no
+        /// further mark before the hunt ends). Pure, so the HUD can poll it every frame.</summary>
+        /// <summary>
+        /// Seconds until the host reshuffles everyone's prop, or -1 when no rotation is due.
+        ///
+        /// Derived, not synced. The host's PropRotationController runs on exactly this grid - HuntStartUnix plus whole
+        /// intervals - so every client can work out the same number from data it already has. A separate "next rotation
+        /// at" field would be a second source of truth for the same instant, free to drift.
+        ///
+        /// The FIRST rotation is one full interval in, matching the controller: reshuffling the moment the hunt opens
+        /// would undo the hiding phase everyone just spent.
+        /// </summary>
+        internal static int SecondsToPropRotation(GameState s, RoundSettings set, long now)
+        {
+            if (s == null || set == null || s.Phase != RoundPhase.Hunting) return -1;
+            int interval = s.RotationSeconds;
+            if (interval <= 0) return -1;
+            long next = NextGridMark(HuntStartUnix(s, set, now), interval, now);
+            if (next < 0 || next >= s.PhaseEndsAtUnix) return -1;   // no further rotation before the hunt ends
+            return (int)Math.Max(0L, next - now);
+        }
+
+        internal static int SecondsToWhistle(GameState s, RoundSettings set, long now)
+        {
+            if (s == null || set == null || s.Phase != RoundPhase.Hunting) return -1;
+            int interval = set.TauntIntervalSeconds;
+            if (interval <= 0) return -1;
+            long next = NextGridMark(HuntStartUnix(s, set, now), interval, now);
+            if (next < 0 || next >= s.PhaseEndsAtUnix) return -1;   // no further whistle before the hunt ends
+            return (int)Math.Max(0L, next - now);
         }
 
         /// <summary>Advance the round machine one tick. Returns true if the state changed (re-publish). Also stands

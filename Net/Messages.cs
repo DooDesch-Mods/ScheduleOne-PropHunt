@@ -104,6 +104,19 @@ namespace PropHunt.Net
         }
     }
 
+    /// <summary>
+    /// Client -> host: a hunter poked a disguised hider with the trash grabber. The host answers by making that hider
+    /// whistle, which is the whole point - the hunter learns "that is a player, not scenery I mis-clicked", and the
+    /// hider learns they have been found out. Payload = the hider's steam id.
+    /// </summary>
+    public class ProbePropMessage : P2PMessage
+    {
+        public override string MessageType => "PH_PROBE";
+        public ulong VictimSteamId { get; set; }
+        public override byte[] Serialize() => MsgCodec.Bytes(MsgCodec.Of(VictimSteamId));
+        public override void Deserialize(byte[] data) => VictimSteamId = MsgCodec.U(MsgCodec.Str(data));
+    }
+
     /// <summary>Client -> host: a hunter claims a friendly-fire hit on another HUNTER (host re-validates FF/geometry).
     /// The victim is knocked down (ragdoll), never killed. Payload = the victim's steam id.</summary>
     public class HitHunterMessage : P2PMessage
@@ -122,14 +135,18 @@ namespace PropHunt.Net
         }
     }
 
-    /// <summary>Client -> host: the sender's own local player has left the play area.</summary>
+    /// <summary>Client -> host: the sender's own local player is out of play - either outside the area radius, or
+    /// standing in deep water. The reason matters because the host re-checks the radius before accepting, and a
+    /// drowning player is usually well INSIDE it; water is measured client-side (vanilla has no swim state, so it is
+    /// a local raycast against the "Water" layer) and cannot be re-derived by the host.
+    /// Payload "1" = left the area (also what an older client sends), "2" = deep water. Never empty:
+    /// SteamNetworkLib drops empty-body messages, which would mean the intent never reaches the host at all.</summary>
     public class OutOfBoundsMessage : P2PMessage
     {
         public override string MessageType => "PH_OOB";
-        // non-empty payload: SteamNetworkLib drops empty-body messages (see the note above), which would mean
-        // the out-of-bounds intent never reaches the host and the player is never warned/eliminated.
-        public override byte[] Serialize() => MsgCodec.Bytes("1");
-        public override void Deserialize(byte[] data) { }
+        public bool Water { get; set; }
+        public override byte[] Serialize() => MsgCodec.Bytes(Water ? "2" : "1");
+        public override void Deserialize(byte[] data) { Water = MsgCodec.Str(data) == "2"; }
     }
 
     /// <summary>Client -> host: a hunter hit a decoy at the given index in the synced Decoys list.
@@ -171,6 +188,16 @@ namespace PropHunt.Net
             Sound = p.Length >= 2 ? p[1] : "";
             IsWhistle = p.Length >= 3 && p[2] == "1";
         }
+    }
+
+    /// <summary>Host -> all: the forced prop rotation just reshuffled every hider. The new props themselves ride the
+    /// normal state push; this is only the cue, so a shape changing under a player reads as the rotation setting
+    /// rather than a glitch. Payload is a single char because SteamNetworkLib drops empty-body messages.</summary>
+    public class PropRotationMessage : P2PMessage
+    {
+        public override string MessageType => "PH_PROPROT";
+        public override byte[] Serialize() => MsgCodec.Bytes("1");
+        public override void Deserialize(byte[] data) { }
     }
 
     // ---- host -> all transient FEEDBACK events (sound + screen flash). Not durable; just sensory feedback so a

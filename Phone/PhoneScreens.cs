@@ -8,6 +8,7 @@ using DooDesch.UI;
 using SideHustle;
 using PropHunt.Game;
 using PropHunt.Config;
+using PropHunt.Disguise;
 
 namespace PropHunt.Phone
 {
@@ -21,8 +22,8 @@ namespace PropHunt.Phone
     /// </summary>
     internal static class PhoneScreens
     {
-        internal const int TabMatch = 0, TabPlayers = 1, TabSettings = 2, TabStats = 3;
-        internal static readonly string[] TabLabels = { "Match", "Players", "Settings", "Stats" };
+        internal const int TabMatch = 0, TabProps = 1, TabPlayers = 2, TabSettings = 3, TabStats = 4;
+        internal static readonly string[] TabLabels = { "Match", "Props", "Players", "Settings", "Stats" };
 
         /// <summary>Fill <paramref name="body"/> (assumed empty) with the active tab for the current state.</summary>
         internal static void Build(Transform body, GameModeController ctl, int tab, bool isHost, Transform dialogRoot)
@@ -31,6 +32,7 @@ namespace PropHunt.Phone
             SmoothScroll.Attach(scroll);   // smooth wheel glide for every phone list (driven by PropHuntPhoneApp.Tick)
             switch (tab)
             {
+                case TabProps: BuildProps(list); break;
                 case TabPlayers: BuildPlayers(list, ctl, isHost); break;
                 case TabSettings: BuildSettings(list, ctl, isHost); break;
                 case TabStats: BuildStats(list, ctl); break;
@@ -88,7 +90,16 @@ namespace PropHunt.Phone
                     Section(list, $"Round {ctl.State.RoundNumber}  -  {phase}");
                     Label(list, ctl.SecondsLeft > 0 ? $"Time left: {ctl.SecondsLeft}s" : "In progress", Theme.H3, Theme.TextPrimary, FontStyle.Bold);
                     Label(list, $"Hiders left: {ctl.AliveHiderCount}", Theme.Body, Theme.TextMuted);
-                    if (isHost) ReturnToHubButton(list, ctl, dialogRoot, "End the match and return everyone to the Side Hustle hub?");
+                    if (isHost)
+                    {
+                        // Autostart belongs here as well as on the setup screen: deciding to stop after this round is
+                        // something a host works out DURING it, and the setup screen has already gone by then.
+                        bool autoNow = ctl.Settings.AutoStartNextRound;
+                        Button(list, $"Auto-start next round: {(autoNow ? "ON" : "OFF")}",
+                               autoNow ? Theme.Success : Theme.SurfaceInput, true, 44f,
+                               () => ctl.SetSetting("autostart", autoNow ? "0" : "1"));
+                        EndRoundButton(list, ctl, dialogRoot);
+                    }
                     else Label(list, "The host runs the match. Track it here live.", Theme.Caption, Theme.TextMuted, FontStyle.Normal, TextAnchor.MiddleCenter);
                     break;
 
@@ -117,6 +128,16 @@ namespace PropHunt.Phone
             var nle = nextGO.AddComponent<LayoutElement>(); nle.flexibleWidth = 1; nle.minHeight = 36;
             prevBtn.onClick.AddListener((UnityAction)(() => { try { ctl.SwitchSafehouse(-1); } catch { } }));
             nextBtn.onClick.AddListener((UnityAction)(() => { try { ctl.SwitchSafehouse(1); } catch { } }));
+        }
+
+        /// <summary>Host, mid-round: stop this round now. The one thing a host needs here that they cannot do from the
+        /// pause menu - leaving to the hub they can, which is why that button is not on this screen any more.</summary>
+        private static void EndRoundButton(Transform list, GameModeController ctl, Transform dialogRoot)
+        {
+            Button(list, "End round", Theme.Danger, true, 48f, () =>
+                Components.ConfirmDialog(dialogRoot, "End round",
+                    "End this round now? It is scored as a hunter win, and you go back to the round setup where you can pick a different map.",
+                    "End round", () => ctl.RequestEndRound()));
         }
 
         private static void ReturnToHubButton(Transform list, GameModeController ctl, Transform dialogRoot, string message)
@@ -358,6 +379,161 @@ namespace PropHunt.Phone
                 Col(row.transform, p.SessScore.ToString(), Theme.AccentBorder, 56f, 0f, TextAnchor.MiddleRight, FontStyle.Bold);
                 rank++;
             }
+        }
+
+        // ---------------------------------------------------------------- Props tab ------------------------------
+        /// <summary>
+        /// Every prop anyone can turn into, so players can plan in the lobby instead of discovering the pool by
+        /// aiming at things mid-round.
+        ///
+        /// Two things shape how this is rendered. Prop names are NOT unique - the catalog keys entries by a content
+        /// signature and several distinct meshes legitimately share a display name - so identical names are grouped
+        /// and counted rather than listed five times in a row. And the pool is intersected with the HOST's, because
+        /// a client that scanned a mesh the host never published cannot actually become it.
+        /// </summary>
+        /// <summary>
+        /// The dressing room: try props on before the match starts.
+        ///
+        /// This tab used to be a LIST of prop names, which answered a question nobody has. Knowing that the pool
+        /// contains four crates tells a player nothing about hiding as one - how short you get, what you can see over,
+        /// whether the thing reads as scenery. So the tab hands them the actual prop instead.
+        ///
+        /// Only in the lobby. Once a round is running, prop changes are the round's own rules ([2], with a budget), and
+        /// a second way in from the phone would quietly bypass them.
+        /// </summary>
+        private static void BuildProps(Transform list)
+        {
+            var ctl = GameModeController.Active;
+            if (ctl != null && ctl.State != null && ctl.State.Phase == RoundPhase.Lobby)
+            {
+                BuildPropTryout(list);
+                return;
+            }
+
+            Section(list, "Props");
+            Label(list, "Try props on in the lobby, before the match starts. During a round, [2] changes your prop.",
+                  Theme.Body, Theme.TextMuted);
+#if DEBUG
+            BuildPropCatalogList(list);
+#endif
+        }
+
+        private static void BuildPropTryout(Transform list)
+        {
+            int becomable = 0;
+            try { becomable = PropCatalog.BecomableCount(); } catch { }
+
+            Section(list, "Try a prop");
+            if (becomable == 0)
+            {
+                Label(list, "No props loaded here yet. Walk around a little and open this again - the game streams the " +
+                            "world in as you move.", Theme.Body, Theme.TextMuted);
+                return;
+            }
+
+            bool wearing = Disguise.PropPreview.Active;
+            string name = wearing ? PrettyPropNameById(Disguise.PropPreview.PropId) : null;
+
+            Label(list, wearing ? $"You are a {name}." : $"{becomable} props to try on right here.",
+                  Theme.H3, wearing ? Theme.SuccessText : Theme.TextPrimary, FontStyle.Bold, TextAnchor.MiddleCenter);
+
+            Button(list, wearing ? "Try another one" : "Become a random prop", Theme.Success, true, 48f, () =>
+            {
+                if (!Disguise.PropPreview.Roll())
+                    Core.Log.Msg("[PropHunt] no becomable prop available to try on yet.");
+            });
+
+            if (wearing)
+                Button(list, "Back to normal", Theme.Button, true, 40f, () => Disguise.PropPreview.Clear());
+
+            Label(list, "[2] for another prop, hold [F] and move the mouse to turn it. Everyone sees you, and it ends " +
+                        "when the match starts. Decoys, concussions and taunts are round-only.",
+                  Theme.Caption, Theme.TextMuted);
+        }
+
+        /// <summary>A prop's tidied name from its catalog id.</summary>
+        private static string PrettyPropNameById(int id)
+        {
+            try
+            {
+                var e = PropCatalog.ById(id);
+                return e != null ? PrettyPropName(e) : "prop";
+            }
+            catch { return "prop"; }
+        }
+
+#if DEBUG
+        private static void BuildPropCatalogList(Transform list)
+        {
+            List<PropEntry> entries;
+            try { entries = PropCatalog.Entries(); }
+            catch (Exception e)
+            {
+                Section(list, "Props");
+                Label(list, "Could not read the prop catalog: " + e.Message, Theme.Body, Theme.TextMuted);
+                return;
+            }
+
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            int total = 0;
+            foreach (var e in entries)
+            {
+                if (e == null || !PropCatalog.IsBecomable(e.Id)) continue;
+                string name = PrettyPropName(e);
+                counts.TryGetValue(name, out int n);
+                counts[name] = n + 1;
+                total++;
+            }
+
+            Section(list, $"Props you can become ({total})");
+            if (total == 0)
+            {
+                Label(list, "The catalog is still building. It finishes when the first round starts - open this again then.",
+                    Theme.Body, Theme.TextMuted);
+                return;
+            }
+
+            Label(list, "More appear once a round starts: interiors stream in with the map, so the lobby only knows what is loaded now.",
+                Theme.Caption, Theme.TextMuted);
+
+            var names = new List<string>(counts.Keys);
+            names.Sort(StringComparer.OrdinalIgnoreCase);
+            foreach (var n in names)
+            {
+                var row = RowGO(list, 26f);
+                Col(row.transform, n, Theme.TextPrimary, 0, 1f, TextAnchor.MiddleLeft);
+                int c = counts[n];
+                Col(row.transform, c > 1 ? "x" + c : "", Theme.TextMuted, 44f, 0f, TextAnchor.MiddleRight);
+            }
+        }
+#endif
+
+        /// <summary>A catalog entry's display name, cleaned up for a player-facing list. Mesh names carry authoring
+        /// noise (SM_ prefixes, LOD suffixes, underscores) and the composite entries are keyed by a namespaced key
+        /// rather than a mesh, so those are read from the key instead.</summary>
+        private static string PrettyPropName(PropEntry e)
+        {
+            string raw = e.Name ?? "";
+            string key = e.Key ?? "";
+            int colon = key.IndexOf(':');
+            if (colon > 0 && colon < key.Length - 1) raw = key.Substring(colon + 1);   // "reg:GoldenToilet" -> "GoldenToilet"
+
+            if (raw.StartsWith("SM_", StringComparison.OrdinalIgnoreCase)) raw = raw.Substring(3);
+            int lod = raw.IndexOf("_LOD", StringComparison.OrdinalIgnoreCase);
+            if (lod > 0) raw = raw.Substring(0, lod);
+            raw = raw.Replace('_', ' ').Trim();
+            if (raw.Length == 0) return "Prop";
+
+            // "GoldenToilet" -> "Golden Toilet": the registry names are PascalCase and unreadable as one word.
+            var sb = new System.Text.StringBuilder(raw.Length + 4);
+            for (int i = 0; i < raw.Length; i++)
+            {
+                char c = raw[i];
+                if (i > 0 && char.IsUpper(c) && !char.IsUpper(raw[i - 1]) && raw[i - 1] != ' ') sb.Append(' ');
+                sb.Append(c);
+            }
+            raw = sb.ToString();
+            return char.ToUpperInvariant(raw[0]) + raw.Substring(1);
         }
 
         private static List<string> BuildAwards(List<PlayerState> players)

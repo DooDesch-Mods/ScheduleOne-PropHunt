@@ -276,6 +276,14 @@ namespace PropHunt.Phone
             // Client's (read-only) Settings tab: refresh when the host's synced settings change. NOT for the host -
             // their Settings tab is being edited and must not rebuild mid-edit (it would reset the control under them).
             if (_tab == PhoneScreens.TabSettings && !ctl.IsHost) s += "|" + (st.SettingsBlob ?? "");
+            // Props tab: the catalog is rebuilt when a round starts (interiors stream in with the map) and the
+            // becomable set is intersected with the host's published pool, which arrives asynchronously. Fold both
+            // in, or the list a player opened in the lobby would stay frozen at whatever was loaded back then.
+            // Props tab: the catalog grows as the world streams in, and the tab is a live control now - the prop being
+            // tried on has to be in the signature or the label keeps naming the previous one.
+            if (_tab == PhoneScreens.TabProps)
+                s += "|pc" + Disguise.PropCatalog.Count + "," + Disguise.PropCatalog.BecomableCount()
+                   + ",tp" + Disguise.PropPreview.PropId;
             return s;
         }
 

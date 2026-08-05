@@ -1,13 +1,13 @@
 {
   "name": "PropHunt",
-  "version_number": "1.2.0",
+  "version_number": "1.3.0",
   "website_url": "https://github.com/DooDesch-Mods/ScheduleOne-PropHunt",
   "description": "Multiplayer prop hunt for Schedule I: hiders disguise as props and blend in while hunters track them down. Hosted from the Side Hustle menu.",
   "dependencies": [
     "LavaGang-MelonLoader-0.7.3",
     "ifBars-S1API_Forked-3.1.1",
     "ifBars-SteamNetworkLib_Il2Cpp-1.5.0",
-    "DooDesch-SideHustle-2.2.1",
+    "DooDesch-SideHustle-2.2.4",
     "DooDesch-WhatsDab-1.0.2"
   ],
   "contributors": [

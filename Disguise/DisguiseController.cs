@@ -19,6 +19,7 @@ namespace PropHunt.Disguise
         private readonly Dictionary<ulong, Quaternion> _sourceRot = new Dictionary<ulong, Quaternion>();   // each prop's source world orientation
         private readonly Dictionary<ulong, CharacterController> _cc = new Dictionary<ulong, CharacterController>();   // cached collision capsule per player (the live anchor)
         private readonly Dictionary<ulong, float> _yaw = new Dictionary<ulong, float>();   // smoothed render yaw (remotes lerp toward the synced value)
+        private readonly Dictionary<ulong, GameObject> _hitboxes = new Dictionary<ulong, GameObject>();   // catch hitbox, parented under the PLAYER (see EnsureHitbox)
         private readonly Dictionary<ulong, Bounds> _localBounds = new Dictionary<ulong, Bounds>();   // clone's local bounds captured ONCE at build (stable; avoids per-frame LOD bounds garbage)
         // live hiders are rendered NAKED (underwear-only) underneath their prop: when undisguised that bare body
         // shows, when disguised it is hidden behind the prop. We cache each one's original appearance to restore.
@@ -27,6 +28,11 @@ namespace PropHunt.Disguise
         private readonly HashSet<ulong> _warnedUnresolved = new HashSet<ulong>();   // log "can't resolve" once per player, not per frame
         private const float HiderScale = 0.7f;   // an undisguised hider's HUMAN model renders at 70% so hunters can tell them from a full-size hunter
         private bool _warnedHashMismatch;
+
+        /// <summary>Host setting: shrink a disguised hider to their prop's physical size. Read from the synced
+        /// settings so every client scales every hider identically.</summary>
+        private static bool PropScaleEnabled =>
+            GameModeController.Active?.Settings == null || GameModeController.Active.Settings.PropSizeCollision;
 
         internal void Apply(GameState state)
         {
@@ -48,6 +54,15 @@ namespace PropHunt.Disguise
                 PlayerRegistry.Refresh();
                 ulong localId = Net.PropHuntNet.LocalSteamId;
                 var localPlayer = Player.Local;
+
+                // The lobby dressing room. Driven from GameState.LobbyProps rather than the roster (which does not exist
+                // before a round) but rendered through this same path - clone, hitbox, prop scale, hidden body - so what
+                // a player tries on is the thing they will wear, not an approximation of it.
+                if (state.Phase == RoundPhase.Lobby)
+                {
+                    ApplyLobbyProps(state, localId, localPlayer);
+                    return;
+                }
                 // disguises only exist DURING a round (hiding + hunting). In the safehouse lobby / round-end /
                 // match-end, every hider is rendered NORMALLY (full body, no prop) - otherwise a hider's body stays
                 // hidden behind a (removed) prop and they are invisible to others in the safehouse.
@@ -115,7 +130,18 @@ namespace PropHunt.Disguise
             var e = PropCatalog.ById(propId);
             if (e == null || e.SourceRoot == null)
             {
-                Core.LogDebug($"[PropHunt] disguise: prop id {propId} not renderable in local catalog (entry={(e == null ? "null" : e.Name)}) - count {PropCatalog.Count}");
+                // The prop exists on the wearer's machine and not (yet) on this one: each client catalogues its OWN
+                // loaded scene, and the game streams the world in as people move. Two things have to happen here.
+                //
+                // First, HIDE THE BODY anyway. Bailing out before that is what produced the report this exists for -
+                // a hider showing as their bare character sunk into the ground, because the body was still on while
+                // the prop scale had already shrunk them. Invisible is wrong too, but it is not a giveaway, and it is
+                // honest about the fact that we cannot draw them.
+                //
+                // Second, ask for a rescan, throttled. That is the only lever a client has: the mesh may well have
+                // streamed in since the catalogue was built, and rebuilding is what notices.
+                SetBodyVisible(player, false, id == Net.PropHuntNet.LocalSteamId);
+                RequestCatalogRefresh(propId);
                 return;
             }
             try
@@ -146,23 +172,19 @@ namespace PropHunt.Disguise
                 go.transform.rotation = _sourceRot[id];
                 try { go.transform.position = player.transform.position; } catch { }   // rough initial spot; LateApply re-centres this frame
 
-                // prop-sized catch hitbox: a trigger collider matching the prop volume, so a hunter who shoots
-                // the visible prop catches the hider (big prop = big hitbox). The player capsule stays as a
-                // backstop. Trigger = never blocks movement. Local + remote alike (the clone sits under the player).
                 // Bounds for BOTH positioning and the hitbox come from the SOURCE mesh asset (mapped into the
                 // clone's local space), never the cloned hierarchy - so an unrelated sibling mesh in the prop's
                 // prefab cannot pollute them (the 269m box that flung the prop). Captured once; transformed by the
                 // live pose each frame.
-                if (PropClone.TryGetPropBoundsFromSource(e, out var lb0))
-                {
-                    _localBounds[id] = lb0;
-                    PropClone.AddTriggerHitbox(go, lb0);
-                }
-                else
-                {
-                    PropClone.AddTriggerHitbox(go);   // fallback to the clone-hierarchy box
-                    if (PropClone.TryGetPropLocalBounds(go, out var lbF)) _localBounds[id] = lbF;
-                }
+                if (PropClone.TryGetPropBoundsFromSource(e, out var lb0)) _localBounds[id] = lb0;
+                else if (PropClone.TryGetPropLocalBounds(go, out var lbF)) _localBounds[id] = lbF;
+
+                // The catch hitbox does NOT live on the clone. It hangs under the PLAYER, because that is the only
+                // thing that makes the game's own bullet resolve to this hider: Equippable_RangedWeapon.Fire walks
+                // GetComponentInParent<IDamageable>() from whatever it hit, and STOPS the shot outright when that
+                // returns null. A collider on the world-space clone has no Player above it, so it used to swallow
+                // every bullet aimed at a disguise - which is exactly why shooting a prop never registered.
+                EnsureHitbox(id, player);
 
                 _props[id] = go;
                 _appliedPropId[id] = propId;
@@ -190,6 +212,78 @@ namespace PropHunt.Disguise
                 }
             }
             catch (System.Exception e) { Core.LogDebug("[PropHunt] disguise late-apply failed: " + e.Message); }
+        }
+
+        /// <summary>
+        /// Dress everyone who is wearing a lobby prop, and undress everyone who is not.
+        ///
+        /// Anything left over from a previous round is torn down by the same sweep: this is the phase a match ends into,
+        /// and a prop still standing there belongs to a round that is over.
+        /// </summary>
+        private void ApplyLobbyProps(GameState state, ulong localId, Player localPlayer)
+        {
+            var worn = LobbyPropCodec.Parse(state.LobbyProps);
+
+            // Take props off anyone no longer wearing one - including players who left, whose entry is simply gone.
+            if (_props.Count > 0)
+            {
+                List<ulong> stale = null;
+                foreach (var id in _props.Keys)
+                    if (!worn.ContainsKey(id)) (stale ??= new List<ulong>()).Add(id);
+                if (stale != null)
+                    foreach (var id in stale)
+                    {
+                        var p = (id == localId && localPlayer != null) ? localPlayer : PlayerRegistry.Get(id);
+                        RemoveProp(id, p);
+                        if (p != null) { SetBodyVisible(p, true, id == localId); SetHiderScale(p, 1f); RestoreAppearance(id, p); }
+                    }
+            }
+
+            foreach (var kv in worn)
+            {
+                bool isLocal = kv.Key == localId;
+                var player = (isLocal && localPlayer != null) ? localPlayer : PlayerRegistry.Get(kv.Key);
+                if (player == null) continue;   // not replicated yet; retried next tick like the in-round path
+
+                EnsureProp(kv.Key, player, kv.Value.PropId);
+                // The local owner uses its own live yaw so turning is immediate; remote yaw arrives throttled and is
+                // smoothed inside UpdatePropTransform.
+                float yaw = isLocal ? (LiveLocalYaw?.Invoke() ?? kv.Value.Yaw) : kv.Value.Yaw;
+                UpdatePropTransform(kv.Key, player, yaw, isLocal);
+            }
+        }
+
+        /// <summary>Supplies the local player's live prop facing. Injected rather than reached for, so this class keeps
+        /// having no opinion about where the number comes from.</summary>
+        internal System.Func<float> LiveLocalYaw { get; set; }
+
+        private float _nextCatalogRetry;
+        private readonly HashSet<int> _missingProps = new HashSet<int>();
+
+        /// <summary>
+        /// Rebuild the local prop catalogue because someone is wearing something this machine has never catalogued.
+        ///
+        /// Throttled hard, and that is the point rather than politeness: a rebuild scans every mesh filter in the scene
+        /// (tens of thousands), so doing it per frame for an unknown prop would cost more than the missing disguise. Two
+        /// seconds is fast enough to catch up with streaming and slow enough to be unnoticeable.
+        /// </summary>
+        private void RequestCatalogRefresh(int propId)
+        {
+            if (_missingProps.Add(propId))
+                Core.Log.Warning($"[PropHunt] disguise: prop {propId} is not in this machine's catalog ({PropCatalog.Count} entries) " +
+                                 "- hiding the body and rescanning; the world may not have streamed it in yet.");
+            if (Time.unscaledTime < _nextCatalogRetry) return;
+            _nextCatalogRetry = Time.unscaledTime + 2f;
+            try
+            {
+                PropCatalog.Build();
+                if (PropCatalog.ById(propId) != null)
+                {
+                    _missingProps.Remove(propId);
+                    Core.Log.Msg($"[PropHunt] disguise: prop {propId} turned up after a rescan - drawing it now.");
+                }
+            }
+            catch (System.Exception e) { Core.LogDebug("[PropHunt] catalog rescan failed: " + e.Message); }
         }
 
         /// <summary>Per-frame transform upkeep for a disguise. ROTATION: world-fixed at the source orientation +
@@ -233,9 +327,91 @@ namespace PropHunt.Disguise
             // PlayerMovement is a local-only singleton), so use the replicated transform position.
             float feetY = RoundEnvironment.FeetY(player);
             var cc = isLocal ? ResolveController(id, player) : null;
+            // A DISABLED controller is not a usable anchor - its bounds stop tracking - and locking a prop in place
+            // disables it on purpose. Fall back to the transform, which is where the locked player actually is.
+            if (cc != null && !cc.enabled) cc = null;
             Vector3 anchorXZ = (cc != null) ? cc.bounds.center : player.transform.position;
 
             go.transform.position += new Vector3(anchorXZ.x - wb.center.x, feetY - wb.min.y, anchorXZ.z - wb.center.z);
+
+            UpdateHitbox(id, go, lb);   // the shootable volume follows the visible one, in the same frame
+
+            // Shrink the BODY to the prop, so a small prop genuinely fits where a person does not. Re-applied every
+            // frame because vanilla overwrites player scale from three different places (see PropScale.Apply).
+            if (PropScaleEnabled)
+            {
+                Vector3 ls = go.transform.lossyScale;
+                PropScale.Apply(player, PropScale.ForBounds(lb, ls), PropScale.WidthFor(lb, ls));
+            }
+        }
+
+        /// <summary>
+        /// Build this hider's catch hitbox as a CHILD OF THE PLAYER.
+        ///
+        /// Why under the player and not on the prop clone: the game resolves a bullet with
+        /// <c>hit.collider.GetComponentInParent&lt;IDamageable&gt;()</c> and BREAKS out of its hit loop the moment that
+        /// returns null (Equippable_RangedWeapon.Fire). Player implements IDamageable; a world-space clone has
+        /// nothing above it. So a collider on the clone does not just fail to register - it eats the shot before it
+        /// can reach anything behind it.
+        ///
+        /// The layer is copied from the player (6 "Player"), which the game's RangedWeaponLayerMask already
+        /// contains, so no global mask has to be touched. The collider is SOLID, not a trigger: a prop you can walk
+        /// through gives itself away, and bumping into one is a fair way to find a hider. The wearer is excluded
+        /// from it via IgnoreCollision so they never fight their own disguise.
+        /// </summary>
+        private void EnsureHitbox(ulong id, Player player)
+        {
+            if (player == null) return;
+            if (_hitboxes.TryGetValue(id, out var existing) && existing != null) return;
+            try
+            {
+                var host = new GameObject("ph_prop_" + id);   // the name CatchController still resolves victims by
+                host.transform.SetParent(player.transform, worldPositionStays: false);
+                host.layer = player.gameObject.layer;
+
+                var box = host.AddComponent<BoxCollider>();
+                box.isTrigger = false;
+
+                // Never let the disguise block its own wearer: their controller and body capsule pass through it.
+                try
+                {
+                    var cc = ResolveController(id, player);
+                    if (cc != null) Physics.IgnoreCollision(box, cc, true);
+                    var cap = player.CapCol;
+                    if (cap != null) Physics.IgnoreCollision(box, cap, true);
+                }
+                catch { }
+
+                _hitboxes[id] = host;
+                Core.LogDebug($"[PropHunt] hitbox: built for {id} on layer {host.layer} under \"{player.gameObject.name}\"");
+            }
+            catch (System.Exception e) { Core.LogDebug("[PropHunt] hitbox build failed: " + e.Message); }
+        }
+
+        /// <summary>Keep the hitbox exactly on the visible prop. Pose is set in WORLD space (the object is parented
+        /// for the IDamageable lookup, not to inherit motion), and the box is sized from the same captured local
+        /// bounds the prop is drawn with, so what a hunter sees and what a bullet hits are the same volume.</summary>
+        private void UpdateHitbox(ulong id, GameObject clone, Bounds localBounds)
+        {
+            if (!_hitboxes.TryGetValue(id, out var host) || host == null || clone == null) return;
+            try
+            {
+                var t = host.transform;
+                t.position = clone.transform.position;
+                t.rotation = clone.transform.rotation;
+
+                // Match the clone's WORLD scale despite whatever the parent player is scaled to.
+                Vector3 want = clone.transform.lossyScale;
+                Vector3 parent = t.parent != null ? t.parent.lossyScale : Vector3.one;
+                t.localScale = new Vector3(
+                    Mathf.Approximately(parent.x, 0f) ? want.x : want.x / parent.x,
+                    Mathf.Approximately(parent.y, 0f) ? want.y : want.y / parent.y,
+                    Mathf.Approximately(parent.z, 0f) ? want.z : want.z / parent.z);
+
+                var box = host.GetComponent<BoxCollider>();
+                if (box != null) { box.center = localBounds.center; box.size = localBounds.size; }
+            }
+            catch (System.Exception e) { Core.LogDebug("[PropHunt] hitbox update failed: " + e.Message); }
         }
 
         /// <summary>The player's CharacterController, cached per id (re-resolved if it goes away). Its world bounds
@@ -252,13 +428,19 @@ namespace PropHunt.Disguise
         private void RemoveProp(ulong id, Player player)
         {
             if (_props.TryGetValue(id, out var go) && go != null) { try { UnityEngine.Object.Destroy(go); } catch { } }
+            if (_hitboxes.TryGetValue(id, out var hb) && hb != null) { try { UnityEngine.Object.Destroy(hb); } catch { } }
+            _hitboxes.Remove(id);
             _props.Remove(id);
             _appliedPropId.Remove(id);
             _sourceRot.Remove(id);
             _cc.Remove(id);
             _yaw.Remove(id);
             _localBounds.Remove(id);
-            if (player != null) SetBodyVisible(player, true, id == Net.PropHuntNet.LocalSteamId);
+            if (player != null)
+            {
+                PropScale.Restore(player);   // never leave someone walking around prop-sized
+                SetBodyVisible(player, true, id == Net.PropHuntNet.LocalSteamId);
+            }
         }
 
         /// <summary>Render a live hider's avatar as underwear-only (the game's own "naked" render). Applied ONCE
@@ -327,8 +509,22 @@ namespace PropHunt.Disguise
 
         internal void Dispose()
         {
+            // Give every wearer their own body back BEFORE the bookkeeping is dropped. This used to iterate _props
+            // AFTER clearing it, so the loop was always empty and a session torn down mid-disguise left players at
+            // prop scale with a modified capsule radius - carried straight into normal play.
+            var wearers = new List<ulong>(_props.Keys);
+            foreach (var id in wearers)
+            {
+                var pl = (id == Net.PropHuntNet.LocalSteamId) ? Player.Local : PlayerRegistry.Get(id);
+                if (pl == null) continue;
+                try { PropScale.Restore(pl); } catch { }
+                try { SetHiderScale(pl, 1f); } catch { }
+            }
+
             foreach (var kv in _props) if (kv.Value != null) { try { UnityEngine.Object.Destroy(kv.Value); } catch { } }
             _props.Clear();
+            foreach (var kv in _hitboxes) if (kv.Value != null) { try { UnityEngine.Object.Destroy(kv.Value); } catch { } }
+            _hitboxes.Clear();
             _appliedPropId.Clear();
             _sourceRot.Clear();
             _cc.Clear();

@@ -7,17 +7,17 @@ namespace PropHunt.Catch
     /// <summary>
     /// LOCAL hunter tooling during the Hunting phase: aim + click to catch.
     ///
-    /// Shot resolution:
-    ///   1. Thin pre-ray (radius 0) finds anything in the line of sight up to TagRange.
-    ///   2. If a decoy is hit (GameObject name walks up to something starting with "ph_decoy_"), the
-    ///      trailing index is parsed and forwarded to GameModeController.RequestHitDecoy (step 4 stub).
-    ///   3. If a player is hit by the pre-ray, look up that victim's current prop size and compute a
-    ///      SphereCast radius proportional to it (big prop = generous; tiny prop = tight). Then fire the
-    ///      SphereCast; if it resolves the same victim, send the ClaimTag intent.
-    ///   4. Props are render-only (no collider), so both rays pass through the disguise clone and resolve
-    ///      to the hider's real capsule behind it.
+    /// Shot resolution (one sweep, nearest relevant hit wins):
+    ///   1. A single SphereCastAll (radius 0.35) runs along the camera aim as far as the weapon reaches -
+    ///      the weapon's own range for a gun, the host's TagRange for melee. Triggers are INCLUDED: the
+    ///      disguise/decoy hitboxes are triggers so they never block movement.
+    ///   2. Each hit is line-of-sight checked against the point on the sweep AXIS, then classified:
+    ///      a decoy ("ph_decoy_&lt;i&gt;"), a disguised hider via their prop hitbox ("ph_prop_&lt;steamId&gt;"), or an
+    ///      UNDISGUISED player via their capsule. The clone is not parented to the player, so a disguised
+    ///      hider is resolved from the hitbox NAME, never from GetComponentInParent&lt;Player&gt;.
+    ///   3. A disguised hider is catchable ONLY through the prop hitbox, so a small prop stays a small target.
     ///
-    /// Host re-validates geometry (distance + lateral offset gated by prop size) before accepting any tag.
+    /// The host trusts the client's hit (it re-checks phase, roles and elimination, not geometry).
     ///
     /// Aim uses PlayerCamera.Instance.Camera; forward via Camera.transform.forward. Victims resolve to a stable
     /// id via PlayerRegistry.IdForPlayer.
@@ -71,7 +71,7 @@ namespace PropHunt.Catch
                 for (int i = 0; i < hits.Length; i++)
                 {
                     var h = hits[i];
-                    if (!HasLineOfSight(t.position, h.point)) continue;   // a wall between shooter and this hit -> no through-wall hit
+                    if (!HasLineOfSight(t.position, t.forward, h, sweepR)) continue;   // a wall between shooter and this hit -> no through-wall hit
                     if (IsDecoy(h.transform, out int decoyIdx))
                     {
                         SpawnPropHitFx(h.point);   // immediate local hit feedback on the decoy (it reads as a real prop)
@@ -122,15 +122,25 @@ namespace PropHunt.Catch
 
         // ---- helpers ----
 
-        // True if nothing SOLID sits between the shooter's eye and the hit point (a wall blocks the shot). Triggers are
-        // ignored (the prop hitboxes + decoys are triggers), so only real level geometry occludes; a blocker at ~the hit
-        // point is the target itself, not a wall (0.35 = the sweep radius). Fail-open on error so shots never silently die.
-        private static bool HasLineOfSight(Vector3 from, Vector3 to)
+        // True if nothing SOLID sits between the shooter's eye and the hit (a wall blocks the shot). Triggers are
+        // ignored (the prop hitboxes + decoys are triggers), so only real level geometry occludes; a blocker at ~the
+        // target's distance is the target itself, not a wall. Fail-open on error so shots never silently die.
+        //
+        // The test runs against the point on the SWEEP AXIS at the hit's distance, NOT against hit.point:
+        //  - hit.point is where the 0.35m sphere first touched, so for a prop standing against a wall it sits LATERALLY
+        //    inside that wall - a line to it is blocked by the wall and the shot died even though the prop was in the open.
+        //  - when the sphere already OVERLAPS a collider at the sweep origin (shooting from point-blank), Unity reports
+        //    distance 0 and point (0,0,0); a line to the world origin is blocked by whatever happens to be there.
+        // The axis point is by construction inside the volume the sphere just swept through, so it only reports real walls.
+        private static bool HasLineOfSight(Vector3 from, Vector3 dir, RaycastHit hit, float sweepR)
         {
             try
             {
+                // overlap at the muzzle: the target is already touching us, there is no room for a wall in between
+                if (hit.distance <= 0.001f) return true;
+                Vector3 to = from + dir * hit.distance;
                 if (!Physics.Linecast(from, to, out var block, ~0, QueryTriggerInteraction.Ignore)) return true;   // clear line
-                return block.distance >= (to - from).magnitude - 0.35f;   // blocker at/after the hit point = the target, not a wall
+                return block.distance >= hit.distance - (sweepR + 0.1f);   // blocker at/after the target = the target, not a wall
             }
             catch { return true; }
         }

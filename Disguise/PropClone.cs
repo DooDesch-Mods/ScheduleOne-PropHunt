@@ -337,26 +337,41 @@ namespace PropHunt.Disguise
                     cull2 = cull * cull; haveRef = true;
                 }
 
-                // buildable prefabs carry build-only overlay meshes that are INACTIVE in the placed item (grid ghosts,
-                // the coloured "yellow box", unbuilt-size variants); they'd drag min.y below the visible base and float
-                // the prop (e.g. GoldenToilet). Skip inactive SOURCE meshes for buildables only - world: objects can be
-                // legitimately distance-culled inactive in the live scene, so don't apply it there. activeSelf (not
-                // activeInHierarchy): a BuiltItem prefab template has no valid scene, so activeInHierarchy is false for all.
-                bool buildable = e.Key != null && e.Key.StartsWith(PropSources.BuildablePrefix);
+                // Inactive source meshes are overlays or unused variants, not the thing a player sees: a buildable's
+                // grid ghost and "yellow box", a litter prefab's other litter shapes. They drag min.y below the visible
+                // base and float the prop. activeSelf, not activeInHierarchy: a prefab template has no valid scene, so
+                // activeInHierarchy reads false for every part of it.
 
+                // Two passes: the first counts only what will actually be DRAWN, the second falls back to counting
+                // inactive parts as well. Skipping inactive source meshes used to be done for buildables ONLY, with the
+                // reasoning that a world object can be legitimately distance-culled inactive in the live scene and would
+                // then contribute nothing at all. Trash is the case that reasoning missed: a litter prefab carries
+                // several variant meshes under one root with only one switched on, so the union of all of them reaches
+                // below the visible piece - and the disguise, which puts that union's floor on the player's feet, hangs
+                // the visible litter in the air. Hence: prefer the visible set, and only widen if it is empty.
                 bool any = false;
+                for (int pass = 0; pass < 2 && !any; pass++)
+                {
+                bool countInactive = pass == 1;
                 for (int i = 0; i < mfs.Length; i++)
                 {
                     var mf = mfs[i];
                     if (mf == null || mf.sharedMesh == null) continue;
-                    if (buildable && !mf.gameObject.activeSelf) continue;
+                    if (!countInactive && !mf.gameObject.activeSelf) continue;
                     var mr = mf.GetComponent<MeshRenderer>();
                     if (mr == null || mr.sharedMaterial == null) continue;              // non-visual proxy
+                    // A renderer left DISABLED in the source is an intentional proxy - the interaction/collision
+                    // "Cube" under a "Bounds" node on a toilet, jukebox or ATM. EnableAllVisuals deliberately never
+                    // switches those on (see its comment), so the clone does not draw them and these bounds must not
+                    // count them either. Counting one dragged min.y half a metre below the visible base, which is
+                    // exactly how far the golden toilet floated above the ground.
+                    if (!mr.enabled) continue;
                     if (PropCatalog.IsJunkMeshName(mf.sharedMesh.name)) continue;
                     if (IsPlacementVizMesh(mf)) continue;                               // grid tiles / build arrow
                     Vector3 cl = rootT.InverseTransformPoint(mf.transform.TransformPoint(mf.sharedMesh.bounds.center));
                     if (haveRef && (cl - refP).sqrMagnitude > cull2) continue;          // stray far mesh
                     EncapsulateMeshLocal(mf, rootT, ref local, ref any);
+                }
                 }
                 return any;
             }
