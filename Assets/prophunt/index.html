@@ -8,18 +8,22 @@
 
     <div class="stamp phase" id="phase">LOBBY</div>
 
-    <div class="clockbox">
-      <div class="clock" id="clock"></div>
-      <div class="gauge" id="gauge"></div>
-      <div class="clock-note" id="clocknote"></div>
-    </div>
-
-    <div class="tally-box" id="tallybox">
-      <div class="tally-head">
-        <div class="tally-label">HIDERS LEFT</div>
-        <div class="tally-count" id="tallycount">0 / 0</div>
+    <!-- One wrapper so the clock and the headcount can sit side by side in portrait without either of them
+         needing a flex basis it cannot have in an auto-height column. -->
+    <div class="rail-mid">
+      <div class="clockbox">
+        <div class="clock" id="clock"></div>
+        <div class="gauge" id="gauge"></div>
+        <div class="clock-note" id="clocknote"></div>
       </div>
-      <div class="tally" id="tally"></div>
+
+      <div class="tally-box" id="tallybox">
+        <div class="tally-head">
+          <div class="tally-label">HIDERS LEFT</div>
+          <div class="tally-count" id="tallycount">0 / 0</div>
+        </div>
+        <div class="tally" id="tally"></div>
+      </div>
     </div>
 
     <div class="stamp role" id="role">WAITING</div>
