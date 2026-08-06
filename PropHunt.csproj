@@ -134,10 +134,11 @@
        a bundle path by turning "/" into ".", so the icons live under their own item with the folder in the prefix
        and the page asks for them as <img src="icons/play.png"> (Sideload/Bundle/AppBundle.cs:36).
 
-       preview.html and s1-mock.js are authoring tools - they run the very same app.js in Chrome without launching
-       the game - and have no business inside the shipped DLL. -->
+       Everything named preview-* plus s1-mock.js is an authoring tool - together they run the very same app.js in
+       Chrome without launching the game - and none of it has any business inside the shipped DLL. That includes
+       the stand-in seven-segment font: the game has its own and would never read this one. -->
   <ItemGroup>
-    <EmbeddedResource Include="Assets/prophunt/*" Exclude="Assets/prophunt/preview.html;Assets/prophunt/s1-mock.js">
+    <EmbeddedResource Include="Assets/prophunt/*" Exclude="Assets/prophunt/preview*;Assets/prophunt/s1-mock.js">
       <LogicalName>PropHunt.Assets.prophunt.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
     <EmbeddedResource Include="Assets/prophunt/icons/*.png">
