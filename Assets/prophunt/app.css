@@ -82,7 +82,15 @@ body {
   align-items: center;
 }
 
+.rail-top { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
+.rail-top .stamp { align-self: center; }
+
 .stamp.phase { border-color: var(--teal); color: var(--teal); }
+
+/* Who you are in this session. The host has controls and a client does not, and without this the only way to
+   tell which of the two you are is to notice that some buttons are absent - a thing you cannot notice. */
+.stamp.seat      { border-color: var(--hair); color: var(--mute); letter-spacing: 1.2px; }
+.stamp.seat.host { border-color: var(--teal-dim); color: var(--teal); }
 
 /* Inside a manifest row the stamp is one cell among several, so it stops claiming the top of the line. */
 .row .stamp { align-self: center; }
@@ -282,6 +290,12 @@ body {
 
 .btn.wide { align-self: stretch; }
 
+/* A button with nowhere to go. Kept on screen rather than removed, because its absence would be one more thing
+   to work out; the note under it says why. No :hover, so it does not offer what it cannot do. */
+.btn.off        { background: transparent; border-color: #1E2427; color: #4E585B; }
+.btn.off img    { color: #4E585B; }
+.btn.off:hover  { background: transparent; border-color: #1E2427; color: #4E585B; }
+
 /* Hazard band. The only place it appears is directly above something the host cannot take back, so it stays a
    warning rather than becoming wallpaper. Each segment is its own two-stop gradient - the engine takes exactly
    two colour stops, so a repeating stripe is built out of boxes. */
@@ -333,13 +347,20 @@ body {
 
 .row-initial { font-size: 13px; font-weight: 700; color: var(--mute); }
 
-.row-main { flex: 1; min-width: 0; gap: 2px; }
-.row-name { font-size: 13px; color: var(--hi); }
+/* Clipped, because a Steam name is whatever its owner typed. One unbroken 29-character token has no wrap
+   opportunity in it, so without this the name runs straight across the number columns beside it. */
+.row-main { flex: 1; min-width: 0; gap: 2px; overflow: hidden; }
+.row-name { font-size: 13px; color: var(--hi); text-overflow: ellipsis; }
 .row-note { font-size: 11px; color: var(--mute); }
 
 .row-thumb { width: 34px; height: 34px; background: var(--raised); border: 1px solid var(--hair); }
 
 .row-num { font-family: monospace; font-size: 13px; color: var(--hi); text-align: right; }
+
+/* The standing column. `flex: none` so a two-digit place cannot squeeze the name column, and the same width in
+   the header, so the digits sit under their own heading. */
+.row-rank { flex: none; width: 22px; font-family: monospace; font-size: 12px; color: var(--mute); text-align: right; }
+.th.rank  { flex: none; width: 22px; }
 
 /* ---- rules ---- */
 
@@ -471,3 +492,40 @@ body {
 
 /* A one-line legend under a table header, for columns whose name cannot carry the whole meaning. */
 .legend { font-size: 10px; color: var(--mute); padding: 0 10px 4px 10px; }
+
+/* ------------------------------------------------------------------------------------- top layer ---- */
+
+/* The confirm overlay.
+ *
+ * `position: fixed` is measured against the whole screen and drawn after everything else, so this covers the
+ * rail and the pane from wherever in the markup it is written - and, because Sideload gives a fixed box its own
+ * hit target, it takes the clicks and the wheel that would otherwise land on the page behind it. That last part
+ * is what separates a modal from a picture of one: without it the END ROUND button underneath stays pressable
+ * through the dialog asking whether to press it.
+ *
+ * No z-index anywhere here. Order in the top layer is document order, and there is only ever one of these. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  padding: 24px;
+  background: #060809E0;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Placed by justify/align on the scrim above - `margin: auto` does not centre in this renderer. */
+.dialog {
+  width: 430px;
+  max-width: 100%;
+  padding: 18px 20px 16px 20px;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--hair);
+}
+
+.dialog-title { font-size: 19px; font-weight: 700; letter-spacing: .3px; }
+.dialog-body  { font-size: 13px; color: var(--mid); line-height: 19px; }
+
+.dialog-actions { flex-direction: row; gap: 8px; }
+.dialog-actions .btn,
+.dialog-actions .danger { flex: 1; min-width: 0; }

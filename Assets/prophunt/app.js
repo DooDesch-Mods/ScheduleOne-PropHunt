@@ -225,6 +225,7 @@ class App {
    * category chips exist to make thirty-one rules navigable; making them the default is what they were for. */
   #category = s1.storage.get('rules.category', 'Round');
   #editing = null;     // key of the rule whose value is being typed
+  #confirm = null;     // the question on the top layer, if one is open - see #ask
   #clock = null;
   #gauge = null;
   #whistle = null;
@@ -244,8 +245,17 @@ class App {
     }
 
     document.addEventListener('back', (e) => {
-      // The rail and the tab bar are always on screen, so there is nothing to step back FROM unless a value is
-      // being typed. Taking the press otherwise would leave the player unable to close the app at all.
+      // Escape and right-click both arrive here, and they have to unwind the app one step at a time: the question
+      // on the top layer first, then a value being typed. The rail and the tab bar are always on screen, so with
+      // neither of those open there is nothing to step back FROM - and taking the press anyway would leave the
+      // player unable to close the app at all.
+      if (this.#confirm) {
+        e.preventDefault();
+        this.#confirm = null;
+        this.queueRender();
+        return;
+      }
+
       if (!this.#editing) return;
       e.preventDefault();
       this.#editing = null;
@@ -369,6 +379,8 @@ class App {
     const pane = $('pane');
     pane.replaceChildren();
 
+    this.#renderLayer(s);
+
     if (!s || !s.ok) { this.#renderNoSession(pane); this.tick(); return; }
 
     if (this.#pane === 'board') this.#renderBoard(pane, s);
@@ -382,8 +394,61 @@ class App {
     this.tick();
   }
 
+  /* ---- the top layer ---- */
+
+  /**
+   * Ask before doing something that cannot be taken back.
+   *
+   * Both callers end a round or a match for everyone in it, from a button one tap away from a thumb that was
+   * aiming at the auto-start toggle above it. The hazard band was only ever a warning; this is the stop.
+   *
+   * The phase it was opened in is recorded with it: if the round ends on its own while the question is up, the
+   * question no longer means what it said, so it goes away instead of firing at whatever the state has become.
+   */
+  #ask(title, body, verb, iconName, run) {
+    this.#confirm = { title, body, verb, iconName, run, phase: this.#snap ? this.#snap.phase : '' };
+    this.queueRender();
+  }
+
+  #renderLayer(s) {
+    const layer = $('layer');
+    layer.replaceChildren();
+
+    const ask = this.#confirm;
+    if (!ask) return;
+
+    // Nobody to ask, or the situation moved on underneath it.
+    if (!s || !s.ok || !s.host || s.phase !== ask.phase) { this.#confirm = null; return; }
+
+    const scrim = el('div', 'scrim');
+
+    // Anywhere off the card cancels. The card stops the press going further, so pressing a button inside it is
+    // not also a dismissal - a click bubbles here exactly as it does in a browser.
+    scrim.addEventListener('click', () => { this.#confirm = null; this.queueRender(); });
+
+    const card = el('div', 'dialog');
+    card.addEventListener('click', (e) => e.stopPropagation());
+
+    card.appendChild(el('div', 'dialog-title', ask.title));
+    card.appendChild(el('div', 'dialog-body', ask.body));
+    card.appendChild(this.#tape());
+
+    const actions = el('div', 'dialog-actions');
+    actions.appendChild(button('btn', 'Keep playing', null, () => { this.#confirm = null; this.queueRender(); }));
+    actions.appendChild(button('danger', ask.verb, ask.iconName, () => {
+      this.#confirm = null;
+      ask.run();
+    }));
+    card.appendChild(actions);
+
+    scrim.appendChild(card);
+    layer.appendChild(scrim);
+  }
+
   #renderNoSession(pane) {
     $('phase').textContent = 'NO MATCH';
+    $('seat').textContent = '';
+    $('seat').className = 'stamp seat';
     $('role').textContent = 'NO ROLE YET';
     $('role').className = 'stamp role';
     $('tallycount').textContent = '0 / 0';
@@ -401,6 +466,10 @@ class App {
     if (!s || !s.ok) return;
 
     $('phase').textContent = PHASE_LABEL[s.phase] || s.phase.toUpperCase();
+
+    const seat = $('seat');
+    seat.textContent = s.host ? 'HOST' : 'VIEW ONLY';
+    seat.className = s.host ? 'stamp seat host' : 'stamp seat';
 
     const me = s.me;
     const stamp = $('role');
@@ -561,6 +630,12 @@ class App {
 
     dress.appendChild(main);
     pane.appendChild(dress);
+
+    // Three things that are only surprising once. Everyone can see the disguise, so hiding behind it in the lobby
+    // fools nobody; it comes off by itself at the start of the match; and the gear that goes with being a prop is
+    // not handed out until a round is actually running.
+    pane.appendChild(el('div', 'note', 'Everyone can see you wearing it, and it comes off when the match starts. '
+      + 'Decoys, concussions and taunts only work during a round.'));
     pane.appendChild(el('div', 'note', 'Or press [2] out in the world.'));
   }
 
@@ -654,8 +729,18 @@ class App {
 
     if (s.phase === 'MatchEnd' && s.host) {
       pane.appendChild(this.#tape());
-      pane.appendChild(button('danger', 'RETURN TO HUB', 'hub', () => this.#send('ph.hub')));
+      pane.appendChild(button('danger', 'RETURN TO HUB', 'hub', () => this.#ask(
+        'Close the match?',
+        'Everyone still here goes back to the Side Hustle menu with you. The session ends - it cannot be picked '
+        + 'up again, and the scores go with it.',
+        'RETURN TO HUB', 'hub', () => this.#send('ph.hub'))));
       pane.appendChild(el('div', 'note', 'Closes the match and sends everyone back to the Side Hustle menu.'));
+    } else if (s.phase === 'MatchEnd') {
+      // The client's half of the same moment. They cannot act on it, so they are told what is about to happen to
+      // them instead of being left on a scoreboard that stops changing.
+      pane.appendChild(el('div', 'rule'));
+      pane.appendChild(el('div', 'note', 'The host is closing the match. You go back to the Side Hustle menu with '
+        + 'everyone else.'));
     }
   }
 
@@ -672,13 +757,20 @@ class App {
       return;
     }
 
+    // With one eligible place the buttons have nowhere to go. They stay, greyed, with the reason under them -
+    // a control that silently does nothing when pressed reads as broken, and the count IS the explanation.
+    const stuck = s.safehouse.options <= 1;
+
     const pair = el('div', 'pair');
-    pair.appendChild(button('btn', 'Previous start', 'prev', () => this.#send('ph.map', '-1')));
-    pair.appendChild(button('btn', 'Next start', 'forward', () => this.#send('ph.map', '1')));
+    pair.appendChild(button(stuck ? 'btn off' : 'btn', 'Previous start', 'prev',
+      stuck ? null : () => this.#send('ph.map', '-1')));
+    pair.appendChild(button(stuck ? 'btn off' : 'btn', 'Next start', 'forward',
+      stuck ? null : () => this.#send('ph.map', '1')));
     pane.appendChild(pair);
 
-    if (s.safehouse.options > 1)
-      pane.appendChild(el('div', 'note', s.safehouse.options + ' places are big enough for this many players.'));
+    pane.appendChild(el('div', 'note', stuck
+      ? 'Only this one place is big enough for ' + s.lobby + ' players.'
+      : s.safehouse.options + ' places are big enough for this many players.'));
 
     pane.appendChild(button('act', 'START NEXT ROUND', 'next-round', () => this.#send('ph.next')));
     this.#autoStart(pane, s);
@@ -690,7 +782,11 @@ class App {
     pane.appendChild(el('div', 'rule'));
     this.#autoStart(pane, s);
     pane.appendChild(this.#tape());
-    pane.appendChild(button('danger', 'END ROUND NOW', 'end-round', () => this.#send('ph.endround')));
+    pane.appendChild(button('danger', 'END ROUND NOW', 'end-round', () => this.#ask(
+      'End the round now?',
+      'It is scored as a hunter win, whoever is still hidden. Everyone goes to the scoreboard and then back to '
+      + 'the round setup, where you can pick a different place to start.',
+      'END ROUND', 'end-round', () => this.#send('ph.endround'))));
     pane.appendChild(el('div', 'note', 'Cuts the round short for everyone and goes straight to the scoreboard.'));
   }
 
@@ -755,7 +851,12 @@ class App {
     if (caught) return p.propName ? 'Caught as a ' + p.propName.toLowerCase() : 'Caught';
     if (p.self && p.prop >= 0) return p.propName + '  -  ' + Math.max(0, p.maxHp - p.hp) + ' of ' + p.maxHp + ' hits left';
     if (p.role === 'Hider') return s.phase === 'Hunting' || s.phase === 'Hiding' ? 'Still hiding' : 'Hiding next round';
-    return 'Spectating';
+
+    // Everyone left over is either out of the round or not in it yet, and those are not the same thing. Someone
+    // who joined mid-round has no role and has not been caught - calling them a spectator, under a stamp that
+    // already reads NO ROLE YET, has the row contradicting itself.
+    if (p.eliminated) return 'Spectating';
+    return s.phase === 'Lobby' ? 'Ready to play' : 'Waiting for the next round';
   }
 
   #face(p) {
@@ -943,6 +1044,7 @@ class App {
     }
 
     const header = el('div', 'thead');
+    header.appendChild(el('div', 'th rank', '#'));
     header.appendChild(el('div', 'th left', 'PLAYER'));
     for (const [label, width] of [['CAUGHT', 54], ['HITS', 42], ['BAITS', 48], ['STUNS', 48], ['ALIVE', 50], ['SCORE', 50]]) {
       const th = el('div', 'th', label);
@@ -957,8 +1059,20 @@ class App {
 
     const ranked = [...s.players].sort((a, b) => b.score - a.score);
 
-    for (const p of ranked) {
+    // Position is spelled out rather than left to be counted. Sorted order tells you who is above whom; with
+    // twenty players it does not tell you whether you are seventh or eighth, which is the thing being looked for.
+    let rank = 0;
+    let previousScore = null;
+
+    for (let i = 0; i < ranked.length; i++) {
+      const p = ranked[i];
+
+      // A tie shares its place and the next one skips - the standard competition ranking, and the only one where
+      // two equal scores cannot be shown one above the other as if one of them were ahead.
+      if (p.score !== previousScore) { rank = i + 1; previousScore = p.score; }
+
       const row = el('div', p.self ? 'row me' : 'row');
+      row.appendChild(el('div', 'row-rank', String(rank)));
 
       const main = el('div', 'row-main');
       main.appendChild(el('div', 'row-name', p.name));

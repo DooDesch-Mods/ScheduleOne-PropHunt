@@ -76,37 +76,6 @@
 <script>
 const viewport = document.getElementById('viewport');
 
-viewport.innerHTML = `
-  <link rel="stylesheet" href="app.css">
-  <div class="app" id="app">
-    <div class="rail" id="rail">
-      <div class="stamp phase" id="phase">LOBBY</div>
-      <div class="clockbox" id="clockbox">
-        <div class="clock" id="clock"></div>
-        <div class="gauge" id="gauge"></div>
-        <div class="clock-note" id="clocknote"></div>
-      </div>
-      <div class="tally-box" id="tallybox">
-        <div class="tally-head">
-          <div class="tally-label">HIDERS LEFT</div>
-          <div class="tally-count" id="tallycount">0 / 0</div>
-        </div>
-        <div class="tally" id="tally"></div>
-      </div>
-      <div class="stamp role" id="role">WAITING</div>
-      <div class="vitals" id="vitals"></div>
-    </div>
-    <div class="main">
-      <div class="nav" id="nav">
-        <div class="tab on" data-pane="board"><img src="icons/board.png" width="17" height="17"><div class="tab-label">Board</div></div>
-        <div class="tab" data-pane="roster"><img src="icons/roster.png" width="17" height="17"><div class="tab-label">Roster</div></div>
-        <div class="tab" data-pane="rules"><img src="icons/rules.png" width="17" height="17"><div class="tab-label">Rules</div></div>
-        <div class="tab" data-pane="scores"><img src="icons/scores.png" width="17" height="17"><div class="tab-label">Scores</div></div>
-      </div>
-      <div class="pane" id="pane"></div>
-    </div>
-  </div>`;
-
 // A document facade scoped to the viewport, so app.js reaches only its own page.
 const scoped = {
   body: viewport,
@@ -117,9 +86,23 @@ const scoped = {
   addEventListener: (type, fn) => viewport.addEventListener(type, fn),
 };
 
-fetch('app.js')
-  .then((r) => r.text())
-  .then((src) => new Function('document', 's1', 'console', src)(scoped, s1, console))
+// The SHIPPED index.html, not a copy of it. This used to be a duplicate of the markup pasted in here, and the
+// duplicate is what a preview harness is worst at: it drifts silently, and the day it does the preview is
+// checking a page the game does not have. Its <script> tag is dropped because app.js is loaded below instead -
+// innerHTML would not execute it anyway, and the page has to be built before the script runs.
+// Every fetch bypasses the HTTP cache, and the stylesheet gets a fresh query string on the way in. A preview
+// that quietly shows the previous edit is worse than no preview: the first symptom is a script error about a
+// node the markup "should" have, and the second is half an hour spent looking for it in the wrong file.
+const fresh = (url) => fetch(url, { cache: 'no-store' }).then((r) => r.text());
+const stamp = Date.now();
+
+Promise.all([fresh('index.html'), fresh('app.js')])
+  .then(([markup, src]) => {
+    viewport.innerHTML = markup
+      .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+      .replace(/href="app\.css"/g, 'href="app.css?v=' + stamp + '"');
+    new Function('document', 's1', 'console', src)(scoped, s1, console);
+  })
   .catch((e) => { document.body.innerHTML += '<pre style="color:#E4572E">' + e + '</pre>'; });
 
 const stage = document.getElementById('stage');

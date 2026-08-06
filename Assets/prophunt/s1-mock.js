@@ -204,12 +204,49 @@ const SCENARIOS = {
     safehouse: { name: 'Bungalow', code: 'bungalow', options: 4, ready: false },
   }),
 
+  // Eleven players leave exactly one place big enough for them, so the map buttons cannot go anywhere. The host
+  // needs to be told that, or pressing them and seeing nothing change reads as a broken control.
+  'between rounds (one place fits)': () => base({
+    phase: 'Safehouse', round: 3, ends: 0, nextRound: 12, lobby: 11,
+    safehouse: { name: 'Barn', code: 'barn', options: 1, ready: false },
+  }),
+
   'match over': () => {
     const s = base({ phase: 'MatchEnd', round: 5, winner: 1, ends: 0, lobby: 6, awards: AWARDS });
     s.players = [
       player(1, 'Hunter', { catches: 9, hits: 41, score: 210 }),
       player(0, 'Hider', { self: true, survived: 900, score: 188 }),
       player(2, 'Hider', { survived: 640, score: 140 }),
+    ];
+    return s;
+  },
+
+  // The same ending seen by someone who cannot act on it. The host has a button here; this player has to be told
+  // what is about to happen to them instead.
+  'match over (client)': () => {
+    const s = base({ phase: 'MatchEnd', round: 5, winner: 1, ends: 0, lobby: 6, awards: AWARDS, host: false, presets: [] });
+    s.players = [
+      player(1, 'Hunter', { catches: 9, hits: 41, score: 210 }),
+      player(0, 'Hider', { self: true, survived: 900, score: 188 }),
+      player(2, 'Hider', { survived: 640, score: 140 }),
+    ];
+    return s;
+  },
+
+  // Someone who joined mid-round: no role yet, and not eliminated either. The roster has to say they are waiting
+  // for the next round rather than lumping them in with the players who were caught.
+  'a late joiner is waiting': () => {
+    const s = base({
+      phase: 'Hunting', round: 2, ends: Math.floor(Date.now() / 1000) + 168, phaseLen: 300,
+      hidersAlive: 2, lobby: 7, whistle: 19,
+    });
+    s.me = { ...s.me, role: 'Hunter', hunterHp: 0, hunterMaxHp: 3 };
+    s.players = [
+      player(0, 'Hunter', { self: true, catches: 1, hits: 6 }),
+      player(1, 'Hider', { survived: 168 }), player(2, 'Hider', { survived: 168 }),
+      player(3, 'Hider', { eliminated: true, prop: 2, survived: 74 }),
+      player(6, 'Unassigned'),
+      player(7, 'Spectator'),
     ];
     return s;
   },
