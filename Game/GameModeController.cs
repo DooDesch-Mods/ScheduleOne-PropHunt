@@ -1536,11 +1536,23 @@ namespace PropHunt.Game
             else SendToHost(new ManualTauntMessage { Sound = sound });
         }
 
+        /// <summary>Shortest gap between two taunts from one player, host-enforced. The SCORE was already capped at
+        /// one per 15s, but the sound was not - an auto-clicker turned a taunt into a continuous siren that every
+        /// machine in the lobby had to play. 200ms is faster than anyone taunts on purpose and slow enough that a held
+        /// or scripted key produces a rhythm rather than a wall of noise.</summary>
+        internal const float TauntCooldownSeconds = 0.2f;
+
+        private readonly Dictionary<ulong, float> _lastTauntAt = new Dictionary<ulong, float>();
+
         /// <summary>Host: a player manually taunted -> broadcast the reveal cue + sound to everyone (incl. self).</summary>
         private void HandleManualTaunt(ulong sender, string sound)
         {
             if (!_isHost) return;
             if (sender == 0 || !_state.Players.TryGetValue(sender, out var p) || p.Eliminated) return;
+            // Time.time, not the unix clock: this is a sub-second gate and the round clock only counts whole seconds.
+            float nowT = Time.time;
+            if (_lastTauntAt.TryGetValue(sender, out var lastT) && nowT - lastT < TauntCooldownSeconds) return;
+            _lastTauntAt[sender] = nowT;
             // Resolve a default clip on the host so every machine plays the SAME sound. An empty sound would
             // otherwise make each receiver pick its own random default; the whistle path already resolves on host.
             if (string.IsNullOrEmpty(sound)) sound = Taunt.TauntSounds.PickDefault();
