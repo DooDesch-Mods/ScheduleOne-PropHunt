@@ -26,6 +26,7 @@ namespace PropHunt.Taunt
         private int _highlight;
         private bool _open;
         private float _downAt = -1f;
+        private float _lastSent = -99f;   // local echo of the host's taunt cooldown
         private Vector2 _aim;
         private const float HoldThreshold = 0.22f;
         private const float AimSpeed = 9f;
@@ -53,7 +54,13 @@ namespace PropHunt.Taunt
                 if (KeyBinds.Up(KeyBinds.Taunt))
                 {
                     if (_open) Close(true);                                       // commit highlighted
-                    else if (_downAt >= 0f) _ctl.RequestManualTaunt(_selectedSound);   // tap -> play selected (null = default)
+                    // Mirrors the host's 200ms gate so an auto-clicker does not put a request per click on the wire
+                    // for the host to throw away. The host still decides; this only keeps the traffic honest.
+                    else if (_downAt >= 0f && Time.time - _lastSent >= Game.GameModeController.TauntCooldownSeconds)
+                    {
+                        _lastSent = Time.time;
+                        _ctl.RequestManualTaunt(_selectedSound);                  // tap -> play selected (null = default)
+                    }
                     _downAt = -1f;
                 }
             }

@@ -4,6 +4,17 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.6] - 2026-08-07
+
+### Fixed
+
+- Cars come in the colours you see on the street. A car disguise is cloned from the game's vehicle prefab, which is
+  the unpainted one, so every car anyone became was white.
+- A small prop can no longer stand submerged. The depth allowance had a 20cm floor, and a bottle is 25cm - so it
+  could sit almost entirely under water and count as dry.
+- Taunts are limited to one every 200ms per player. Only the score was capped before, so an auto-clicker turned a
+  taunt into a siren that every machine in the lobby had to play.
+
 ## [1.3.5] - 2026-08-07
 
 ### Added

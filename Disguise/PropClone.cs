@@ -19,6 +19,42 @@ namespace PropHunt.Disguise
     /// </summary>
     internal static class PropClone
     {
+        /// <summary>
+        /// Give a cloned car a colour.
+        ///
+        /// Vehicles enter the catalog as VehicleManager.VehiclePrefabs, and a prefab's VehicleColor.Start() has never
+        /// run - so its body material is the untouched asset and every car anyone became came out white, while the
+        /// real ones on the street are painted.
+        ///
+        /// Vanilla's own ApplyColor does the work (it swaps in a tinted copy of the body material), called on the CLONE
+        /// while it is still inactive and before Strip removes the component. The pick is derived from the prop id, not
+        /// random: every machine builds this disguise for itself, and a per-machine roll would show the same hider in a
+        /// different colour to each hunter.
+        /// </summary>
+        private static void PaintVehicle(GameObject clone, PropEntry e)
+        {
+            if (clone == null || e == null) return;
+            try
+            {
+                var vc = clone.GetComponentInChildren<Il2CppScheduleOne.Vehicles.VehicleColor>(true);
+                if (vc == null) return;   // not a car
+                var colors = Il2CppScheduleOne.DevUtilities.Singleton<Il2CppScheduleOne.Vehicles.Modification.VehicleColors>.Instance;
+                var lib = colors != null ? colors.colorLibrary : null;
+                if (lib == null || lib.Count == 0) return;
+
+                // Custom is a placeholder for a player-picked colour and ApplyColor returns early on it, so it is not
+                // one of the choices here.
+                var pick = new System.Collections.Generic.List<Il2CppScheduleOne.Vehicles.Modification.EVehicleColor>();
+                for (int i = 0; i < lib.Count; i++)
+                    if (lib[i] != null && lib[i].color != Il2CppScheduleOne.Vehicles.Modification.EVehicleColor.Custom)
+                        pick.Add(lib[i].color);
+                if (pick.Count == 0) return;
+
+                vc.ApplyColor(pick[Mathf.Abs(e.Id) % pick.Count]);
+            }
+            catch (System.Exception ex) { Core.LogDebug("[PropHunt] vehicle paint failed: " + ex.Message); }
+        }
+
         internal static GameObject Build(PropEntry e, string name)
         {
             if (e == null) return null;
@@ -46,6 +82,7 @@ namespace PropHunt.Disguise
                 holder.SetActive(false);                          // clone stays inactive -> no Awake on the copied scripts
                 var go = Object.Instantiate(src, holder.transform);
                 go.name = name;
+                PaintVehicle(go, e);                              // before Strip - it needs the copied VehicleColor
                 Strip(go);                                        // remove scripts/colliders/Rigidbody/FishNet BEFORE activation
                 go.transform.SetParent(null, false);
                 go.SetActive(true);
@@ -478,6 +515,7 @@ namespace PropHunt.Disguise
                 holder.SetActive(false);                          // clone instantiated under this stays inactive -> no Awake
                 var go = Object.Instantiate(src, holder.transform);
                 go.name = name;
+                PaintVehicle(go, e);                              // before Strip - it needs the copied VehicleColor
                 Strip(go);                                        // DestroyImmediate scripts/colliders BEFORE activation
                 go.transform.SetParent(null, false);              // detach into the world (the caller re-parents to the player)
                 go.SetActive(true);

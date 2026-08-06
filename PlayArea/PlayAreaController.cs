@@ -32,6 +32,11 @@ namespace PropHunt.PlayArea
         /// stand chest-deep in a lake as a lamppost.</summary>
         private const float MinWaterDepth = 0.2f;
         private const float MaxWaterDepth = 0.8f;
+
+        /// <summary>The most of a prop that may be under water before it counts as hidden. This caps the FLOOR above:
+        /// a bottle is about 25cm, so a 20cm floor let it stand 80% submerged and legal - which is exactly the hiding
+        /// place the rule exists to close. No prop may ever be allowed to sit deeper than this share of itself.</summary>
+        private const float SubmergedFraction = 0.6f;
         private static readonly string[] OobClips = { "beep", "alarm", "warning", "alert" };
         private readonly GameModeController _ctl;
         private float _outsideSince = -1f;
@@ -57,7 +62,10 @@ namespace PropHunt.PlayArea
             }
             catch { }
             if (propH <= 0f) return (MinWaterDepth + MaxWaterDepth) * 0.5f;
-            return Mathf.Clamp(propH * DeepWaterPropFraction, MinWaterDepth, MaxWaterDepth);
+            // The ceiling is the smaller of the absolute cap and what this prop can hide behind, and the floor may not
+            // climb above it - otherwise the floor itself becomes the hiding place for anything shorter than it.
+            float ceiling = Mathf.Min(MaxWaterDepth, propH * SubmergedFraction);
+            return Mathf.Clamp(propH * DeepWaterPropFraction, Mathf.Min(MinWaterDepth, ceiling), ceiling);
         }
 
         internal void Tick()
