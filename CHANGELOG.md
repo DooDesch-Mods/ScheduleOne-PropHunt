@@ -8,34 +8,16 @@ All notable changes to PropHunt are documented here. The format follows
 
 ### Fixed
 
-- The sewer needs no key during a round, and no closed hatch can seal anyone in or out. A round world is a brand
-  new save, where the game still wants the Sewer Key that nobody in it can have - so one closed door was enough to
-  strand a hider down there with no way for the hunters to follow.
-
-## [1.3.3] - 2026-08-06
-
-### Fixed
-
-- The sewer stays reachable. Starting a round next to a sewer entrance shut that door, and because the game asks
-  for the Sewer Key once such a door is closed, the sewer was barred for the rest of the session - anyone already
-  down there could not be reached and nobody could follow them in.
-
-## [1.3.2] - 2026-08-06
-
-### Fixed
-
+- The sewer stays reachable and needs no key. A round plays in a brand new save, where the game still asks for the
+  Sewer Key that nobody in it can have - and a round starting next to a hatch shut it as well. Either way a hider
+  ended up sealed in, unreachable, with no way for the hunters to follow.
 - Hunters can use the phone torch again. A running round blocked it for everyone instead of only for hiders.
 - A hider who was already carrying a lit torch stops glowing inside their prop. The light went out on their own
   screen only, so every other player still saw it, and pressing [F] could not switch it off.
-
-## [1.3.1] - 2026-08-06
-
-### Fixed
-
-- Every preset starts the play area at 50m, so the radius follows your lobby size again instead of the
-  preset's own number. Infection jumped to 75m and Side Hustle Party to 90m, whatever the lobby size said.
-- The hunter ratio defaults to 4: five players is 1 hunter and 4 props, ten is 2 and 8. Its description
-  also promised the count rounds up, while the role assignment divides down.
+- Every preset starts the play area at 50m, so the radius follows your lobby size again instead of the preset's own
+  number. Infection jumped to 75m and Side Hustle Party to 90m, whatever the lobby size said.
+- The hunter ratio defaults to 4: five players is 1 hunter and 4 props, ten is 2 and 8. Its description also
+  promised the count rounds up, while the role assignment divides down.
 
 ## [1.3.0] - 2026-08-06
 
