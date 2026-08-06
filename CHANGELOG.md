@@ -11,9 +11,11 @@ All notable changes to PropHunt are documented here. The format follows
 - The sewer stays reachable and needs no key. A round plays in a brand new save, where the game still asks for the
   Sewer Key that nobody in it can have - and a round starting next to a hatch shut it as well. Either way a hider
   ended up sealed in, unreachable, with no way for the hunters to follow.
-- Hunters can use the phone torch again. A running round blocked it for everyone instead of only for hiders.
-- A hider who was already carrying a lit torch stops glowing inside their prop. The light went out on their own
-  screen only, so every other player still saw it, and pressing [F] could not switch it off.
+- You can always stand up again. Crawl spaces crouch you on the way in and leave it to you to get up, which a prop
+  was not allowed to do - so one low passage left you stuck crouched for the rest of the round.
+- Hunters can use the phone torch again, and a hider who was already carrying a lit one stops glowing inside their
+  prop. A round blocked the torch for everybody instead of only for hiders, and putting it out worked on the
+  owner's screen only, so every other player still saw the light.
 - Every preset starts the play area at 50m, so the radius follows your lobby size again instead of the preset's own
   number. Infection jumped to 75m and Side Hustle Party to 90m, whatever the lobby size said.
 - The hunter ratio defaults to 4: five players is 1 hunter and 4 props, ten is 2 and 8. Its description also
