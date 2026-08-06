@@ -704,6 +704,14 @@ namespace PropHunt.Game
                     {
                         var d = doors[i];
                         if (d == null) continue;
+                        // NEVER a sewer door. On the exterior side its access is key-gated
+                        // (SewerDoorController.CanPlayerAccess): a door that is merely OPEN rather than UNLOCKED needs
+                        // the Sewer Key once it has been closed, and PlayerAccess = Open does not get a say - the
+                        // override returns false before it defers to the base. So swinging one shut during the
+                        // safehouse phase barred the sewer for the whole session: anyone already down there was
+                        // unreachable and nobody could follow them in. It is a route into a separate area, not a room
+                        // of the safehouse, and the safehouse lock has no business touching it.
+                        if (d.TryCast<Il2CppScheduleOne.Doors.SewerDoorController>() != null) continue;
                         bool belongs;
                         var pdc = d.TryCast<Il2CppScheduleOne.Building.Doors.PropertyDoorController>();
                         if (pdc != null)

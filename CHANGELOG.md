@@ -4,6 +4,14 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.3] - 2026-08-06
+
+### Fixed
+
+- The sewer stays reachable. Starting a round next to a sewer entrance shut that door, and because the game asks
+  for the Sewer Key once such a door is closed, the sewer was barred for the rest of the session - anyone already
+  down there could not be reached and nobody could follow them in.
+
 ## [1.3.2] - 2026-08-06
 
 ### Fixed
