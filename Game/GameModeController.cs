@@ -867,6 +867,9 @@ namespace PropHunt.Game
                     // re-apply the world time at the start of every round, so each round begins at the configured
                     // time of day (and, with FreezeTime off, the clock then runs from there instead of staying locked).
                     if (_isHost) RoundEnvironment.ApplyHostWorld(_settings);
+                    // Every machine asks for itself: the unlock RPC runs locally on the caller and on the server, so a
+                    // host-only call leaves the other clients still holding a locked sewer.
+                    RoundEnvironment.UnlockSewer();
                     // Rebuild the catalog now the world is fully loaded (the client's session-start build can
                     // run BEFORE the scene finishes loading -> a near-empty catalog + hash mismatch). Both sides
                     // rebuild at the same lifecycle point -> matching deterministic ids/hash.

@@ -4,6 +4,14 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.4] - 2026-08-06
+
+### Fixed
+
+- The sewer needs no key during a round, and no closed hatch can seal anyone in or out. A round world is a brand
+  new save, where the game still wants the Sewer Key that nobody in it can have - so one closed door was enough to
+  strand a hider down there with no way for the hunters to follow.
+
 ## [1.3.3] - 2026-08-06
 
 ### Fixed

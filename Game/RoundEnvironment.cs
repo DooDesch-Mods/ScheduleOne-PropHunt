@@ -29,6 +29,7 @@ namespace PropHunt.Game
                 Core.Log.Msg($"[PropHunt] world: time set to {s.TimeOfDay}{(s.FreezeTime ? ", progression frozen" : ", progression running")}.");
                 SetSewerGoblin(s.SewerGoblin);
                 SetSewerKing(false);
+                UnlockSewer();
             }
             catch (Exception e) { Core.Log.Warning("[PropHunt] ApplyHostWorld failed: " + e.Message); }
         }
@@ -40,6 +41,33 @@ namespace PropHunt.Game
             _suppressedOfficers.Clear();
             SetSewerGoblin(true);
             SetSewerKing(true);
+        }
+
+        /// <summary>
+        /// Take the Sewer Key out of the equation for the round.
+        ///
+        /// A round runs in a fresh scratch world, where SewerLoader starts with isSewerUnlocked = false. Access then
+        /// hangs entirely on the door happening to stand OPEN: the moment one is closed - by us, by a player, by
+        /// anything - SewerDoorController demands a key nobody in a brand-new world can have, and it demands it from
+        /// every side. That is how a hider ends up sealed in and unreachable while nobody can follow.
+        ///
+        /// Called on EVERY machine, not just the host, and that matters: the RPC is RunLocally, so it sets the flag on
+        /// the caller and on the server, but not on the other clients - vanilla gets away with that because the player
+        /// who used the key is also standing at an open door. Each client asking for itself is what makes the sewer
+        /// readable the same way everywhere.
+        ///
+        /// Nothing to restore: the scratch world is discarded when the session ends.
+        /// </summary>
+        internal static void UnlockSewer()
+        {
+            try
+            {
+                var mgr = NetworkSingleton<Il2CppScheduleOne.Map.SewerManager>.Instance;
+                if (mgr == null || mgr.IsSewerUnlocked) return;
+                mgr.SetSewerUnlocked_Server();
+                Core.Log.Msg("[PropHunt] world: sewer unlocked for the round (no key needed).");
+            }
+            catch (Exception e) { Core.Log.Warning("[PropHunt] could not unlock the sewer: " + e.Message); }
         }
 
         private static bool _goblinDisabled;
