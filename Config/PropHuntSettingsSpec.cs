@@ -50,12 +50,15 @@ namespace PropHunt.Config
                 IntSlider("Props", "concr",   "Concussion radius","Hunters within this of a concussion get stunned.",      2, 20, 1, "m", (int)PropHuntPreferences.ConcussRadius),
                 IntSlider("Props", "stun",    "Concussion stun time", "Seconds a concussion knocks nearby hunters down (short stun).", 1, 10, 1, "s", (int)PropHuntPreferences.ConcussStunSeconds),
                 Toggle   ("Props", "rmdecoy", "Clear decoys between rounds", "Remove dropped decoys at round end (off = they carry over).", PropHuntPreferences.RemoveDecoysBetweenRounds),
+                Toggle   ("Props", "propsize", "Hiders are prop-sized", "A disguised hider shrinks to their prop, so a small prop fits where a person cannot. Never bigger than normal.", PropHuntPreferences.PropSizeCollision),
+                IntSlider("Props", "proprot", "Prop rotation",    "Force every hider into a new random prop this often, so nobody can camp one perfect spot (0 = off).", 0, 180, 10, "s", PropHuntPreferences.PropRotationSeconds),
 
                 // --- World ---
-                IntSlider("World", "area",  "Play-area radius",   "Radius of the round's play area around the safehouse.", 50, 200, 5, "m", (int)PropHuntPreferences.PlayAreaRadius),
+                IntSlider("World", "area",  "Play-area radius",   "Radius of the round's play area around the safehouse. Left alone, it grows with the lobby: 50m up to ten players, then 60m and five more per further five.", 50, 200, 5, "m", (int)PropHuntPreferences.PlayAreaRadius),
                 IntSlider("World", "time",  "Time of day",        "World time during a round (HHMM; 1200 = noon).",        0, 2300, 100, null, PropHuntPreferences.TimeOfDay),
                 Toggle   ("World", "freeze","Lock time of day",   "Lock the world clock during a round. Off = start at the set time, then let it run.", PropHuntPreferences.FreezeTime),
                 Toggle   ("World", "autostart","Auto-start next round","Automatically start the next round after a short safehouse pause. Off = start each round manually. Toggle live in the phone app.", PropHuntPreferences.AutoStartNextRound),
+                Toggle   ("World", "goblin","Allow the sewer goblin","Let the vanilla sewer goblin roam during a round. Turn it off if being robbed mid-hide bothers you. The sewer king is always removed either way.", PropHuntPreferences.SewerGoblin),
             };
         }
 

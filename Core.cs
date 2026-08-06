@@ -2,7 +2,7 @@ using System;
 using MelonLoader;
 using PropHunt.Config;
 
-[assembly: MelonInfo(typeof(PropHunt.Core), "PropHunt", "1.2.0", "DooDesch", "https://github.com/DooDesch-Mods/ScheduleOne-PropHunt")]
+[assembly: MelonInfo(typeof(PropHunt.Core), "PropHunt", DooDesch.ModVersion.Current, "DooDesch", "https://github.com/DooDesch-Mods/ScheduleOne-PropHunt")]
 [assembly: MelonGame("TVGS", "Schedule I")]
 [assembly: MelonOptionalDependencies("SideHustle")]   // PropHunt is launched from the Side Hustle gamemode hub
 // WhatsDab carries the in-round chat. Declared as an additional dependency so MelonLoader loads it BEFORE PropHunt;
@@ -102,7 +102,13 @@ namespace PropHunt
                         // rather than merely allowed: if it is installed but disabled Side Hustle switches it back on,
                         // and if it is missing the player is told to install it before the round starts instead of
                         // finding out mid-game that they cannot talk to anyone.
-                        RequiredMods = new[] { "WhatsDab" }
+                        //
+                        // Sideload must be listed ALONGSIDE it. WhatsDab is a Sideload phone app but compiles the
+                        // Sideload.Api shim into itself and references Sideload.dll nowhere, so the mod policy's
+                        // dependency walk cannot see it: on a "Required mods only" profile WhatsDab would be re-enabled
+                        // without its host, and a joiner would never receive Sideload.dll at all. WhatsDab then loads
+                        // fine and registers no app - the phone simply has no chat.
+                        RequiredMods = new[] { "WhatsDab", "Sideload" }
                         // PropHunt's other hard dependencies (S1API, SteamNetworkLib) are always present and never
                         // disabled, so they do not belong here - listing them could falsely block the launch.
                     }

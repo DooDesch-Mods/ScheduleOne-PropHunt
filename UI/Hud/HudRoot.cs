@@ -35,6 +35,7 @@ namespace PropHunt.UI.Hud
         private readonly GameObject _oobPill; private readonly Text _oob;
         private readonly GameObject _safehousePill; private readonly Text _safehouse;
         private readonly GameObject _downedPill; private readonly Text _downed;
+        private readonly GameObject _rotPill; private readonly Text _rot;
         private readonly Scoreboard _scoreboard;
         // controls (role card + [H] overlay + bottom hint) - restyled from the old IMGUI Onboarding
         private readonly GameObject _cardPanel; private readonly Text _cardTitle; private readonly Text _cardBody;
@@ -42,10 +43,14 @@ namespace PropHunt.UI.Hud
         private readonly Text _controlsHint;
 
         // change-gate caches
-        private string _cStatus, _cHint, _cTransform, _cAbility, _cBecome, _cSpec, _cOob, _cDowned;
+        private string _cStatus, _cHint, _cTransform, _cAbility, _cBecome, _cSpec, _cOob, _cDowned, _cRot;
         private string _cCardTitle, _cCardBody, _cHelpBody, _cControlsHint; private bool _cCardHunter;
-        private bool _aStatus, _aHp, _aHunterHp, _aHint, _aTransform, _aAbility, _aBecome, _aSpec, _aOob, _aSafehouse, _aDowned;
+        private bool _aStatus, _aHp, _aHunterHp, _aHint, _aTransform, _aAbility, _aBecome, _aSpec, _aOob, _aSafehouse, _aDowned, _aRot;
         private bool _aCard, _aHelp, _aControlsHint;
+
+        /// <summary>How long before a forced prop change the warning appears. Long enough to move somewhere the new
+        /// shape will not look absurd, short enough that it is not on screen for most of the round.</summary>
+        private const int PropRotationWarnSeconds = 15;
 
         internal HudRoot()
         {
@@ -123,6 +128,15 @@ namespace PropHunt.UI.Hud
             _safehouse = HudWidgets.Label(_safehousePill.transform, "txt", Theme.H3, Theme.SuccessText, TextAnchor.MiddleCenter, FontStyle.Bold);
             HudWidgets.Stretch(_safehouse.rectTransform, 12f, 0f, 12f, 0f);
 
+            // --- prop-rotation countdown (just above the hotbar) ---
+            // Placed low and centred on purpose: it is about the prop you are wearing, so it belongs where the player
+            // already looks for what they are holding, not up with the round timer they can ignore for minutes at a time.
+            _rotPill = HudWidgets.Pill(_host, "hud_proprot", Theme.WithAlpha(Theme.WarningSubtle, 0.92f));
+            HudWidgets.Outline(_rotPill, Theme.Warning);
+            HudWidgets.Place(_rotPill, 0.5f, 0f, 0f, 132f, 420f, 40f);
+            _rot = HudWidgets.Label(_rotPill.transform, "txt", Theme.H3, Theme.WarningText, TextAnchor.MiddleCenter, FontStyle.Bold);
+            HudWidgets.Stretch(_rot.rectTransform, 12f, 0f, 12f, 0f);
+
             // --- knocked-down banner (center; friendly-fire KO or concussion) ---
             _downedPill = HudWidgets.Pill(_host, "hud_downed", Theme.WithAlpha(Theme.WarningSubtle, 0.92f));
             HudWidgets.Outline(_downedPill, Theme.Warning);
@@ -175,6 +189,7 @@ namespace PropHunt.UI.Hud
             Hide(_hp.Root, ref _aHp);
             Hide(_hunterHp.Root, ref _aHunterHp);
             Hide(_downedPill, ref _aDowned);
+            Hide(_rotPill, ref _aRot);
             Hide(_hint.gameObject, ref _aHint);
             Hide(_transform.gameObject, ref _aTransform);
             Hide(_abilityPill, ref _aAbility);
@@ -240,6 +255,14 @@ namespace PropHunt.UI.Hud
             if (downed) SetText(_downed, ref _cDowned, $"KNOCKED DOWN - {ctl.LocalDownedSecondsLeft}s");
             SetActive(_downedPill, ref _aDowned, downed);
 
+            // --- prop rotation warning ---
+            // Only for a hider who is actually wearing something - a hunter has no prop to lose, and warning an
+            // undisguised hider about a change to a prop they do not have would just be noise.
+            int rotIn = disguised ? ctl.SecondsToPropRotation : -1;
+            bool warnRot = rotIn >= 0 && rotIn <= PropRotationWarnSeconds;
+            if (warnRot) SetText(_rot, ref _cRot, $"NEW PROP IN {rotIn}s");
+            SetActive(_rotPill, ref _aRot, warnRot);
+
             // --- hint line ---
             string view = ctl.ThirdPersonOn ? $"[{KeyBinds.Name(KeyBinds.ThirdPerson)}] 1st-person" : $"[{KeyBinds.Name(KeyBinds.ThirdPerson)}] 3rd-person";
             string hint = null;
@@ -248,9 +271,13 @@ namespace PropHunt.UI.Hud
                 string tn = ctl.LookTargetName;
                 string become = tn != null ? $"[{KeyBinds.Name(KeyBinds.Become)}] become {tn}" : "Look at a highlighted object to become it";
                 string lead = phase == RoundPhase.Hunting ? "Stay hidden!   " : "";
-                string rot = ctl.LocalPropId >= 0 ? $"   [{KeyBinds.Name(KeyBinds.Rotate)}]+mouse rotate" : "";
+                string rot = ctl.WornPropId >= 0 ? $"   [{KeyBinds.Name(KeyBinds.Rotate)}]+mouse rotate" : "";
+                // The lock is the one control with a STATE, so the hint says which way the next click goes -
+                // otherwise a player hanging in mid-air has to guess how they got there and how to come down.
+                string lockHint = ctl.WornPropId < 0 ? ""
+                    : ctl.LocalPropLocked ? "   [Mouse0] drop (LOCKED)" : "   [Mouse0] lock in place";
                 string rnd = (ctl.Settings == null || ctl.Settings.AllowRandomChange) ? $"   [{KeyBinds.Name(KeyBinds.RandomProp)}] random" : "";
-                hint = $"{lead}{become}{rnd}{rot}      {view}";
+                hint = $"{lead}{become}{rnd}{rot}{lockHint}      {view}";
             }
             else if (phase == RoundPhase.Hiding && ctl.LocalRole == PlayerRole.Hunter) hint = "Get ready... (blinded until the hunt begins)";
             else if (phase == RoundPhase.Hunting && ctl.LocalRole == PlayerRole.Hunter) hint = $"Find the props  -  [{KeyBinds.Name(KeyBinds.Catch)}] to catch (big props take more hits)";
@@ -296,9 +323,11 @@ namespace PropHunt.UI.Hud
             if (showSpec) SetText(_spec, ref _cSpec, spec);
             SetActive(_specPill, ref _aSpec, showSpec);
 
-            // --- out-of-bounds ---
+            // --- out-of-bounds (the area edge, or deep water - name which, so the countdown is actionable) ---
             bool oob = ctl.LocalOutside;
-            if (oob) SetText(_oob, ref _cOob, $"RETURN TO THE PLAY AREA!   {Mathf.CeilToInt(ctl.OobGrace)}s");
+            if (oob)
+                SetText(_oob, ref _cOob, (ctl.LocalInWater ? "GET OUT OF THE WATER!" : "RETURN TO THE PLAY AREA!")
+                                         + $"   {Mathf.CeilToInt(ctl.OobGrace)}s");
             SetActive(_oobPill, ref _aOob, oob);
 
             // --- safehouse "doors opening" ---

@@ -42,6 +42,9 @@ namespace PropHunt.Config
         private static MelonPreferences_Entry<bool> _freeChangesInHiding;
         private static MelonPreferences_Entry<bool> _freezeTime;
         private static MelonPreferences_Entry<bool> _autoStartNextRound;
+        private static MelonPreferences_Entry<int> _propRotationSeconds;
+        private static MelonPreferences_Entry<bool> _sewerGoblin;
+        private static MelonPreferences_Entry<bool> _propSizeCollision;
         private static MelonPreferences_Entry<string> _musicTrack;
         private static MelonPreferences_Entry<string> _customBlob;
         private static MelonPreferences_Entry<string> _customBase;
@@ -73,8 +76,8 @@ namespace PropHunt.Config
                 "How many rounds to play before rotating who hunts (round-robin).");
             _hiderSpeedPercent = CreateEntry("HiderSpeedPercent", 90, "Hider speed (% of hunter)",
                 "Hiders move at this percent of hunter speed (70-100; 100 = same). Lower makes hiders easier to catch.");
-            _tagRange = CreateEntry("TagRange", 4f, "Catch range (metres)",
-                "How close a hunter must be, looking at a hider, to catch them.");
+            _tagRange = CreateEntry("TagRange", 4f, "Melee catch range (metres)",
+                "How close a hunter must be to catch a hider with a MELEE weapon. Guns catch as far as they shoot, so this does not affect them.");
             _hitsToCatch = CreateEntry("HitsToCatch", 2, "Prop HP per metre",
                 "Disguise HP scales with prop size: a prop needs round(largest dimension * this) hits to catch, capped by Max hider HP. Bigger props tank more shots.");
             _hiderMaxHp = CreateEntry("HiderMaxHp", 4, "Max hider HP",
@@ -89,8 +92,9 @@ namespace PropHunt.Config
                 "Hunters within this distance of the hider when they trigger a concussion get stunned.");
             _tauntIntervalSeconds = CreateEntry("TauntIntervalSeconds", 30, "Taunt interval (seconds)",
                 "During hunting, every hider is forced to emit a reveal sound this often. 0 disables taunts.");
-            _playAreaRadius = CreateEntry("PlayAreaRadius", 75f, "Play-area radius (metres)",
-                "Radius of the round's play area around the host's position. Leaving it warns, then eliminates.");
+            _playAreaRadius = CreateEntry("PlayAreaRadius", PlayAreaRadiusFactory, "Play-area radius (metres)",
+                "Radius of the round's play area around the host's position. Leaving it warns, then eliminates. " +
+                "While untouched it scales with the lobby: 50m up to ten players, 60m past that, plus 5m per further five.");
             _caughtBehavior = CreateEntry("CaughtBehavior", "Spectator", "Caught behavior (default)",
                 "Default for the host setup screen. Spectator = a caught hider sits out till the round ends. Infection = a caught hider becomes a hunter.");
             _roundStructure = CreateEntry("RoundStructure", "Continuous", "Round structure (default)",
@@ -119,6 +123,16 @@ namespace PropHunt.Config
                 "Lock the world clock during a round. Off = set the time at round start, then let it progress.");
             _autoStartNextRound = CreateEntry("AutoStartNextRound", true, "Auto-start next round",
                 "After a round, automatically start the next one after a short safehouse pause. Off = the host starts each round manually. Can be toggled live in the phone app.");
+            _propRotationSeconds = CreateEntry("PropRotationSeconds", 0, "Prop rotation (seconds)",
+                "Force every hider into a NEW random prop this often during the hunt, so nobody can sit still in one perfect spot. 0 = off.");
+            _propSizeCollision = CreateEntry("PropSizeCollision", true, "Hiders are prop-sized",
+                "A disguised hider physically shrinks to their prop, so a small prop fits under shelves and into corners a person cannot reach. Never larger than normal player size.");
+            // Default ON. The sewer NPC that actually ruined rounds was the KING - he attacks on sight and wanders into
+            // the safehouse where rounds start - and he is now always parked, with no setting. The goblin is a nuisance
+            // rather than a threat, so removing it by default took away scenery for no gain.
+            _sewerGoblin = CreateEntry("SewerGoblin", true, "Allow the sewer goblin",
+                "Let the vanilla sewer goblin roam during a round. Turn it off if being robbed mid-hide bothers you. " +
+                "The sewer king is always removed either way.");
             _musicTrack = CreateEntry("MusicTrack", "Sneak Ambience", "Round music track",
                 "The single game music track PropHunt plays continuously through every phase EXCEPT the hunt (lobby, hiding, round-end, safehouse). It fades out when the hunt starts (so hunters hear the whistles) and resumes at round end - it never restarts between phases. Empty = no music. Use the DEBUG 'phmusic' console command to list available track names.");
             _customBlob = CreateEntry("CustomPresetBlob", "", "Custom preset (saved)",
@@ -161,7 +175,23 @@ namespace PropHunt.Config
         internal static int ConcussCharges => Mathf.Max(0, _concussCharges?.Value ?? 1);
         internal static float ConcussRadius => Mathf.Max(1f, _concussRadius?.Value ?? 7f);
         internal static int TauntIntervalSeconds => Mathf.Max(0, _tauntIntervalSeconds?.Value ?? 30);
-        internal static float PlayAreaRadius => Mathf.Max(5f, _playAreaRadius?.Value ?? 75f);
+        /// <summary>
+        /// The shipped radius: the same 50m a small lobby gets from <see cref="Game.GameModeController.DefaultAreaRadiusFor"/>,
+        /// so the number on the host form is the number that will be used. It was 75 while the scaling default did not
+        /// exist, and leaving it there meant the form promised 75 and a two-player round quietly played 50.
+        ///
+        /// A named constant because <see cref="PlayAreaRadiusUntouched"/> compares against it; the same literal in two
+        /// places would drift apart.
+        /// </summary>
+        internal const float PlayAreaRadiusFactory = 50f;
+
+        internal static float PlayAreaRadius => Mathf.Max(5f, _playAreaRadius?.Value ?? PlayAreaRadiusFactory);
+
+        /// <summary>True while the host has never moved the radius slider, so a player-count default may be offered
+        /// instead. A host who deliberately typed 75 is indistinguishable from one who never looked - accepted, because
+        /// the alternative is a second stored flag that can fall out of step with the value it describes.</summary>
+        internal static bool PlayAreaRadiusUntouched =>
+            _playAreaRadius == null || Mathf.Approximately(_playAreaRadius.Value, PlayAreaRadiusFactory);
         internal static string CaughtBehaviorRaw => _caughtBehavior?.Value ?? "Spectator";
         internal static string RoundStructureRaw => _roundStructure?.Value ?? "Continuous";
         internal static int TimeOfDay => _timeOfDay?.Value ?? 1200;
@@ -176,6 +206,9 @@ namespace PropHunt.Config
         internal static bool FreeChangesInHiding => _freeChangesInHiding?.Value ?? true;
         internal static bool FreezeTime => _freezeTime?.Value ?? true;
         internal static bool AutoStartNextRound => _autoStartNextRound?.Value ?? true;
+        internal static int PropRotationSeconds => Math.Max(0, _propRotationSeconds?.Value ?? 0);
+        internal static bool SewerGoblin => _sewerGoblin?.Value ?? true;
+        internal static bool PropSizeCollision => _propSizeCollision?.Value ?? true;
         internal static string MusicTrack => _musicTrack?.Value ?? "";
         internal static string CustomBlob => _customBlob?.Value ?? "";
         internal static string CustomBase => _customBase?.Value ?? "";
@@ -231,7 +264,10 @@ namespace PropHunt.Config
                 AllowRandomChange = AllowRandomChange,
                 FreeChangesInHiding = FreeChangesInHiding,
                 FreezeTime = FreezeTime,
-                AutoStartNextRound = AutoStartNextRound
+                AutoStartNextRound = AutoStartNextRound,
+                PropRotationSeconds = PropRotationSeconds,
+                SewerGoblin = SewerGoblin,
+                PropSizeCollision = PropSizeCollision
             };
         }
 

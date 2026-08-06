@@ -73,6 +73,42 @@ namespace PropHunt.Game
         internal bool SafehouseReady;           // host pressed "start next round" -> doors about to open
         internal int SafehouseSeed;             // host-rolled seed -> all clients shuffle the spawn points the same way
         internal long HuntStartUnix;            // unix time the current Hunting phase began (for survival-time stats)
+        /// <summary>The HOST's wall clock at the moment it serialized this snapshot. Every other timestamp in here
+        /// (PhaseEndsAtUnix, DownedUntilUnix, HuntStartUnix) is absolute unix time taken from the host's clock, so a
+        /// client whose own clock is off by n seconds renders every countdown n seconds wrong. Clients subtract their
+        /// own clock from this to learn the offset - see GameModeController.NowUnix.</summary>
+        internal long HostNowUnix;
+
+        /// <summary>
+        /// Who is wearing which prop in the LOBBY, as "steamId:propId:yaw,steamId:propId:yaw".
+        ///
+        /// Separate from <see cref="Players"/> on purpose. The roster does not exist before a round - it is built when
+        /// roles are assigned - and creating one early would mean every path that assumes "a roster means a round is
+        /// running" (role assignment, the round-start reset, the scoreboard) had to cope with entries that predate it.
+        /// A trailing field costs nothing and cannot confuse any of them: the codec tolerates extra fields, so an older
+        /// client simply does not see it.
+        /// </summary>
+        internal string LobbyProps = "";
+
+        /// <summary>
+        /// Where the hunter rotation starts for this match, rolled once by the host.
+        ///
+        /// Role assignment is a round-robin over the player ids in sorted order, which is what keeps it fair over a
+        /// session and identical on every machine. Without an offset, though, round 1 always lands on index 0 - the
+        /// lowest steam id - so the same person hunted first in every single match they played, forever. The offset
+        /// moves the starting point without touching the rotation, so everyone still takes their turn.
+        /// </summary>
+        internal int RoleOffset;
+
+        /// <summary>
+        /// The forced-prop-change interval THIS round runs on, in seconds. 0 = no rotation.
+        ///
+        /// Frozen when the round starts rather than read from the live settings, because a host nudging the slider
+        /// mid-round otherwise moved the grid under everyone instantly - props changed on the spot, and the countdown
+        /// every client derives jumped with it. The setup screen promises settings apply to the NEXT round; this is what
+        /// makes that true for the one setting that yanks something out of a player's hands.
+        /// </summary>
+        internal int RotationSeconds;
         internal readonly Dictionary<ulong, PlayerState> Players = new Dictionary<ulong, PlayerState>();
         internal readonly List<DecoyState> Decoys = new List<DecoyState>();
 
@@ -93,7 +129,11 @@ namespace PropHunt.Game
               .Append('|').Append(AreaY.ToString(ci))
               .Append('|').Append(SafehouseCode ?? "").Append('|').Append(SafehouseReady ? '1' : '0')
               .Append('|').Append(SafehouseSeed.ToString(ci))
-              .Append('|').Append(HuntStartUnix.ToString(ci));
+              .Append('|').Append(HuntStartUnix.ToString(ci))
+              .Append('|').Append(HostNowUnix.ToString(ci))
+              .Append('|').Append(LobbyProps ?? "")
+              .Append('|').Append(RoleOffset.ToString(ci))
+              .Append('|').Append(RotationSeconds.ToString(ci));
             sb.Append('\n').Append(SettingsBlob ?? "");
             foreach (var p in Players.Values)
             {
@@ -158,6 +198,10 @@ namespace PropHunt.Game
                     if (h.Length >= 11) gs.SafehouseReady = h[10] == "1";
                     if (h.Length >= 12) gs.SafehouseSeed = SafeInt(h[11]);
                     if (h.Length >= 13) long.TryParse(h[12], NumberStyles.Integer, ci, out gs.HuntStartUnix);
+                    if (h.Length >= 14) long.TryParse(h[13], NumberStyles.Integer, ci, out gs.HostNowUnix);
+                    if (h.Length >= 15) gs.LobbyProps = h[14] ?? "";
+                    if (h.Length >= 16) gs.RoleOffset = SafeInt(h[15]);
+                    if (h.Length >= 17) gs.RotationSeconds = SafeInt(h[16]);
                 }
             }
             if (lines.Length > 1) gs.SettingsBlob = lines[1];

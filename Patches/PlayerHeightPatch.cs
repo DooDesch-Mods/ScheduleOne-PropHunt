@@ -86,9 +86,11 @@ namespace PropHunt.Patches
             {
                 var ctl = GameModeController.Active;
                 if (ctl == null) return true;
-                if (ctl.LocalRole != PlayerRole.Hider) return true;   // hunters crouch freely
-                if (ctl.LocalPropId < 0) return true;                 // not disguised yet
-                return false;                                          // disguised hider -> block crouch
+                if (ctl.LocalRole == PlayerRole.Hunter) return true;   // hunters crouch freely
+                // WornPropId, not LocalPropId: the round's roster field reads -1 in the lobby, so trying props on there
+                // left crouching enabled - and a crouching crate is the same giveaway in a dressing room as in a round.
+                // Nor is the role test enough on its own: in the lobby nobody has one yet.
+                return ctl.WornPropId < 0;                             // wearing a prop -> block crouch
             }
             catch { return true; }
         }

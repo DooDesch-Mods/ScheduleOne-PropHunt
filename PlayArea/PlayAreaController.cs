@@ -13,25 +13,65 @@ namespace PropHunt.PlayArea
     internal sealed class PlayAreaController
     {
         private const float GraceSeconds = 10f;
+
+        /// <summary>
+        /// How much of the prop the water has to cover before it counts as hiding in the water.
+        ///
+        /// A fixed depth was wrong, and wrong in a way that showed up as "the prop is clearly in the water and nothing
+        /// happens": the question is never how deep the water is, it is whether the water hides the thing you are
+        /// pretending to be. 40cm swallows a sign whole and barely wets a vending machine. So the threshold is a
+        /// fraction of the PROP's own height, measured from its base at the player's feet.
+        /// </summary>
+        private const float DeepWaterPropFraction = 0.35f;
+
+        /// <summary>Floor and ceiling for that fraction. The floor keeps a puddle from catching a tiny prop the moment
+        /// it gets its feet wet; the ceiling means even a tall prop eventually counts, rather than letting someone
+        /// stand chest-deep in a lake as a lamppost.</summary>
+        private const float MinWaterDepth = 0.2f;
+        private const float MaxWaterDepth = 0.8f;
         private static readonly string[] OobClips = { "beep", "alarm", "warning", "alert" };
         private readonly GameModeController _ctl;
         private float _outsideSince = -1f;
         private float _nextBeep;
 
         internal bool LocalOutside { get; private set; }
+        /// <summary>True when the warning is about WATER rather than the area edge, so the HUD can say which.</summary>
+        internal bool LocalWater { get; private set; }
         internal float GraceLeft { get; private set; }
 
         internal PlayAreaController(GameModeController ctl) { _ctl = ctl; }
 
+        /// <summary>How deep the water may be here before it counts, for the prop this player is currently wearing.
+        /// Undisguised (a hunter, or a hider before picking) falls back to the middle of the range - there is no prop
+        /// to measure, and the point of the rule is the prop.</summary>
+        private float DeepWaterLimit()
+        {
+            float propH = 0f;
+            try
+            {
+                int id = _ctl.LocalPropId;
+                if (id >= 0) propH = Disguise.PropCatalog.HeightOf(id);
+            }
+            catch { }
+            if (propH <= 0f) return (MinWaterDepth + MaxWaterDepth) * 0.5f;
+            return Mathf.Clamp(propH * DeepWaterPropFraction, MinWaterDepth, MaxWaterDepth);
+        }
+
         internal void Tick()
         {
             LocalOutside = false;
+            LocalWater = false;
             GraceLeft = 0f;
             var s = _ctl.State;
             if (s == null || s.AreaRadius <= 0f) { _outsideSince = -1f; return; }
             if (_ctl.Phase != RoundPhase.Hiding && _ctl.Phase != RoundPhase.Hunting) { _outsideSince = -1f; return; }
             var role = _ctl.LocalRole;
             if (role != PlayerRole.Hider && role != PlayerRole.Hunter) { _outsideSince = -1f; return; }
+            // Someone already out of the round is a spectator and may roam freely. A caught hider still reads as
+            // PlayerRole.Hider under the Spectator caught-behaviour, so the role check above does NOT cover them -
+            // without this they got the warning beeps and the full-screen banner while spectating, and kept sending
+            // reports the host silently threw away.
+            if (_ctl.LocalEliminated || _ctl.LocalSpectating) { _outsideSince = -1f; return; }
             try
             {
                 var lp = Player.Local;
@@ -39,8 +79,14 @@ namespace PropHunt.PlayArea
                 var p = lp.transform.position;
                 float dx = p.x - s.AreaX, dz = p.z - s.AreaZ;
                 float dist = Mathf.Sqrt(dx * dx + dz * dz);
-                if (dist > s.AreaRadius)
+                // Deep water counts as leaving the area. A disguise sits with its BASE at the player's feet, so water
+                // that reaches up the prop hides it - and a hider could simply wait out the round down there. Wading
+                // stays legal; the line is drawn against the prop's own height rather than a fixed depth.
+                bool inDeepWater = WaterProbe.DepthOverFeet(lp, out _) > DeepWaterLimit()
+                                   && !WaterProbe.HasRoofAbove(lp);
+                if (dist > s.AreaRadius || inDeepWater)
                 {
+                    LocalWater = inDeepWater;
                     LocalOutside = true;
                     if (_outsideSince < 0f) _outsideSince = Time.time;
                     GraceLeft = Mathf.Max(0f, GraceSeconds - (Time.time - _outsideSince));
@@ -56,7 +102,7 @@ namespace PropHunt.PlayArea
                         if (role == PlayerRole.Hunter)
                             RoundEnvironment.TeleportLocalInto(s.AreaX, s.AreaY, s.AreaZ, _ctl.LocalId);
                         else
-                            _ctl.ReportOutOfBounds();
+                            _ctl.ReportOutOfBounds(LocalWater);
                         _outsideSince = Time.time;   // reset to avoid spamming
                     }
                 }

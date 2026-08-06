@@ -41,6 +41,9 @@ namespace PropHunt.Game
         internal bool FreeChangesInHiding = true;         // prop changes during Hiding don't count toward MaxPropChanges (unlimited before the hunt)
         internal bool FreezeTime = true;                  // lock + freeze the time of day during a round (false = set it at round start, then let it run)
         internal bool AutoStartNextRound = true;          // auto-advance out of the between-rounds Safehouse after a short pause (host can toggle live in the app)
+        internal bool SewerGoblin = true;                 // let the vanilla sewer goblin roam during a round. The sewer KING is always removed - see RoundEnvironment.SetSewerKing
+        internal int PropRotationSeconds;                 // force every live hider into a new random prop this often (0 = off); makes camping one spot impossible
+        internal bool PropSizeCollision = true;           // a disguised hider is physically the size of their prop, so small props fit where a person cannot
 
         internal static CaughtBehavior ParseCaught(string s) =>
             string.Equals(s, "Infection", StringComparison.OrdinalIgnoreCase) ? CaughtBehavior.Infection : CaughtBehavior.Spectator;
@@ -83,7 +86,10 @@ namespace PropHunt.Game
                 "rnd=" + (AllowRandomChange ? "1" : "0"),
                 "freechg=" + (FreeChangesInHiding ? "1" : "0"),
                 "freeze=" + (FreezeTime ? "1" : "0"),
-                "autostart=" + (AutoStartNextRound ? "1" : "0")
+                "autostart=" + (AutoStartNextRound ? "1" : "0"),
+                "goblin=" + (SewerGoblin ? "1" : "0"),
+                "proprot=" + PropRotationSeconds.ToString(ci),
+                "propsize=" + (PropSizeCollision ? "1" : "0")
             });
         }
 
@@ -144,6 +150,9 @@ namespace PropHunt.Game
                 case "freechg": FreeChangesInHiding = v == "1"; break;
                 case "freeze": FreezeTime = v == "1"; break;
                 case "autostart": AutoStartNextRound = v == "1"; break;
+                case "goblin": SewerGoblin = v == "1"; break;
+                case "proprot": if (int.TryParse(v, NumberStyles.Integer, ci, out var prr)) PropRotationSeconds = prr; break;
+                case "propsize": PropSizeCollision = v == "1"; break;
             }
         }
 

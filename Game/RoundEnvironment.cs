@@ -27,6 +27,8 @@ namespace PropHunt.Game
                 var tm = NetworkSingleton<TimeManager>.Instance;
                 if (tm != null) { tm.SetTimeAndSync(s.TimeOfDay); tm.SetTimeSpeedMultiplier(s.FreezeTime ? 0f : 1f); }
                 Core.Log.Msg($"[PropHunt] world: time set to {s.TimeOfDay}{(s.FreezeTime ? ", progression frozen" : ", progression running")}.");
+                SetSewerGoblin(s.SewerGoblin);
+                SetSewerKing(false);
             }
             catch (Exception e) { Core.Log.Warning("[PropHunt] ApplyHostWorld failed: " + e.Message); }
         }
@@ -36,6 +38,58 @@ namespace PropHunt.Game
         {
             try { var tm = NetworkSingleton<TimeManager>.Instance; if (tm != null) tm.SetTimeSpeedMultiplier(1f); } catch { }
             _suppressedOfficers.Clear();
+            SetSewerGoblin(true);
+            SetSewerKing(true);
+        }
+
+        private static bool _goblinDisabled;
+        private static bool _kingDisabled;
+
+        /// <summary>
+        /// Host: park the sewer king for the round. Unlike the goblin this has no setting, because there is nothing to
+        /// weigh: he is a boss who attacks on sight, a hider disguised as a crate cannot fight or flee him, and he
+        /// wanders into the safehouse area where rounds start. Nobody plays PropHunt for him.
+        ///
+        /// Deactivating the GameObject is vanilla's own move - SewerManager.DisableSewerKing does exactly this.
+        /// </summary>
+        internal static void SetSewerKing(bool enabled)
+        {
+            if (enabled && !_kingDisabled) return;   // nothing to restore
+            try
+            {
+                var mgr = NetworkSingleton<Il2CppScheduleOne.Map.SewerManager>.Instance;
+                var npc = mgr != null ? mgr.SewerKingNPC : null;
+                if (npc == null || npc.gameObject == null) return;
+                if (npc.gameObject.activeSelf == enabled) { _kingDisabled = !enabled; return; }
+                npc.gameObject.SetActive(enabled);
+                _kingDisabled = !enabled;
+                Core.Log.Msg($"[PropHunt] world: sewer king {(enabled ? "restored" : "disabled for the round")}.");
+            }
+            catch (Exception e) { Core.LogDebug("[PropHunt] SetSewerKing failed: " + e.Message); }
+        }
+
+        /// <summary>
+        /// Host: switch the vanilla sewer goblin off for the round. It is a hostile scene NPC that deploys on its own
+        /// (SewerManager holds the reference; the goblin rolls for a deployment on the minute pass), robs whoever it
+        /// reaches and fights back - none of which a hider disguised as a crate can answer. Vanilla itself parks the
+        /// sewer king exactly this way, by deactivating the NPC's GameObject.
+        ///
+        /// Host-authoritative and idempotent; safe to call when the sewers were never loaded.
+        /// </summary>
+        internal static void SetSewerGoblin(bool enabled)
+        {
+            if (enabled && !_goblinDisabled) return;   // nothing to restore
+            try
+            {
+                var mgr = NetworkSingleton<Il2CppScheduleOne.Map.SewerManager>.Instance;
+                var npc = mgr != null ? mgr.SewerGoblinNPC : null;
+                if (npc == null || npc.gameObject == null) return;
+                if (npc.gameObject.activeSelf == enabled) { _goblinDisabled = !enabled; return; }
+                npc.gameObject.SetActive(enabled);
+                _goblinDisabled = !enabled;
+                Core.Log.Msg($"[PropHunt] world: sewer goblin {(enabled ? "restored" : "disabled for the round")}.");
+            }
+            catch (Exception e) { Core.LogDebug("[PropHunt] SetSewerGoblin failed: " + e.Message); }
         }
 
         /// <summary>Dev/curation: lock the world to a bright time of day (HHMM) and freeze progression so props
@@ -148,6 +202,19 @@ namespace PropHunt.Game
             GroundMode == 1 ? "capsule" : GroundMode == 2 ? "floor-ray" : GroundMode == 3 ? "fixed" : "follow";
         private static float _localFeetOffset = -1.0f;
 
+        /// <summary>A player's vertical world scale, clamped to something sane. PropHunt shrinks a disguised hider
+        /// to their prop's size (Player.SetScale), so anything measured in metres off the player root has to be
+        /// scaled by this or it is wrong by however much they shrank.</summary>
+        internal static float PlayerScaleY(Player p)
+        {
+            try
+            {
+                float s = p != null ? p.transform.lossyScale.y : 1f;
+                return s > 0.01f ? s : 1f;
+            }
+            catch { return 1f; }
+        }
+
         /// <summary>World-Y of a player's feet, per the current <see cref="GroundMode"/>.</summary>
         internal static float FeetY(Player p)
         {
@@ -171,7 +238,9 @@ namespace PropHunt.Game
                 case 2:   // floor-ray: raycast down to the floor, skipping the player (pins to ground - bad for jumps)
                     return FloorRaycastY(pos);
                 case 3:   // fixed: a flat, tuned offset below the capsule centre (consistent host+client)
-                    return pos.y - FixedFeetDrop;
+                    // Scaled with the player: a hider shrunk to their prop's size has their feet correspondingly
+                    // closer to their root, and a drop tuned for a full-size body would bury the prop in the floor.
+                    return pos.y - FixedFeetDrop * PlayerScaleY(p);
                 default:  // follow (0): replicated position + the owner's capsule offset -> rides jumps/stairs, consistent
                     return pos.y + _localFeetOffset;
             }

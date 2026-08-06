@@ -99,6 +99,11 @@ namespace PropHunt.Disguise
             return ids;
         }
 
+        /// <summary>The catalog as it stands right now, for anything that needs to LIST props (the phone's Props
+        /// tab). Read-only and cheap: it hands back the current entries without rescanning the scene, because a
+        /// rebuild from a UI frame would hitch the game and change the ids under a player mid-look.</summary>
+        internal static List<PropEntry> Entries() => new List<PropEntry>(_entries);
+
         /// <summary>How many of our props survive the host's pool - the size of the pool a hider actually picks from.</summary>
         internal static int BecomableCount()
         {
@@ -699,6 +704,26 @@ namespace PropHunt.Disguise
         }
 
         /// <summary>Largest world dimension of a prop (metres), used to scale its disguise HP / collision / hitbox. 0 if unknown.</summary>
+        /// <summary>A prop's real world HEIGHT in metres, 0 when unknown. Distinct from <see cref="SizeOf"/>, which
+        /// reports the largest dimension whatever axis it lies on - for anything wider than it is tall those are two
+        /// different numbers, and "how far up does the water reach" is only ever about the vertical one.</summary>
+        internal static float HeightOf(int id)
+        {
+            var e = ById(id);
+            if (e == null) return 0f;
+            try
+            {
+                if (PropClone.TryGetPropBoundsFromSource(e, out var lb))
+                {
+                    Vector3 ls = e.SourceRoot != null ? e.SourceRoot.transform.lossyScale : Vector3.one;
+                    float h = Mathf.Abs(lb.size.y * ls.y);
+                    if (h > 0.001f) return h;
+                }
+            }
+            catch { }
+            return 0f;
+        }
+
         internal static float SizeOf(int id)
         {
             var e = ById(id);
@@ -749,6 +774,40 @@ namespace PropHunt.Disguise
 
         /// <summary>A random catalog id (for the [2] "next random prop" control), avoiding <paramref name="exclude"/>
         /// so the prop visibly changes. -1 if the catalog is empty.</summary>
+        /// <summary>
+        /// A random prop the local player is actually allowed to become, or -1 when the pool is empty.
+        ///
+        /// Separate from <see cref="RandomId"/>, which draws from every catalogued entry: the becomable set is the
+        /// catalogue intersected with the host's published pool, so a raw draw hands back ids the host will reject.
+        /// Collected first and then drawn once, rather than retried - a pool where most entries are not becomable would
+        /// make a retry loop fail by luck and read as "there are no props".
+        /// </summary>
+        internal static int RandomBecomableId(int exclude = -1)
+        {
+            var pool = new System.Collections.Generic.List<int>();
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                var e = _entries[i];
+                if (e == null || !IsBecomable(e.Id)) continue;
+                pool.Add(e.Id);
+            }
+            if (pool.Count == 0) return -1;
+            if (pool.Count == 1) return pool[0];
+            for (int tries = 0; tries < 8; tries++)
+            {
+                int id = pool[UnityEngine.Random.Range(0, pool.Count)];
+                if (id != exclude) return id;
+            }
+            return pool[UnityEngine.Random.Range(0, pool.Count)];
+        }
+
+        /// <summary>A prop's raw catalogue name, or an empty string. For logs; the phone shows the tidied version.</summary>
+        internal static string NameOf(int id)
+        {
+            var e = ById(id);
+            return e?.Name ?? "";
+        }
+
         internal static int RandomId(int exclude = -1)
         {
             if (_entries.Count == 0) return -1;

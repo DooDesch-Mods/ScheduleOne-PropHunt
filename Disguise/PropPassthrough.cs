@@ -40,7 +40,11 @@ namespace PropHunt.Disguise
             try
             {
                 float h = Patches.PropCollisionState.TargetHeight;   // prop height, clamped 0.5-1.85 (0 = none)
-                bool want = _ctl.LocalRole == PlayerRole.Hider && _ctl.LocalPropId >= 0 && h > 0f && h < 1.8f;
+                bool want = _ctl.LocalRole != PlayerRole.Hunter && _ctl.WornPropId >= 0 && h > 0f && h < 1.8f;
+                // When the hider is genuinely shrunk to their prop (PropSizeCollision), they FIT - and ignoring
+                // obstacle collisions on top of that would let them walk through things they should bump into.
+                // This workaround only exists for the case where the body stays full-size inside a short prop.
+                if (_ctl.Settings != null && _ctl.Settings.PropSizeCollision) want = false;
                 if (!want) { if (_active) Clear(); return; }
 
                 EnsureRefs();

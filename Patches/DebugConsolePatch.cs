@@ -95,6 +95,9 @@ namespace PropHunt.Patches
                     case "phmeshpool":  // measure the available clean-prop pool (scene vs prefab-template, bypassing batching)
                         Disguise.PropSources.MeshPool();
                         return false;
+                    case "phscale":   // dump prop world size vs the local player's capsule (is the body prop-sized?)
+                        PropHunt.Debug.SizeProbe.DumpScale();
+                        return false;
                     case "phdebug":   // toggle the visual diagnostics overlay (also F3)
                         PropHunt.Debug.DebugOverlay.ToggleFromConsole();
                         return false;
@@ -135,6 +138,63 @@ namespace PropHunt.Patches
                                          $"players={s.State.Players.Count} isHost={s.IsHost}");
                         }
                         else Core.Log.Warning("[PropHunt] phstate: no active session.");
+                        return false;
+                    case "phclockskew":   // fake a local clock that is N seconds off, to prove the host-clock correction
+                    {
+                        // Two instances on one machine share a system clock, so a real skew can never happen here.
+                        // This bends the LOCAL reading only; the offset learned from the host must cancel it exactly,
+                        // leaving every countdown identical on both windows.
+                        long skew = 0;
+                        if (args.Count > 1) long.TryParse(args[1], out skew);
+                        Game.GameModeController.DebugClockSkew = skew;
+                        var sess = Core.Session;
+                        Core.Log.Msg($"[PropHunt] phclockskew: local clock bent by {skew}s. " +
+                                     (sess != null
+                                        ? $"offset={sess.ClockOffset}s secondsLeft={sess.SecondsLeft} whistleIn={sess.SecondsToWhistle}"
+                                        : "no active session yet - the offset is learned from the host's next push."));
+                        return false;
+                    }
+                    case "phcombat":      // read the layer mask / trigger settings the vanilla shot pipeline runs on
+                        PropHunt.Debug.CombatProbe.Dump();
+                        return false;
+                    case "phsolo":        // run a match with one real player (a stand-in fills the hunter slot)
+                        Game.SoloHarness.StartSolo();
+                        return false;
+                    case "phbecome":      // force the local player into a prop by name/key (empty = random)
+                        Game.SoloHarness.Become(args.Count > 1 ? args[1] : "");
+                        return false;
+                    case "phbecomeall":   // build EVERY catalog prop as a clone and report the ones that break
+                        Game.SoloHarness.BuildAll();
+                        return false;
+                    case "phphone":       // build every phone tab into a throwaway container and report throws
+                        Game.SoloHarness.PhoneSelfTest();
+                        return false;
+                    case "phmapring":     // report the play-area ring on the phone map (existence + coordinates)
+                        Game.SoloHarness.MapRingReport();
+                        return false;
+                    case "phpropcheck":   // measure which props would float/sink when worn (e.g. phpropcheck toilet)
+                        Disguise.PropGeometryCheck.Run(args.Count > 1 ? args[1] : "");
+                        return false;
+                    case "phset":         // host: change one round setting live, by its blob key (e.g. phset proprot 20)
+                    {
+                        if (args.Count < 3) { Core.Log.Warning("[PropHunt] phset: usage 'phset <key> <value>' (keys are the RoundSettings blob keys)."); return false; }
+                        var sess = Core.Session;
+                        if (sess == null) { Core.Log.Warning("[PropHunt] phset: no active session."); return false; }
+                        sess.SetSetting(args[1], args[2]);
+                        Core.Log.Msg($"[PropHunt] phset: {args[1]}={args[2]} -> {sess.Settings}");
+                        return false;
+                    }
+                    case "phwater":       // what the water probe sees here (layer, collider, surface height, depth)
+                        PropHunt.PlayArea.WaterProbe.Dump();
+                        return false;
+                    case "phclock":       // compare this machine's clock against the host's
+                        if (Core.Session != null)
+                        {
+                            var s = Core.Session;
+                            Core.Log.Msg($"[PropHunt] clock: offset={s.ClockOffset}s hostNow={s.NowUnix()} " +
+                                         $"secondsLeft={s.SecondsLeft} whistleIn={s.SecondsToWhistle} huntStart={s.HuntStartUnix}");
+                        }
+                        else Core.Log.Warning("[PropHunt] phclock: no active session.");
                         return false;
                     default:
                         return true;   // not one of ours

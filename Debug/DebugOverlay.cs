@@ -164,6 +164,26 @@ namespace PropHunt.Debug
                 {
                     var c = cc.center;
                     L.Add(($"CC h={cc.height:F2} center=({c.x:F2},{c.y:F2},{c.z:F2}) r={cc.radius:F2}  crouch={pm.IsCrouched}  targetH={th:F2}", K));
+
+                    // The WORLD size next to the prop it is meant to match - the green box in the world is this, and
+                    // reading the two numbers side by side is the only way to see whether the body is prop-sized.
+                    var s = cc.transform.lossyScale;
+                    var lp = Player.Local;
+                    float scale = lp != null ? lp.Scale : 1f;
+                    float bodyH = cc.height * Mathf.Abs(s.y);
+                    float bodyW = cc.radius * 2f * Mathf.Abs(s.x);
+                    // Measured off the two colliders this overlay already draws - GREEN is this capsule, BLUE is the
+                    // disguise's shootable box - so the line answers exactly the question the boxes raise on screen.
+                    string want = "-";
+                    bool matches = true;
+                    if (SizeProbe.TryGetPropBox(lp, out var pb, out _))
+                    {
+                        float narrow = Mathf.Min(pb.x, pb.z);
+                        want = $"{pb.y:F2} / {narrow:F2}x{Mathf.Max(pb.x, pb.z):F2}";
+                        matches = Mathf.Abs(bodyH - pb.y) < 0.2f && bodyW <= narrow + 0.2f;
+                    }
+                    L.Add(($"GREEN body h/w={bodyH:F2} / {bodyW:F2}   BLUE prop h/wxd={want}   scale={scale:F2}",
+                           matches ? OK : BAD));
                 }
                 else L.Add(($"CC: <null>  crouch={pm.IsCrouched}  targetH={th:F2}", BAD));
             }

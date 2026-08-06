@@ -4,6 +4,61 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-08-06
+
+### Added
+- Click to lock your prop where it stands, mid-air included. Click again to drop. There is no timer and
+  no cost: a crate wedged under a ceiling can stay there all round.
+- You are physically the size of your prop, not a person wearing one. A thin sign fits into a gap no
+  person gets through, and a hunter shooting at a knee-high box hits a knee-high body.
+  - `Hiders are prop-sized` on the host form turns it off.
+- Try props on in the lobby before the match starts. Everyone sees you, `2` rolls another one, hold `F`
+  to turn it, and the camera swings out so you can look at yourself.
+  - Decoys, concussions and taunts stay out of the lobby - those are round mechanics with budgets.
+- Props can be shuffled during the hunt, so nobody sits out a whole round in one perfect corner.
+  - `Prop rotation` on the host form, in seconds. 0 keeps it off. A forced change refills your decoys
+    and concussions and does not count against your own prop changes.
+  - `NEW PROP IN 15s` counts down above your hotbar first, so the change is never a surprise.
+- The play area is drawn on the phone map: everything outside it is tinted red, with a line where the
+  wall stands. Left alone, the area now grows with the lobby - 50m up to ten players, 60m past that.
+- Grabbing at a suspicious prop with the trash grabber makes it whistle if it is a player. A hunter
+  finally gets an answer instead of a mis-click, and a found hider should run.
+- Hosts can end a round early from the phone, and switch `Auto-start next round` off while one is
+  running. `End round` scores it as a hunter win and drops you back into the round setup.
+- Deep water counts as leaving the play area: a warning, ten seconds, then the same result. How deep is
+  measured against your prop, so a sign counts as submerged long before a vending machine does. Wading
+  is still fine, and the sewers stay passable.
+
+### Fixed
+- Shots register when you are right in front of a hider, and when their prop stands against a wall.
+  Both used to be swallowed with no hit and no sound.
+- The round timer and the whistle countdown agree on every machine, and the hunt opens with a whistle
+  instead of a silent first interval. Two PCs whose clocks differ by a few seconds used to show
+  different numbers, and the whistle went off while the countdown still had time on it.
+- The first round no longer always picks the same hunter. Who hunts first is rolled per match; after
+  that everyone still takes their turn in order.
+- Spectators no longer get the out-of-bounds warning and the beeping while they fly around.
+- A hunter who has been stunned can select a weapon again. Standing back up left the hotbar dead for
+  the rest of the round.
+- The sewer king is removed during a round. He attacks on sight, and a crate cannot fight or run.
+- A prop has no hotbar, no flashlight and cannot crouch. `2` reached the inventory instead of your
+  disguise (and needed pressing twice), and aiming with `F` switched a light on inside your crate.
+- The golden toilet, the toilet, the jukebox and the laundering station sat 50 cm above the ground.
+- Joining players were never sent Sideload, so WhatsDab had nothing to run on and the phone had no
+  chat. Both ship with the round now.
+
+### Changed
+- `Catch range` controls melee reach. It had no effect at all before. A gun still catches as far as it
+  shoots, so the difficulty stays in how small a prop you picked.
+- Changing `Prop rotation` mid-round takes effect from the NEXT round. It used to move the schedule
+  instantly and change props on the spot.
+- The sewer goblin is allowed by default. It is a nuisance; the sewer king was the actual problem.
+- The `Props` tab is the lobby dressing room now, not a list of names.
+- The trash grabber holds ten times as much, so it stays useful for a whole round.
+
+### Removed
+- The two outside doors are gone from the prop list. As a disguise they dragged a whole building along.
+
 ## [1.2.0] - 2026-08-01
 
 ### Fixed

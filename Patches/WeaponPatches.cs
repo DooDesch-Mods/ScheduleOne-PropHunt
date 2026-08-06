@@ -61,14 +61,24 @@ namespace PropHunt.Patches
         }
     }
 
-    /// <summary>Melee equivalent: a real melee strike (short reach) resolves a catch the same way.</summary>
+    /// <summary>Melee equivalent: a real melee strike (short reach) resolves a catch the same way. The reach is the
+    /// host's TagRange setting (default 4m = the melee arc), which is the ONLY thing that setting still drives - a gun
+    /// always reaches as far as it shoots, so clamping it there would silently turn every pistol into a melee weapon.</summary>
     [HarmonyPatch(typeof(Equippable_MeleeWeapon), "ExecuteHit")]
     internal static class HunterMeleeCatchPatch
     {
         private static void Postfix()
         {
             if (!WeaponPatchGate.HunterInRound()) return;
-            try { GameModeController.Active?.OnLocalHunterFired(4f); } catch { }
+            try
+            {
+                var ctl = GameModeController.Active;
+                if (ctl == null) return;
+                float reach = ctl.Settings != null ? ctl.Settings.TagRange : 4f;
+                if (reach < 0.5f) reach = 0.5f;
+                ctl.OnLocalHunterFired(reach);
+            }
+            catch { }
         }
     }
 

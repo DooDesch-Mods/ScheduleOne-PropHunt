@@ -50,14 +50,19 @@ namespace PropHunt.Taunt
             int interval = _ctl.Settings.TauntIntervalSeconds;
             if (interval <= 0) return;
 
-            long unixNow = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long unixNow = _ctl.NowUnix();
 
-            // arm on the first Hunting tick
-            if (_nextWhistleUnix <= 0) { _nextWhistleUnix = unixNow + interval; return; }
+            // Arm on the GRID the HUD counts down to, not on whatever tick happened to run first. The countdown in
+            // GameModeController.SecondsToWhistle derives its marks from huntStart + n * interval; anchoring on the
+            // tick instead put the host a fraction ahead of that grid, and re-anchoring on every FIRE (unixNow +
+            // interval) let the error accumulate round after round. The first mark is huntStart itself: the hunt
+            // opens with a whistle, then the interval runs.
+            if (_nextWhistleUnix <= 0) _nextWhistleUnix = _ctl.HuntStartUnix;
             if (unixNow < _nextWhistleUnix) return;
 
-            // advance the deadline BEFORE building the queue so a slow frame can't double-fire
-            _nextWhistleUnix = unixNow + interval;
+            // Advance BEFORE building the queue so a slow frame can't double-fire. RoundLogic owns the grid, so a
+            // stalled host skips straight to the next future mark instead of drifting behind every client's HUD.
+            _nextWhistleUnix = RoundLogic.NextGridMark(_ctl.HuntStartUnix, interval, unixNow);
 
             // build the sweep: one staggered reveal per live hider
             float stagger = Mathf.Max(0f, _ctl.Settings.WhistleStaggerSeconds);
