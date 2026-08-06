@@ -125,38 +125,22 @@ body {
 }
 
 /* The segments an unlit digit still shows. Static: drawn once, never touched again. */
-.digit-ghost {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 28px;
-  height: 52px;
-  font-family: game-segment;
-  font-size: 44px;
-  text-align: center;
-  align-items: center;
-  color: #191F22;
-}
+.digit-ghost { position: absolute; left: 0; top: 0; width: 28px; height: 52px; justify-content: center; }
+.digit-ghost .glyph { color: #191F22; }
 
 /* flex: none, or the reel is shrunk to the one cell its parent is tall and every glyph piles up. */
 .reel { flex: none; transition: transform 120ms; }
 
-.cell {
-  height: 52px;
-  font-family: game-segment;
-  font-size: 44px;
-  text-align: center;
-  align-items: center;
-}
+/* A frame of a fixed height with the character INSIDE it, never the character itself. A box that carries direct
+   text is the text leaf, and its height is whatever TMP measures for that glyph - which differs per character,
+   so a reel built that way drifts a little further with every stop. justify-content centres the glyph on the
+   main axis, which is the vertical one here; text-align does the other. */
+.cell { height: 52px; justify-content: center; }
 
-.colon {
-  width: 13px;
-  height: 54px;
-  font-family: game-segment;
-  font-size: 40px;
-  text-align: center;
-  align-items: center;
-}
+.glyph { font-family: game-segment; font-size: 44px; text-align: center; }
+
+.colon { width: 13px; height: 54px; justify-content: center; }
+.colon .glyph { font-size: 40px; }
 
 /* The gauge under it is segmented for the same reason: filling a bar by width would relayout every second. */
 .gauge { flex-direction: row; gap: 2px; height: 4px; }
@@ -469,3 +453,6 @@ body {
 .dress-name { font-size: 17px; font-weight: 700; }
 
 .pair { flex-direction: row; gap: 8px; }
+
+/* A one-line legend under a table header, for columns whose name cannot carry the whole meaning. */
+.legend { font-size: 10px; color: var(--mute); padding: 0 10px 4px 10px; }

@@ -66,15 +66,27 @@ class SevenSegment {
     // The unlit segments, as a real display shows them. Static, so it is drawn once and never touched again.
     const ghost = document.createElement('div');
     ghost.className = 'digit-ghost';
-    ghost.textContent = '8';
+    const ghostFace = document.createElement('div');
+    ghostFace.className = 'glyph';
+    ghostFace.textContent = '8';
+    ghost.appendChild(ghostFace);
     box.appendChild(ghost);
 
     const reel = document.createElement('div');
     reel.className = 'reel';
     for (const glyph of REEL) {
+      // The glyph goes in a CHILD, never in the cell itself. A box carrying direct text IS the text leaf and
+      // takes its height from what TMP measures for that character - so a reel of cells-with-text ends up with
+      // eleven slightly different heights, and stepping by a fixed amount drifts a little further with every
+      // digit. Only "0" looked right, because it is the first stop and had not accumulated any error yet.
       const cell = document.createElement('div');
       cell.className = 'cell';
-      cell.textContent = glyph;
+
+      const face = document.createElement('div');
+      face.className = 'glyph';
+      face.textContent = glyph;
+
+      cell.appendChild(face);
       reel.appendChild(cell);
     }
 
@@ -86,7 +98,10 @@ class SevenSegment {
   #colon() {
     const box = document.createElement('div');
     box.className = 'colon';
-    box.textContent = ':';
+    const face = document.createElement('div');
+    face.className = 'glyph';
+    face.textContent = ':';
+    box.appendChild(face);
     return box;
   }
 
@@ -124,15 +139,24 @@ class Gauge {
 
 /* -------------------------------------------------------------------------------------------- text ---- */
 
+/* One word per concept, and the game's own word wherever it has one.
+ *
+ * A MATCH is made of ROUNDS; a round runs through PHASES. Players are HUNTERS and HIDERS; a hider who is found is
+ * CAUGHT, never "eliminated". What a hider wears is a PROP, never a "disguise". Those are the words the mod's
+ * README, its console and its keybind overlay already use, so the app does not teach a second vocabulary.
+ *
+ * An earlier pass had these read CREW / UNACCOUNTED / RECOVERED, which is how a depot would file them and is the
+ * fiction this app is dressed in. It was wrong on the label that carries the most: mid-round, "am I hunting or am
+ * I hiding" has to answer itself in a glance, and it may not be answered in a costume. The world lives in the
+ * palette, the stamps and the gauges - never in a word the player has to translate. */
+
 const PHASE_LABEL = {
-  Lobby: 'LOBBY', Hiding: 'HIDING', Hunting: 'HUNT',
+  Lobby: 'LOBBY', Hiding: 'HIDING', Hunting: 'HUNTING',
   RoundEnd: 'ROUND OVER', Safehouse: 'BETWEEN ROUNDS', MatchEnd: 'MATCH OVER',
 };
 
-/** The depot's own words for a role. A hider still out there is UNACCOUNTED because that is exactly what the
- *  board knows about them - the same reason their prop is not in the data at all. */
 const ROLE_STAMP = {
-  Hunter: 'CREW', Hider: 'UNACCOUNTED', Caught: 'RECOVERED', Spectator: 'OFF SHIFT', Unassigned: 'WAITING',
+  Hunter: 'HUNTER', Hider: 'HIDER', Caught: 'CAUGHT', Spectator: 'SPECTATING', Unassigned: 'NO ROLE YET',
 };
 
 const CATEGORY_SHORT = { 'Round': 'Round', 'Roles & Combat': 'Roles', 'Props': 'Props', 'World': 'World' };
@@ -326,8 +350,8 @@ class App {
   }
 
   #renderNoSession(pane) {
-    $('phase').textContent = 'NO SESSION';
-    $('role').textContent = 'WAITING';
+    $('phase').textContent = 'NO MATCH';
+    $('role').textContent = 'NO ROLE YET';
     $('role').className = 'stamp role';
     $('tallycount').textContent = '0 / 0';
     $('tally').replaceChildren();
@@ -335,7 +359,7 @@ class App {
     $('clocknote').textContent = '';
 
     const box = el('div', 'empty');
-    box.appendChild(el('div', 'empty-title', 'No round running.'));
+    box.appendChild(el('div', 'empty-title', 'No match running.'));
     box.appendChild(el('div', 'empty-note', 'Start one from the main menu: Side Hustle, then PropHunt.'));
     pane.appendChild(box);
   }
@@ -387,24 +411,27 @@ class App {
     const me = s.me;
     const running = s.phase === 'Hiding' || s.phase === 'Hunting';
 
-    if (me.downed) box.appendChild(this.#vital('downed', 'Knocked down', me.downedLeft + 's', true));
-    if (me.outside) box.appendChild(this.#vital('oob', me.water ? 'In the water' : 'Out of bounds', me.grace + 's', true));
+    if (me.downed) box.appendChild(this.#vital('downed', 'Knocked down', 'up in ' + me.downedLeft + 's', true));
+    if (me.outside) box.appendChild(this.#vital('oob', me.water ? 'In deep water' : 'Outside the area', 'back in ' + me.grace + 's', true));
 
     if (!running) {
       // The whistle gauge belongs to the hunt. Build it anyway so the tick never has to test for it.
       this.#whistle = null;
-      if (box.children.length === 0) box.appendChild(el('div', 'note', 'Nothing to report.'));
+      if (box.children.length === 0)
+        box.appendChild(el('div', 'note', 'Your prop, your hits and your gear show up here once the round starts.'));
       return;
     }
 
     if (me.role === 'Hider' && !me.eliminated) {
-      box.appendChild(this.#vital('hp', 'Prop HP', Math.max(0, me.maxHp - me.hp) + ' / ' + me.maxHp));
-      box.appendChild(this.#vital('change', 'Changes left',
-        me.freeChanges ? 'free' : me.maxChanges > 0 ? String(Math.max(0, me.maxChanges - me.changes)) : 'unlimited'));
-      if (me.maxDecoys > 0) box.appendChild(this.#vital('decoy', 'Decoys', String(Math.max(0, me.maxDecoys - me.decoys))));
-      if (me.maxConc > 0) box.appendChild(this.#vital('concussion', 'Concussions', String(Math.max(0, me.maxConc - me.conc))));
+      // "Hits left" for both roles: for a hider it is the prop taking damage, for a hunter it is friendly fire
+      // before they go down. Same question from the player's side, so the same words.
+      box.appendChild(this.#vital('hp', 'Hits left', Math.max(0, me.maxHp - me.hp) + ' / ' + me.maxHp));
+      box.appendChild(this.#vital('change', 'Prop changes left',
+        me.freeChanges ? 'free now' : me.maxChanges > 0 ? String(Math.max(0, me.maxChanges - me.changes)) : 'unlimited'));
+      if (me.maxDecoys > 0) box.appendChild(this.#vital('decoy', 'Decoys left', String(Math.max(0, me.maxDecoys - me.decoys))));
+      if (me.maxConc > 0) box.appendChild(this.#vital('concussion', 'Concussions left', String(Math.max(0, me.maxConc - me.conc))));
     } else if (me.role === 'Hunter') {
-      box.appendChild(this.#vital('hp', 'Your HP', Math.max(0, me.hunterMaxHp - me.hunterHp) + ' / ' + me.hunterMaxHp));
+      box.appendChild(this.#vital('hp', 'Hits left', Math.max(0, me.hunterMaxHp - me.hunterHp) + ' / ' + me.hunterMaxHp));
     }
 
     if (s.phase === 'Hunting' && s.whistle >= 0) {
@@ -442,17 +469,20 @@ class App {
   #boardLobby(pane, s) {
     const head = el('div', 'head');
     head.appendChild(el('div', 'title', 'Waiting to start'));
-    head.appendChild(el('div', 'sub', plural(s.lobby, 'player', 'players')));
+    head.appendChild(el('div', 'sub', plural(s.lobby, 'player here', 'players here')));
     pane.appendChild(head);
 
     if (s.host) {
+      // The button keeps its name whether or not it can be pressed, and the reason it cannot sits under it. A
+      // button relabelled with its own blocker stops saying what it does and reads as a different control.
       const ready = s.lobby >= 2;
-      const act = button(ready ? 'act' : 'act off', ready ? 'START MATCH' : 'NEED 2 PLAYERS', 'start',
-        ready ? () => this.#send('ph.begin') : null);
-      pane.appendChild(act);
-      pane.appendChild(el('div', 'note', 'Set the rules first if you want to - they apply from the first round.'));
+      pane.appendChild(button(ready ? 'act' : 'act off', 'START MATCH', 'start',
+        ready ? () => this.#send('ph.begin') : null));
+      pane.appendChild(el('div', 'note', ready
+        ? 'Set the rules first if you want to - they apply from the first round.'
+        : 'PropHunt needs two players. Invite someone through the Steam overlay.'));
     } else {
-      pane.appendChild(el('div', 'note', 'The host starts the match. Everything here stays live while you wait.'));
+      pane.appendChild(el('div', 'note', 'Waiting for the host to start.'));
     }
 
     pane.appendChild(el('div', 'rule'));
@@ -466,7 +496,7 @@ class App {
     pane.appendChild(head);
 
     if (s.becomable <= 0) {
-      pane.appendChild(el('div', 'note', 'No props loaded here yet. Walk around a little and come back.'));
+      pane.appendChild(el('div', 'note', 'No props found here yet. Walk around a little and come back.'));
       return;
     }
 
@@ -479,18 +509,18 @@ class App {
       shot.appendChild(picture(s.me.propImage, 88));
     } else {
       shot.appendChild(icon('prop', 34));
-      shot.appendChild(el('div', 'dress-empty', wearing ? 'DEVELOPING' : 'NOTHING ON'));
+      shot.appendChild(el('div', 'dress-empty', wearing ? 'LOADING' : 'NO PROP'));
     }
 
     dress.appendChild(shot);
 
     const main = el('div', 'dress-main');
-    main.appendChild(el('div', 'dress-name', wearing ? s.me.propName : plural(s.becomable, 'prop to try on', 'props to try on')));
-    main.appendChild(el('div', 'note', 'Press [2] for another one, hold [F] and move the mouse to turn it.'));
+    main.appendChild(el('div', 'dress-name', wearing ? s.me.propName : plural(s.becomable, 'prop nearby', 'props nearby')));
+    main.appendChild(el('div', 'note', 'In a round you become one by looking at it and pressing [E], or [2] for a random one.'));
 
     const pair = el('div', 'pair');
-    pair.appendChild(button('btn', wearing ? 'Try another' : 'Become a prop', 'change', () => this.#send('ph.prop.roll')));
-    if (wearing) pair.appendChild(button('btn', 'Back to normal', 'close', () => this.#send('ph.prop.clear')));
+    pair.appendChild(button('btn', wearing ? 'Try another prop' : 'Try a random prop', 'change', () => this.#send('ph.prop.roll')));
+    if (wearing) pair.appendChild(button('btn', 'Take it off', 'close', () => this.#send('ph.prop.clear')));
     main.appendChild(pair);
 
     dress.appendChild(main);
@@ -498,16 +528,18 @@ class App {
   }
 
   #boardHiding(pane, s) {
+    const hunter = s.me.role === 'Hunter';
+
     const head = el('div', 'head');
-    head.appendChild(el('div', 'title', 'Get hidden'));
+    head.appendChild(el('div', 'title', hunter ? 'Hunters are blind' : 'Find a hiding spot'));
     head.appendChild(el('div', 'sub', 'Round ' + s.round));
     pane.appendChild(head);
 
-    if (s.me.role === 'Hunter') {
-      pane.appendChild(el('div', 'note', 'You are blind until the hunt starts. Sit tight.'));
+    if (hunter) {
+      pane.appendChild(el('div', 'note', 'You get your weapon and your sight back when the clock runs out.'));
     } else if (s.me.prop >= 0) {
       this.#wearing(pane, s);
-      pane.appendChild(el('div', 'note', 'Hold [F] and move the mouse to face it the way a real one would sit.'));
+      pane.appendChild(el('div', 'note', 'Hold [F] and move the mouse to sit the way a real one would.'));
     } else {
       pane.appendChild(el('div', 'note', 'Look at any prop and press [E] to become it. [2] picks one at random.'));
     }
@@ -517,13 +549,13 @@ class App {
 
   #boardHunting(pane, s) {
     const head = el('div', 'head');
-    head.appendChild(el('div', 'title', s.hidersAlive === 1 ? 'One left' : s.hidersAlive + ' still hidden'));
+    head.appendChild(el('div', 'title', s.hidersAlive === 1 ? 'One hider left' : s.hidersAlive + ' hiders left'));
     head.appendChild(el('div', 'sub', 'Round ' + s.round));
     pane.appendChild(head);
 
     if (s.me.role === 'Hider' && !s.me.eliminated && s.me.prop >= 0) this.#wearing(pane, s);
     else if (s.me.role === 'Hunter') pane.appendChild(el('div', 'note', 'Shoot a prop to catch it. Bigger props take more hits.'));
-    else pane.appendChild(el('div', 'note', 'You are out. Press [4] to switch between follow-cam and freecam.'));
+    else pane.appendChild(el('div', 'note', 'You are out for this round. Press [4] to switch between follow-cam and freecam.'));
 
     this.#hostRoundControls(pane, s);
   }
@@ -541,7 +573,7 @@ class App {
     const main = el('div', 'dress-main');
     main.appendChild(el('div', 'dress-name', s.me.propName || 'A prop'));
     main.appendChild(el('div', 'note', 'You take ' + plural(s.me.maxHp, 'hit', 'hits') + ' before you are caught.'));
-    if (s.me.locked) main.appendChild(el('div', 'note', 'Facing is locked.'));
+    if (s.me.locked) main.appendChild(el('div', 'note', 'Facing locked - press [F] to turn again.'));
     dress.appendChild(main);
 
     pane.appendChild(dress);
@@ -586,16 +618,17 @@ class App {
     if (s.phase === 'MatchEnd' && s.host) {
       pane.appendChild(this.#tape());
       pane.appendChild(button('danger', 'RETURN TO HUB', 'hub', () => this.#send('ph.hub')));
+      pane.appendChild(el('div', 'note', 'Closes the match and sends everyone back to the Side Hustle menu.'));
     }
   }
 
   #boardSafehouse(pane, s) {
     const head = el('div', 'head');
     head.appendChild(el('div', 'title', 'Round ' + (s.round + 1) + ' next'));
-    head.appendChild(el('div', 'sub', s.safehouse.name));
+    head.appendChild(el('div', 'sub', 'Starting from ' + s.safehouse.name));
     pane.appendChild(head);
 
-    if (s.safehouse.ready) pane.appendChild(el('div', 'note', 'Doors opening - get ready.'));
+    if (s.safehouse.ready) pane.appendChild(el('div', 'note', 'Doors are opening - get ready.'));
 
     if (!s.host) {
       pane.appendChild(el('div', 'note', 'The host is picking where everyone starts.'));
@@ -603,12 +636,12 @@ class App {
     }
 
     const pair = el('div', 'pair');
-    pair.appendChild(button('btn', 'Previous map', 'prev', () => this.#send('ph.map', '-1')));
-    pair.appendChild(button('btn', 'Next map', 'forward', () => this.#send('ph.map', '1')));
+    pair.appendChild(button('btn', 'Previous start', 'prev', () => this.#send('ph.map', '-1')));
+    pair.appendChild(button('btn', 'Next start', 'forward', () => this.#send('ph.map', '1')));
     pane.appendChild(pair);
 
     if (s.safehouse.options > 1)
-      pane.appendChild(el('div', 'note', s.safehouse.options + ' maps fit this many players.'));
+      pane.appendChild(el('div', 'note', s.safehouse.options + ' places are big enough for this many players.'));
 
     pane.appendChild(button('act', 'START NEXT ROUND', 'next-round', () => this.#send('ph.next')));
     this.#autoStart(pane, s);
@@ -621,6 +654,7 @@ class App {
     this.#autoStart(pane, s);
     pane.appendChild(this.#tape());
     pane.appendChild(button('danger', 'END ROUND NOW', 'end-round', () => this.#send('ph.endround')));
+    pane.appendChild(el('div', 'note', 'Cuts the round short for everyone and goes straight to the scoreboard.'));
   }
 
   #autoStart(pane, s) {
@@ -641,12 +675,12 @@ class App {
 
   #renderRoster(pane, s) {
     const head = el('div', 'head');
-    head.appendChild(el('div', 'title', 'Roster'));
-    head.appendChild(el('div', 'sub', plural(s.players.length, 'player', 'players')));
+    head.appendChild(el('div', 'title', 'Players'));
+    head.appendChild(el('div', 'sub', plural(s.players.length, 'in the match', 'in the match')));
     pane.appendChild(head);
 
     if (s.players.length === 0) {
-      pane.appendChild(el('div', 'note', 'Nobody on the board yet.'));
+      pane.appendChild(el('div', 'note', 'Players show up here as they join.'));
       return;
     }
 
@@ -677,12 +711,14 @@ class App {
     }
   }
 
+  /** Never says where a living hider is or what they are wearing - that is not hidden by the page, it is absent
+   *  from the snapshot. What this line can say is only ever how far along they are. */
   #rosterNote(p, s, caught) {
-    if (p.role === 'Hunter') return plural(p.catches, 'catch', 'catches');
+    if (p.role === 'Hunter') return plural(p.catches, 'catch', 'catches') + ' this session';
     if (caught) return p.propName ? 'Caught as a ' + p.propName.toLowerCase() : 'Caught';
-    if (p.self && p.prop >= 0) return p.propName + '  -  ' + Math.max(0, p.maxHp - p.hp) + '/' + p.maxHp + ' HP';
-    if (p.role === 'Hider') return s.phase === 'Hunting' || s.phase === 'Hiding' ? 'Somewhere out there' : 'Hiding next round';
-    return 'Watching';
+    if (p.self && p.prop >= 0) return p.propName + '  -  ' + Math.max(0, p.maxHp - p.hp) + ' of ' + p.maxHp + ' hits left';
+    if (p.role === 'Hider') return s.phase === 'Hunting' || s.phase === 'Hiding' ? 'Still hiding' : 'Hiding next round';
+    return 'Spectating';
   }
 
   #face(p) {
@@ -698,7 +734,7 @@ class App {
   #renderRules(pane, s) {
     const head = el('div', 'head');
     head.appendChild(el('div', 'title', 'Rules'));
-    head.appendChild(el('div', 'sub', s.host ? 'Applies from the next round' : 'The host sets these'));
+    head.appendChild(el('div', 'sub', s.host ? 'Changes apply from the next round' : 'Only the host can change these'));
     pane.appendChild(head);
 
     if (s.host && s.presets.length > 0) {
@@ -828,11 +864,11 @@ class App {
   #renderScores(pane, s) {
     const head = el('div', 'head');
     head.appendChild(el('div', 'title', 'Scores'));
-    head.appendChild(el('div', 'sub', 'This session'));
+    head.appendChild(el('div', 'sub', 'Whole session, all rounds'));
     pane.appendChild(head);
 
     if (s.players.length === 0) {
-      pane.appendChild(el('div', 'note', 'No scores yet.'));
+      pane.appendChild(el('div', 'note', 'Scores appear after the first round.'));
       return;
     }
 
@@ -849,12 +885,16 @@ class App {
 
     const header = el('div', 'thead');
     header.appendChild(el('div', 'th left', 'PLAYER'));
-    for (const [label, width] of [['CATCH', 44], ['HITS', 40], ['BAIT', 40], ['STUN', 40], ['ALIVE', 48], ['SCORE', 48]]) {
+    for (const [label, width] of [['CAUGHT', 54], ['HITS', 42], ['BAITS', 48], ['STUNS', 48], ['ALIVE', 50], ['SCORE', 50]]) {
       const th = el('div', 'th', label);
       th.style.width = width + 'px';
       header.appendChild(th);
     }
     pane.appendChild(header);
+
+    // Two of these columns cannot be guessed from a five-letter heading, so they are spelled out once.
+    pane.appendChild(el('div', 'legend',
+      'Baits: hunters who shot one of your decoys.   Stuns: hunters your concussion knocked down.'));
 
     const ranked = [...s.players].sort((a, b) => b.score - a.score);
 
@@ -866,8 +906,8 @@ class App {
       row.appendChild(main);
 
       for (const [value, width] of [
-        [p.catches, 44], [p.hits, 40], [p.baits, 40], [p.stuns, 40],
-        [p.survived + 's', 48], [p.score, 48],
+        [p.catches, 54], [p.hits, 42], [p.baits, 48], [p.stuns, 48],
+        [p.survived + 's', 50], [p.score, 50],
       ]) {
         const cell = el('div', 'row-num', String(value));
         cell.style.width = width + 'px';
@@ -882,7 +922,7 @@ class App {
 
   #send(name, arg) {
     const answer = s1.call(name, arg === undefined ? '' : arg);
-    if (answer !== 'ok') console.error(name + ' was refused (' + answer + ')');
+    if (answer !== 'ok') console.error(name + ' was refused by the mod (answered "' + answer + '")');
     this.pull();
   }
 }
