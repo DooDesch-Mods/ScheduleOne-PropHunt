@@ -4,6 +4,39 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.5] - 2026-08-07
+
+### Added
+
+- Host setting "Prop ground offset": if props hover above the floor or sink into it, dial it in and everyone in the
+  lobby follows.
+- Messages, Products, Contacts, Dealers and Deliveries disappear from the phone during a round, and come back after
+  it. Nothing in a round needs them.
+
+### Changed
+
+- [2] has a one second cooldown, so nobody can flicker through props faster than a hunter can read what they are
+  looking at.
+- Decoys are capped for a whole round at your per-prop count times your change budget. They used to refill on every
+  prop change, so anyone with changes to spare could keep dropping fresh batches. Setting decoys to 0 now means none
+  at all, which is what it always claimed - it used to mean unlimited.
+- A decoy takes exactly one shot, whatever prop it copies. A big prop's decoy used to soak several hits, which told
+  the hunter it was worth shooting at.
+- Leaving the play area gives you 3 seconds instead of 10, and left click (lock your prop) is in the [H] list.
+
+### Fixed
+
+- Scores add up across rounds again. A single quiet moment from the lobby dropped the whole player list and every
+  score with it, so the table only ever showed the last round.
+- The round-end table tells the sides apart under Infection. Everyone caught ends the round as a hunter, so every
+  row read "Hunter"; caught players now read "Caught" and no longer collect the winning hunter's bonus. The
+  "Survivor" award can no longer go to someone who was caught either.
+- Small props can be shot. A cigarette packet's hitbox was a few centimetres across, so the floor answered a shot
+  before the packet did and its decoy could not be destroyed at all.
+- The play-area boundary stays on the map after you host a second lobby.
+- Doors near a safehouse open again for everyone once the round starts. Unlocking worked out which doors to touch a
+  second time instead of remembering, so a door could stay shut for the player who shut it.
+
 ## [1.3.4] - 2026-08-06
 
 ### Fixed

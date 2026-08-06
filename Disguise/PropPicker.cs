@@ -15,6 +15,7 @@ namespace PropHunt.Disguise
     {
         private readonly GameModeController _ctl;
         private float _holdUntil;
+        private float _lastRandomRoll;   // local echo of the host's prop-change cooldown
         private const float HoldTime = 0.4f;   // latch the last valid target so a key press still lands
         private bool _rotating;
         private float _yaw;
@@ -89,8 +90,15 @@ namespace PropHunt.Disguise
                     Core.LogDebug($"[PropHunt] selected prop {CurrentTargetId} ({CurrentTargetName}).");
                 }
                 // [2] become a random prop (no aiming needed) - only when the host allows it
-                if (KeyBinds.Down(KeyBinds.RandomProp) && (_ctl.Settings == null || _ctl.Settings.AllowRandomChange))
-                { _ctl.RequestSelectRandomProp(); Core.LogDebug("[PropHunt] random prop requested ([2])."); }
+                // Mirrors the host's cooldown locally so a held [2] does not fire a request per frame that the host
+                // then throws away. The host decides; this only keeps the wire quiet.
+                if (KeyBinds.Down(KeyBinds.RandomProp) && (_ctl.Settings == null || _ctl.Settings.AllowRandomChange)
+                    && UnityEngine.Time.time - _lastRandomRoll >= Game.GameModeController.PropChangeCooldownSeconds)
+                {
+                    _lastRandomRoll = UnityEngine.Time.time;
+                    _ctl.RequestSelectRandomProp();
+                    Core.LogDebug("[PropHunt] random prop requested ([2]).");
+                }
                 // [Q] drop a decoy of the current prop;  [G] concussion grenade (stun nearby hunters)
                 if (KeyBinds.Down(KeyBinds.Decoy) && _ctl.LocalPropId >= 0) { _ctl.RequestDropDecoy(); Core.LogDebug("[PropHunt] decoy requested ([Q])."); }
                 if (KeyBinds.Down(KeyBinds.Concussion)) { _ctl.RequestConcuss(); Core.LogDebug("[PropHunt] concussion requested ([G])."); }

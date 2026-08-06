@@ -27,6 +27,7 @@ namespace PropHunt.Game
                 var tm = NetworkSingleton<TimeManager>.Instance;
                 if (tm != null) { tm.SetTimeAndSync(s.TimeOfDay); tm.SetTimeSpeedMultiplier(s.FreezeTime ? 0f : 1f); }
                 Core.Log.Msg($"[PropHunt] world: time set to {s.TimeOfDay}{(s.FreezeTime ? ", progression frozen" : ", progression running")}.");
+                ApplyFeetDrop(s);
                 SetSewerGoblin(s.SewerGoblin);
                 SetSewerKing(false);
                 UnlockSewer();
@@ -225,7 +226,9 @@ namespace PropHunt.Game
                                                // on host+client (uses only the replicated position) and the
                                                // capsule bottom sits above the visual feet, so the other modes float.
         internal const int GroundModeCount = 4;
-        internal static float FixedFeetDrop = 0.97f;   // metres below the player root to the feet (dialed in live via [6]/[7])
+        /// <summary>Metres below the player root to the feet. Seeded from the host's synced FeetDropCm setting (see
+        /// ApplyHostWorld), so the host can dial prop hover out mid-session instead of it needing a new build.</summary>
+        internal static float FixedFeetDrop = 0.97f;
         internal static string GroundModeName =>
             GroundMode == 1 ? "capsule" : GroundMode == 2 ? "floor-ray" : GroundMode == 3 ? "fixed" : "follow";
         private static float _localFeetOffset = -1.0f;
@@ -241,6 +244,14 @@ namespace PropHunt.Game
                 return s > 0.01f ? s : 1f;
             }
             catch { return 1f; }
+        }
+
+        /// <summary>Take the host's synced ground offset. Called on every machine (settings arrive with the state), not
+        /// just the host, because each client places every disguise itself.</summary>
+        internal static void ApplyFeetDrop(RoundSettings s)
+        {
+            if (s == null) return;
+            FixedFeetDrop = UnityEngine.Mathf.Clamp(s.FeetDropCm, 80, 120) / 100f;
         }
 
         /// <summary>World-Y of a player's feet, per the current <see cref="GroundMode"/>.</summary>
