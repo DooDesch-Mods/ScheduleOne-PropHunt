@@ -30,7 +30,7 @@ namespace PropHunt.Config
                 Segmented("Round", "caught","On catch",           "Spectator = sit out till round end; Infection = become a hunter.", new[] { "Spectator", "Infection" }, PropHuntPreferences.CaughtBehaviorRaw),
 
                 // --- Roles & Combat ---
-                IntSlider("Roles & Combat", "pph",    "Hunter ratio",  "1 hunter per N players, rounded up.",            2, 10, 1, null, PropHuntPreferences.PlayersPerHunter),
+                IntSlider("Roles & Combat", "pph",    "Hunter ratio",  "1 hunter per N players, at least one. At 4: five players = 1 hunter and 4 props, ten = 2 and 8.",            2, 10, 1, null, PropHuntPreferences.PlayersPerHunter),
                 IntSlider("Roles & Combat", "hiderspeed", "Hider speed", "Hiders move at this % of hunter speed (100 = same).", 70, 100, 5, "%", PropHuntPreferences.HiderSpeedPercent),
                 Dropdown ("Roles & Combat", "weapon", "Hunter weapon", "Weapon each hunter gets when the hunt starts.",
                           w.opts, w.vals,                                                                    PropHuntPreferences.HunterWeapon),

@@ -4,6 +4,15 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-08-06
+
+### Fixed
+
+- Every preset starts the play area at 50m, so the radius follows your lobby size again instead of the
+  preset's own number. Infection jumped to 75m and Side Hustle Party to 90m, whatever the lobby size said.
+- The hunter ratio defaults to 4: five players is 1 hunter and 4 props, ten is 2 and 8. Its description
+  also promised the count rounds up, while the role assignment divides down.
+
 ## [1.3.0] - 2026-08-06
 
 ### Added
