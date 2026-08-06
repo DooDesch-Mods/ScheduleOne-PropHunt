@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PropHunt - phone app preview</title>
+<style>
+  body { margin: 0; background: #1b1e22; color: #ccc; font: 13px/1.4 system-ui, sans-serif; padding: 20px; }
+  h1 { font-size: 13px; font-weight: 600; margin: 0 0 4px; letter-spacing: .4px; color: #8a8f9e; }
+  p.note { font-size: 12px; color: #6b7378; margin: 0 0 14px; max-width: 720px; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; max-width: 760px; }
+  .controls button {
+    background: #262b30; color: #ccc; border: 1px solid #363c42; padding: 5px 10px;
+    font: inherit; cursor: pointer; border-radius: 2px;
+  }
+  .controls button:hover { border-color: #08A6A6; color: #fff; }
+  .controls button.on { border-color: #08A6A6; color: #08A6A6; }
+
+  .frame-label { font-size: 11px; color: #6b7378; margin: 0 0 6px; letter-spacing: .5px; }
+  #viewport { border: 1px solid #3a4148; background: #0E1113; width: 733px; height: 400px; overflow: hidden; }
+  #viewport.portrait { width: 400px; height: 733px; }
+
+  /* The renderer treats every element as a flex container defaulting to COLUMN, and border-box is always in
+     force. `:where` so this carries zero specificity and can never outrank a class in app.css. */
+  :where(#viewport, #viewport *) { display: flex; flex-direction: column; box-sizing: border-box; position: relative; }
+  :where(#viewport img) { display: block; }
+</style>
+</head>
+<body>
+
+<h1>PropHunt phone app - browser preview</h1>
+<p class="note">
+  Runs the shipped app.js and app.css against a stand-in mod, so structure, copy, state and flow can be checked
+  without launching the game. It is NOT the renderer: Chrome has real CSS, and the game does not. Check the layout
+  itself in game with F9 and Ctrl+F10.
+</p>
+
+<div class="controls" id="controls"></div>
+<div class="frame-label" id="framelabel">LANDSCAPE 733 x 400</div>
+<div id="viewport"></div>
+
+<script src="s1-mock.js"></script>
+<script>
+const viewport = document.getElementById('viewport');
+
+viewport.innerHTML = `
+  <link rel="stylesheet" href="app.css">
+  <div class="app" id="app">
+    <div class="rail" id="rail">
+      <div class="stamp phase" id="phase">LOBBY</div>
+      <div class="clockbox">
+        <div class="clock" id="clock"></div>
+        <div class="gauge" id="gauge"></div>
+        <div class="clock-note" id="clocknote"></div>
+      </div>
+      <div class="tally-box" id="tallybox">
+        <div class="tally-head">
+          <div class="tally-label">HIDERS LEFT</div>
+          <div class="tally-count" id="tallycount">0 / 0</div>
+        </div>
+        <div class="tally" id="tally"></div>
+      </div>
+      <div class="stamp role" id="role">WAITING</div>
+      <div class="vitals" id="vitals"></div>
+    </div>
+    <div class="main">
+      <div class="nav" id="nav">
+        <div class="tab on" data-pane="board"><img src="icons/board.png" width="17" height="17"><div class="tab-label">Board</div></div>
+        <div class="tab" data-pane="roster"><img src="icons/roster.png" width="17" height="17"><div class="tab-label">Roster</div></div>
+        <div class="tab" data-pane="rules"><img src="icons/rules.png" width="17" height="17"><div class="tab-label">Rules</div></div>
+        <div class="tab" data-pane="scores"><img src="icons/scores.png" width="17" height="17"><div class="tab-label">Scores</div></div>
+      </div>
+      <div class="pane" id="pane"></div>
+    </div>
+  </div>`;
+
+// A document facade scoped to the viewport, so app.js reaches only its own page.
+const scoped = {
+  body: viewport,
+  getElementById: (id) => viewport.querySelector('#' + id),
+  querySelector: (sel) => viewport.querySelector(sel),
+  querySelectorAll: (sel) => viewport.querySelectorAll(sel),
+  createElement: (tag) => document.createElement(tag),
+  addEventListener: (type, fn) => viewport.addEventListener(type, fn),
+};
+
+fetch('app.js')
+  .then((r) => r.text())
+  .then((src) => new Function('document', 's1', 'console', src)(scoped, s1, console))
+  .catch((e) => { document.body.innerHTML += '<pre style="color:#E4572E">' + e + '</pre>'; });
+
+// Portrait is a media query the browser will not honour for a 400px-wide element, so the toggle rewrites those
+// rules onto a class instead. Same stylesheet, same rules, just re-scoped.
+fetch('app.css').then((r) => r.text()).then((css) => {
+  const at = css.indexOf('@media (orientation: portrait)');
+  if (at < 0) return;
+  const body = css.slice(css.indexOf('{', at) + 1, css.lastIndexOf('}'));
+  const style = document.createElement('style');
+  style.textContent = body.replace(/(^|\})\s*([^{}@]+)\{/g,
+    (m, close, sel) => close + ' ' + sel.split(',').map((s) => '#viewport.portrait ' + s.trim()).join(',') + '{');
+  document.head.appendChild(style);
+});
+
+const controls = document.getElementById('controls');
+
+function chip(label, onClick) {
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.onclick = () => onClick(b);
+  controls.appendChild(b);
+  return b;
+}
+
+const turn = chip('turn the phone', () => {
+  const portrait = viewport.classList.toggle('portrait');
+  s1.setOrientation(portrait ? 'portrait' : 'landscape');
+  document.getElementById('framelabel').textContent = portrait ? 'PORTRAIT 400 x 733' : 'LANDSCAPE 733 x 400';
+  turn.classList.toggle('on', portrait);
+});
+
+for (const name of __mock.scenarios) {
+  const b = chip(name, () => {
+    __mock.pick(name);
+    for (const other of controls.children) if (other !== turn) other.classList.toggle('on', other === b);
+  });
+}
+</script>
+</body>
+</html>

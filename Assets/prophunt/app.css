@@ -1,0 +1,449 @@
+/* PropHunt - the round, as a depot board.
+ *
+ * THESIS. In PropHunt a player IS an object, so the app is the yard's inventory: what is on the lot, how long is
+ * on the clock, how many are unaccounted for. It refuses the arrangement this category always ships - dark card
+ * list, neon accent, bottom tabs, esports slants - which is exactly what the uGUI app it replaces was.
+ *
+ * OWN-WORLD. Municipal depot livery. Charcoal ground, hi-vis workwear colours: the mod's own teal carries
+ * authority and selection, safety orange the hunters and everything destructive, vest lime the hiders. Numbers
+ * are monospaced because they are measurements - a clock, hit points, a score column - not because mono looks
+ * technical. Five parts make it recognisable with the content removed: the clock slab and its depletion gauge,
+ * the tally of one block per living hider, the rectangular stamp (never a pill), the hazard band above anything
+ * the host cannot undo, and the manifest row - stamped and washed in its own state colour rather than tabbed
+ * with a coloured edge.
+ *
+ * Dark, and not because dark is the habit. The vanilla phone apps are light and this one deliberately is not:
+ * it is read mid-round, often from a dark corner, by someone whose whole job is not being noticed. A white panel
+ * held up to your face is a light source and it wrecks night vision in a game about hiding.
+ *
+ * Sideload notes that shaped the code below: px and % only (no rem/em/vh/calc), no grid, no z-index, no
+ * keyframes, every element is a flex container defaulting to COLUMN, `margin: 0 auto` does not centre, one
+ * border colour per box, and a scrolling child needs `min-height: 0` or it never scrolls. Icons are PNGs tinted
+ * through `color`; that tint does NOT follow :hover (the repaint path never touches an image), so hover moves
+ * backgrounds and borders and the icon colour changes only on a state the script re-renders.
+ */
+
+:root {
+  --ink:      #0E1113;
+  --panel:    #171B1E;
+  --rail:     #0B0E10;
+  --raised:   #1E2427;
+  --hair:     #262D31;
+
+  --teal:     #08A6A6;
+  --teal-dim: #05706F;
+  --teal-wash:#08A6A614;
+
+  --hunter:   #E4572E;
+  --hunter-wash: #E4572E14;
+  --hider:    #C6D92E;
+  --hider-wash:  #C6D92E14;
+  --caught:   #6B7478;
+  --tape:     #E8B22A;
+
+  --hi:       #F2F4F4;
+  --mid:      #A9B4B7;
+  --mute:     #7C888C;
+}
+
+body {
+  /* Required: the root is auto-height, so every percentage height below needs this basis. */
+  height: 100%;
+  font-family: game-ui;
+  font-size: 14px;
+  color: var(--hi);
+  background: var(--ink);
+}
+
+.app { height: 100%; flex-direction: row; }
+
+/* ------------------------------------------------------------------------------------------- rail ---- */
+
+.rail {
+  width: 206px;
+  padding: 12px 12px 10px 12px;
+  gap: 10px;
+  background: var(--rail);
+  border-right: 1px solid var(--hair);
+}
+
+/* A stamp, not a pill: square corners, thin rule, wide tracking. Rounded chips are what every other mod ships. */
+.stamp {
+  padding: 3px 7px;
+  border: 1px solid var(--mute);
+  color: var(--mid);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  align-self: flex-start;
+  align-items: center;
+}
+
+.stamp.phase { border-color: var(--teal); color: var(--teal); }
+
+/* Inside a manifest row the stamp is one cell among several, so it stops claiming the top of the line. */
+.row .stamp { align-self: center; }
+
+.stamp.role     { align-self: stretch; text-align: center; padding: 5px 7px; font-size: 12px; letter-spacing: 2px; }
+.role.hunter    { border-color: var(--hunter); color: var(--hunter); background: var(--hunter-wash); }
+.role.hider     { border-color: var(--hider);  color: var(--hider);  background: var(--hider-wash); }
+.role.caught    { border-color: var(--caught); color: var(--caught); }
+.role.spectator { border-color: var(--caught); color: var(--caught); }
+
+/* ---- the clock slab ----
+ *
+ * A yard timer, drawn as seven-segment digits out of plain boxes. That is the world's own device, and it is also
+ * the only shape that can tick once a second for free: lighting a segment is a background-colour write, which
+ * repaints, while re-writing a text node marks the document dirty and rebuilds every box on the page. The
+ * geometry lives in app.js next to the digit map, so the two cannot drift. */
+
+.clockbox { gap: 7px; }
+
+.clock { flex-direction: row; align-items: center; gap: 4px; height: 45px; }
+.digit { flex: 0; }
+.colon { flex: 0; }
+
+/* The gauge under it is segmented for the same reason: filling a bar by width would relayout every second. */
+.gauge { flex-direction: row; gap: 2px; height: 4px; }
+.gcell { flex: 1; height: 4px; background: #20272A; transition: background-color 300ms; }
+
+.clock-note { font-size: 11px; color: var(--mute); }
+
+/* ---- the tally: one block per hider, filled while they are still out there ---- */
+
+.tally-box { gap: 5px; }
+.tally-head { flex-direction: row; justify-content: space-between; align-items: flex-end; }
+.tally-label { font-size: 9px; letter-spacing: 1.2px; color: var(--mute); }
+.tally-count { font-family: monospace; font-size: 12px; color: var(--hi); }
+
+.tally { flex-direction: row; flex-wrap: wrap; gap: 3px; }
+.mark { width: 7px; height: 16px; background: var(--hider); }
+.mark.out { background: transparent; border: 1px solid var(--hair); }
+
+/* ---- vitals: label, bar, number. In portrait these wrap into a row of compact cells. ---- */
+
+.vitals { gap: 7px; flex: 1; min-height: 0; overflow: auto; }
+
+.vital { flex-direction: row; align-items: center; gap: 7px; }
+.vital img { color: var(--mute); }
+.vital-label { flex: 1; min-width: 0; font-size: 11px; color: var(--mid); }
+.vital-value { font-family: monospace; font-size: 13px; color: var(--hi); }
+
+.vital.alert .vital-label { color: var(--hunter); }
+.vital.alert .vital-value { color: var(--hunter); }
+.vital.alert img { color: var(--hunter); }
+
+.vital.spent .vital-value { color: var(--mute); }
+
+/* ------------------------------------------------------------------------------------------- main ---- */
+
+.main { flex: 1; min-width: 0; }
+
+.nav {
+  flex-direction: row;
+  height: 46px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--hair);
+}
+
+.tab {
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-bottom: 2px solid transparent;
+  color: var(--mute);
+}
+
+/* An <img> is sized by CSS alone; the width/height ATTRIBUTES in index.html do not reach the layout, which
+   runs without Unity and cannot read a PNG's own size. Leave these out and the tab bar loses its icons. */
+.tab img { width: 17px; height: 17px; color: var(--mute); }
+.tab-label { font-size: 10px; letter-spacing: 0.6px; color: var(--mute); }
+
+.tab:hover { background: var(--raised); }
+
+.tab.on { border-bottom-color: var(--teal); background: var(--ink); }
+.tab.on img { color: var(--teal); }
+.tab.on .tab-label { color: var(--teal); }
+
+.pane { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px 18px 16px; gap: 12px; }
+
+/* ------------------------------------------------------------------------------- shared furniture ---- */
+
+.head { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 10px; }
+.title { font-size: 19px; font-weight: 700; letter-spacing: 0.3px; }
+.sub { font-size: 12px; color: var(--mute); }
+
+.rule { height: 1px; background: var(--hair); }
+
+.note { font-size: 12px; color: var(--mute); }
+
+.empty { padding: 26px 8px; gap: 8px; align-items: center; }
+.empty-title { font-size: 15px; color: var(--mid); }
+.empty-note { font-size: 12px; color: var(--mute); text-align: center; }
+
+/* The primary action of the phase. One per screen, full width, and the only thing wearing solid teal. */
+.act {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 46px;
+  background: var(--teal);
+  border: 1px solid var(--teal);
+  color: #04211F;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  transition: background-color 140ms, border-color 140ms;
+}
+
+.act img { color: #04211F; }
+.act:hover  { background: #0BC0C0; border-color: #0BC0C0; }
+.act:active { background: var(--teal-dim); border-color: var(--teal-dim); }
+
+.act.off { background: transparent; border-color: var(--hair); color: var(--mute); }
+.act.off img { color: var(--mute); }
+.act.off:hover { background: transparent; border-color: var(--hair); }
+
+/* A quieter button for everything that is not the phase's one action. */
+.btn {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px;
+  background: var(--raised);
+  border: 1px solid var(--hair);
+  color: var(--mid);
+  font-size: 12px;
+  letter-spacing: 0.6px;
+  transition: background-color 140ms, border-color 140ms, color 140ms;
+}
+
+.btn img { color: var(--mid); }
+.btn:hover  { background: #262E32; border-color: var(--mute); color: var(--hi); }
+.btn:active { background: #14191C; }
+
+.btn.on { border-color: var(--teal); color: var(--teal); background: var(--teal-wash); }
+.btn.on img { color: var(--teal); }
+
+.btn.wide { align-self: stretch; }
+
+/* Hazard band. The only place it appears is directly above something the host cannot take back, so it stays a
+   warning rather than becoming wallpaper. Each segment is its own two-stop gradient - the engine takes exactly
+   two colour stops, so a repeating stripe is built out of boxes. */
+.tape { flex-direction: row; height: 5px; gap: 0; }
+.tape-seg { flex: 1; height: 5px; background: linear-gradient(60deg, var(--tape), var(--tape)); }
+.tape-seg.gap { background: linear-gradient(60deg, #241C08, #241C08); }
+
+.danger {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 38px;
+  background: transparent;
+  border: 1px solid var(--hunter);
+  color: var(--hunter);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  transition: background-color 140ms;
+}
+
+.danger img { color: var(--hunter); }
+.danger:hover { background: var(--hunter-wash); }
+
+/* ---- the manifest row: the one row shape the whole app uses ---- */
+
+.row {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--hair);
+}
+
+.row.hunter { background: var(--hunter-wash); }
+.row.hider  { background: var(--hider-wash); }
+.row.me     { background: var(--teal-wash); }
+
+.row-face {
+  width: 30px;
+  height: 30px;
+  background: var(--raised);
+  border: 1px solid var(--hair);
+  align-items: center;
+  justify-content: center;
+}
+
+.row-initial { font-size: 13px; font-weight: 700; color: var(--mute); }
+
+.row-main { flex: 1; min-width: 0; gap: 2px; }
+.row-name { font-size: 13px; color: var(--hi); }
+.row-note { font-size: 11px; color: var(--mute); }
+
+.row-thumb { width: 34px; height: 34px; background: var(--raised); border: 1px solid var(--hair); }
+
+.row-num { font-family: monospace; font-size: 13px; color: var(--hi); text-align: right; }
+
+/* ---- rules ---- */
+
+.chips { flex-direction: row; flex-wrap: wrap; gap: 6px; }
+
+.chip {
+  padding: 5px 10px;
+  border: 1px solid var(--hair);
+  color: var(--mute);
+  font-size: 11px;
+  letter-spacing: 0.8px;
+  transition: background-color 140ms, border-color 140ms, color 140ms;
+}
+
+.chip:hover { border-color: var(--mute); color: var(--hi); }
+.chip.on { border-color: var(--teal); color: var(--teal); background: var(--teal-wash); }
+
+.setting { flex-direction: row; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--hair); }
+.setting-main { flex: 1; min-width: 0; gap: 2px; }
+.setting-label { flex-direction: row; align-items: center; gap: 6px; }
+.setting-name { font-size: 13px; color: var(--hi); }
+.setting-hint { font-size: 11px; color: var(--mute); }
+
+/* A rule the host has moved away from its preset value earns a mark, so "what did I change" is answerable. */
+.moved { width: 5px; height: 5px; background: var(--tape); }
+
+.stepper { flex-direction: row; align-items: center; gap: 0; border: 1px solid var(--hair); }
+
+.step {
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  color: var(--mid);
+  transition: background-color 140ms;
+}
+
+.step img { color: var(--mid); }
+.step:hover { background: var(--raised); }
+
+.step-value {
+  min-width: 66px;
+  height: 30px;
+  padding: 0 6px;
+  align-items: center;       /* vertical, on a box whose only content is text */
+  text-align: center;        /* horizontal - align-items does not do this for a text leaf */
+  font-family: monospace;
+  font-size: 13px;
+  color: var(--hi);
+  border-left: 1px solid var(--hair);
+  border-right: 1px solid var(--hair);
+  transition: background-color 140ms;
+}
+
+.step-value:hover { background: var(--raised); }
+
+.step-input {
+  width: 66px;
+  height: 30px;
+  padding: 0 6px;
+  background: var(--ink);
+  border: 1px solid var(--teal);
+  color: var(--hi);
+  font-family: monospace;
+  font-size: 13px;
+  text-align: center;
+  align-items: center;
+}
+
+.seg { flex-direction: row; border: 1px solid var(--hair); }
+
+.seg-opt {
+  padding: 0 12px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--mute);
+  transition: background-color 140ms, color 140ms;
+}
+
+.seg-opt:hover { background: var(--raised); color: var(--hi); }
+.seg-opt.on { background: var(--teal-wash); color: var(--teal); }
+
+.readonly { font-family: monospace; font-size: 13px; color: var(--mid); text-align: right; min-width: 90px; }
+
+/* ---- scores ---- */
+
+.thead { flex-direction: row; align-items: center; gap: 10px; padding: 0 10px 6px 10px; }
+.th { font-size: 9px; letter-spacing: 1.1px; color: var(--mute); text-align: right; }
+.th.left { flex: 1; min-width: 0; text-align: left; }
+
+.award { flex-direction: row; align-items: baseline; gap: 8px; padding: 6px 0; }
+.award-label { min-width: 84px; font-size: 10px; letter-spacing: 1.2px; color: var(--tape); }
+.award-name { flex: 1; min-width: 0; font-size: 13px; color: var(--hi); }
+.award-value { font-family: monospace; font-size: 12px; color: var(--mid); }
+
+/* ---- board furniture ---- */
+
+.result { align-items: center; gap: 8px; padding: 6px 0 10px 0; }
+
+.verdict {
+  padding: 8px 18px;
+  border: 2px solid var(--mute);
+  color: var(--mid);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 3px;
+}
+
+.verdict.hunters { border-color: var(--hunter); color: var(--hunter); }
+.verdict.hiders  { border-color: var(--hider);  color: var(--hider); }
+
+.dress { flex-direction: row; align-items: center; gap: 14px; }
+.dress-shot { width: 96px; height: 96px; background: var(--panel); border: 1px solid var(--hair); align-items: center; justify-content: center; }
+.dress-shot img { color: var(--hi); }
+.dress-empty { font-size: 10px; letter-spacing: 1px; color: var(--mute); text-align: center; }
+.dress-main { flex: 1; min-width: 0; gap: 8px; }
+.dress-name { font-size: 17px; font-weight: 700; }
+
+.pair { flex-direction: row; gap: 8px; }
+
+/* ------------------------------------------------------------------------------------- portrait ---- */
+
+@media (orientation: portrait) {
+
+  .app { flex-direction: column; }
+
+  /* The rail becomes a header: the clock and the tally side by side, the vitals wrapping underneath as cells.
+     Stacking it unchanged would eat half the screen before a single row of content. */
+  .rail {
+    width: 100%;
+    border-right: 0;
+    border-bottom: 1px solid var(--hair);
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .clockbox { flex: 1; min-width: 0; }
+  .clock { font-size: 44px; line-height: 44px; }
+  .clock.idle { font-size: 30px; line-height: 30px; }
+
+  .tally-box { flex: 1; min-width: 0; }
+
+  .vitals { flex-direction: row; flex-wrap: wrap; gap: 6px; flex: 0; overflow: visible; }
+
+  .vital {
+    padding: 4px 8px;
+    border: 1px solid var(--hair);
+    gap: 5px;
+  }
+
+  .vital-label { flex: 0; }
+
+  .pane { padding: 12px 14px 16px 14px; }
+
+  .row-face { width: 34px; height: 34px; }
+  .row-name { font-size: 14px; }
+}

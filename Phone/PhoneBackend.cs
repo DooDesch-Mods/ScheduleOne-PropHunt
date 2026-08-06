@@ -29,18 +29,32 @@ namespace PropHunt.Phone
             _app = app;
             _host = host;
 
-            app.OnCall("ph.snapshot", _ => Snapshot())
-               .OnCall("ph.begin", _ => _host.BeginMatch())
-               .OnCall("ph.next", _ => _host.BeginNextRound())
-               .OnCall("ph.endround", _ => _host.EndRound())
-               .OnCall("ph.hub", _ => _host.ReturnToHub())
-               .OnCall("ph.map", arg => _host.SwitchSafehouse(ParseInt(arg, 1)))
-               .OnCall("ph.set", Set)
-               .OnCall("ph.preset", name => _host.ApplyPreset(name))
-               .OnCall("ph.kick", arg => _host.Kick(ParseId(arg)))
-               .OnCall("ph.prop.roll", _ => _host.RollProp())
-               .OnCall("ph.prop.clear", _ => _host.ClearProp());
+            foreach (KeyValuePair<string, Func<string, string>> route in Handlers(host)) app.OnCall(route.Key, route.Value);
         }
+
+        /// <summary>
+        /// Every call the page may make, as data.
+        ///
+        /// Install walks this and so does the headless harness, which is the point: the reference pattern has the
+        /// test re-declare the call names in a switch of its own, and a name added on one side only comes back as
+        /// an empty string with no warning - the page renders an empty state and the test passes on it. Sharing the
+        /// table makes that particular silent pass impossible.
+        /// </summary>
+        internal static Dictionary<string, Func<string, string>> Handlers(IPhoneHost host) =>
+            new Dictionary<string, Func<string, string>>(StringComparer.Ordinal)
+            {
+                ["ph.snapshot"] = _ => Snapshot(host),
+                ["ph.begin"] = _ => host.BeginMatch(),
+                ["ph.next"] = _ => host.BeginNextRound(),
+                ["ph.endround"] = _ => host.EndRound(),
+                ["ph.hub"] = _ => host.ReturnToHub(),
+                ["ph.map"] = arg => host.SwitchSafehouse(ParseInt(arg, 1)),
+                ["ph.set"] = arg => Set(host, arg),
+                ["ph.preset"] = name => host.ApplyPreset(name),
+                ["ph.kick"] = arg => host.Kick(ParseId(arg)),
+                ["ph.prop.roll"] = _ => host.RollProp(),
+                ["ph.prop.clear"] = _ => host.ClearProp(),
+            };
 
         /// <summary>
         /// Call once per frame from the mod's update loop. Emits only when something the page draws actually
@@ -97,54 +111,56 @@ namespace PropHunt.Phone
             return sb.ToString();
         }
 
-        private static string Set(string arg)
+        private static string Set(IPhoneHost host, string arg)
         {
             if (string.IsNullOrEmpty(arg)) return "error";
 
             int split = arg.IndexOf('\n');
             if (split <= 0) return "error";
 
-            return _host.SetSetting(arg.Substring(0, split), arg.Substring(split + 1));
+            return host.SetSetting(arg.Substring(0, split), arg.Substring(split + 1));
         }
 
         // ---- snapshot ----
 
-        internal static string Snapshot()
-        {
-            if (_host == null || !_host.Available) return Json.Object().Add("ok", false).Close();
+        internal static string Snapshot() => Snapshot(_host);
 
-            LocalView me = _host.Me;
-            SafehouseView house = _host.Safehouse;
+        internal static string Snapshot(IPhoneHost host)
+        {
+            if (host == null || !host.Available) return Json.Object().Add("ok", false).Close();
+
+            LocalView me = host.Me;
+            SafehouseView house = host.Safehouse;
 
             return Json.Object()
                 .Add("ok", true)
-                .Add("host", _host.IsHost)
-                .Add("phase", _host.Phase)
-                .Add("round", _host.RoundNumber)
-                .Add("winner", _host.Winner)
-                .Add("now", _host.Now)
-                .Add("ends", _host.PhaseEndsAt)
-                .Add("phaseLen", _host.PhaseLength)
-                .Add("nextRound", _host.SecondsUntilNextRound)
-                .Add("whistle", _host.SecondsToWhistle)
-                .Add("rotation", _host.SecondsToPropRotation)
-                .Add("hidersAlive", _host.AliveHiders)
-                .Add("lobby", _host.LobbyMembers)
-                .Add("becomable", _host.BecomablePropCount)
-                .Add("me", Local(me))
-                .Add("players", Roster())
-                .Add("settings", SettingsArray())
-                .Add("presets", Strings(_host.Presets))
+                .Add("host", host.IsHost)
+                .Add("phase", host.Phase)
+                .Add("round", host.RoundNumber)
+                .Add("winner", host.Winner)
+                .Add("now", host.Now)
+                .Add("ends", host.PhaseEndsAt)
+                .Add("phaseLen", host.PhaseLength)
+                .Add("nextRound", host.SecondsUntilNextRound)
+                .Add("whistle", host.SecondsToWhistle)
+                .Add("rotation", host.SecondsToPropRotation)
+                .Add("hidersAlive", host.AliveHiders)
+                .Add("lobby", host.LobbyMembers)
+                .Add("becomable", host.BecomablePropCount)
+                .Add("me", Local(host, me))
+                .Add("players", Roster(host))
+                .Add("settings", SettingsArray(host))
+                .Add("presets", Strings(host.Presets))
                 .Add("safehouse", Json.Object()
                     .Add("name", house.Name)
                     .Add("code", house.Code)
                     .Add("options", house.OptionCount)
                     .Add("ready", house.Ready))
-                .Add("awards", Awards())
+                .Add("awards", Awards(host))
                 .Close();
         }
 
-        private static Json Local(LocalView me)
+        private static Json Local(IPhoneHost host, LocalView me)
         {
             var j = Json.Object()
                 .Add("id", Id(me.Id))
@@ -171,17 +187,17 @@ namespace PropHunt.Phone
                 .Add("water", me.InWater)
                 .Add("grace", me.OobGrace);
 
-            string image = me.PropId >= 0 ? _host.PropImage(me.PropId) : null;
+            string image = me.PropId >= 0 ? host.PropImage(me.PropId) : null;
             if (image != null) j.Add("propImage", image);
 
             return j;
         }
 
-        private static Json Roster()
+        private static Json Roster(IPhoneHost host)
         {
             var arr = Json.Array();
 
-            foreach (RosterEntry p in _host.Roster)
+            foreach (RosterEntry p in host.Roster)
             {
                 var j = Json.Object()
                     .Add("id", Id(p.Id))
@@ -202,13 +218,13 @@ namespace PropHunt.Phone
                 if (p.PropId >= 0)
                 {
                     j.Add("prop", p.PropId).Add("propName", p.PropName ?? "");
-                    string propImage = _host.PropImage(p.PropId);
+                    string propImage = host.PropImage(p.PropId);
                     if (propImage != null) j.Add("propImage", propImage);
                 }
 
                 if (p.Self) j.Add("hp", p.Hp).Add("maxHp", p.MaxHp);
 
-                string face = _host.PlayerImage(p.Id);
+                string face = host.PlayerImage(p.Id);
                 if (face != null) j.Add("face", face);
 
                 arr.Item(j);
@@ -217,11 +233,11 @@ namespace PropHunt.Phone
             return arr;
         }
 
-        private static Json SettingsArray()
+        private static Json SettingsArray(IPhoneHost host)
         {
             var arr = Json.Array();
 
-            foreach (SettingView s in _host.Settings)
+            foreach (SettingView s in host.Settings)
             {
                 var j = Json.Object()
                     .Add("key", s.Key)
@@ -245,10 +261,10 @@ namespace PropHunt.Phone
             return arr;
         }
 
-        private static Json Awards()
+        private static Json Awards(IPhoneHost host)
         {
             var arr = Json.Array();
-            foreach (AwardView a in _host.Awards)
+            foreach (AwardView a in host.Awards)
                 arr.Item(Json.Object().Add("label", a.Label).Add("name", a.Name).Add("value", a.Value));
             return arr;
         }

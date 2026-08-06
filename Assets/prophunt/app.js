@@ -1,0 +1,895 @@
+/* PropHunt - the depot board.
+ *
+ * Two rules shape the whole file.
+ *
+ * 1. COUNTDOWNS ARE DERIVED, NEVER SYNCED. The snapshot carries absolute host-time deadlines plus the host's own
+ *    clock; the page notes how far that is from its own clock once and subtracts from then on. A counted-down
+ *    number sent over the wire would be wrong by the transport delay and by however much two Windows machines
+ *    disagree, which is routinely several seconds.
+ *
+ * 2. THE ONE-SECOND TICK MUST NOT REBUILD THE PAGE. Writing textContent marks the document dirty and the host
+ *    rebuilds the whole thing at roughly half a millisecond per box - a hitch every second, worst exactly when a
+ *    twenty-player roster is on screen and the player most needs a smooth frame. Only `transform`, `background*`,
+ *    `border-color`, `border-radius` and `box-shadow` repaint without a rebuild. So everything that moves once a
+ *    second is drawn as boxes and animated by background colour: the clock is a seven-segment display and every
+ *    continuous countdown is a gauge. Numbers that change on an EVENT stay text, because an event rebuilds anyway.
+ *
+ * Both are also why the clock looks the way it does. A yard timer is a seven-segment display; here that is the
+ * cheap way to draw it as well as the right one.
+ */
+
+const $ = (id) => document.getElementById(id);
+
+/** querySelectorAll hands back a host collection; copy it into a real array before iterating or spreading it. */
+function all(selector) {
+  const found = document.querySelectorAll(selector);
+  const list = [];
+  for (let i = 0; i < found.length; i++) list.push(found[i]);
+  return list;
+}
+
+/* ------------------------------------------------------------------------------------ seven segment ---- */
+
+const DIGIT_W = 24, DIGIT_H = 45, SEG_T = 5;
+const SEG_GEOM = {
+  a: { left: SEG_T, top: 0, width: DIGIT_W - 2 * SEG_T, height: SEG_T },
+  b: { left: DIGIT_W - SEG_T, top: SEG_T, width: SEG_T, height: 15 },
+  f: { left: 0, top: SEG_T, width: SEG_T, height: 15 },
+  g: { left: SEG_T, top: 20, width: DIGIT_W - 2 * SEG_T, height: SEG_T },
+  c: { left: DIGIT_W - SEG_T, top: 25, width: SEG_T, height: 15 },
+  e: { left: 0, top: 25, width: SEG_T, height: 15 },
+  d: { left: SEG_T, top: DIGIT_H - SEG_T, width: DIGIT_W - 2 * SEG_T, height: SEG_T },
+};
+
+const SEG_ORDER = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+
+const DIGITS = {
+  '0': 'abcdef', '1': 'bc', '2': 'abged', '3': 'abgcd', '4': 'fgbc',
+  '5': 'afgcd', '6': 'afgecd', '7': 'abc', '8': 'abcdefg', '9': 'abfgcd',
+  '-': 'g', ' ': '',
+};
+
+const OFF = '#161C1F';
+
+class SevenSegment {
+  #digits = [];
+
+  /** Builds `count` digits with a colon before the last two, once. Nothing here runs again. */
+  constructor(host, count) {
+    host.replaceChildren();
+
+    for (let i = 0; i < count; i++) {
+      if (i === count - 2) host.appendChild(this.#colon());
+
+      const digit = document.createElement('div');
+      digit.className = 'digit';
+      digit.style.width = DIGIT_W + 'px';
+      digit.style.height = DIGIT_H + 'px';
+
+      const segs = {};
+      for (const name of SEG_ORDER) {
+        const g = SEG_GEOM[name];
+        const seg = document.createElement('div');
+        seg.style.position = 'absolute';
+        seg.style.left = g.left + 'px';
+        seg.style.top = g.top + 'px';
+        seg.style.width = g.width + 'px';
+        seg.style.height = g.height + 'px';
+        seg.style.background = OFF;
+        digit.appendChild(seg);
+        segs[name] = seg;
+      }
+
+      this.#digits.push(segs);
+      host.appendChild(digit);
+    }
+  }
+
+  #colon() {
+    const box = document.createElement('div');
+    box.className = 'colon';
+    box.style.width = '9px';
+    box.style.height = DIGIT_H + 'px';
+
+    for (const top of [14, 28]) {
+      const dot = document.createElement('div');
+      dot.style.position = 'absolute';
+      dot.style.left = '2px';
+      dot.style.top = top + 'px';
+      dot.style.width = '5px';
+      dot.style.height = '5px';
+      dot.style.background = '#3A4448';
+      box.appendChild(dot);
+    }
+
+    return box;
+  }
+
+  /** `text` is one character per digit. Only background colours change, so this never rebuilds the page. */
+  show(text, colour) {
+    for (let i = 0; i < this.#digits.length; i++) {
+      const lit = DIGITS[text[i]] ?? '';
+      const segs = this.#digits[i];
+      for (const name of SEG_ORDER) segs[name].style.background = lit.includes(name) ? colour : OFF;
+    }
+  }
+}
+
+/* ------------------------------------------------------------------------------------------- gauge ---- */
+
+/** A depleting bar drawn as fixed segments, so filling it is a repaint rather than a relayout. */
+class Gauge {
+  #cells = [];
+
+  constructor(host, count) {
+    host.replaceChildren();
+    for (let i = 0; i < count; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'gcell';
+      host.appendChild(cell);
+      this.#cells.push(cell);
+    }
+  }
+
+  set(fraction, colour) {
+    const lit = Math.round(Math.max(0, Math.min(1, fraction)) * this.#cells.length);
+    for (let i = 0; i < this.#cells.length; i++) this.#cells[i].style.background = i < lit ? colour : '#20272A';
+  }
+}
+
+/* -------------------------------------------------------------------------------------------- text ---- */
+
+const PHASE_LABEL = {
+  Lobby: 'LOBBY', Hiding: 'HIDING', Hunting: 'HUNT',
+  RoundEnd: 'ROUND OVER', Safehouse: 'BETWEEN ROUNDS', MatchEnd: 'MATCH OVER',
+};
+
+/** The depot's own words for a role. A hider still out there is UNACCOUNTED because that is exactly what the
+ *  board knows about them - the same reason their prop is not in the data at all. */
+const ROLE_STAMP = {
+  Hunter: 'CREW', Hider: 'UNACCOUNTED', Caught: 'RECOVERED', Spectator: 'OFF SHIFT', Unassigned: 'WAITING',
+};
+
+const CATEGORY_SHORT = { 'Round': 'Round', 'Roles & Combat': 'Roles', 'Props': 'Props', 'World': 'World' };
+
+function mmss(total) {
+  const s = Math.max(0, Math.floor(total));
+  const m = Math.floor(s / 60);
+  if (m > 99) return '99:59';
+  return String(m).padStart(2, '0') + String(s % 60).padStart(2, '0');
+}
+
+function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
+/* An <img> is sized by CSS alone - the layout runs without Unity and cannot read a PNG's intrinsic size, and
+ * the HTML width/height ATTRIBUTES are not CSS. Set them as style or the box is nothing and nothing paints. */
+function icon(name, size) {
+  const img = document.createElement('img');
+  img.setAttribute('src', 'icons/' + name + '.png');
+  img.style.width = size + 'px';
+  img.style.height = size + 'px';
+  return img;
+}
+
+function picture(key, size, className) {
+  const img = document.createElement('img');
+  img.setAttribute('src', 's1://' + key);
+  img.style.width = size + 'px';
+  img.style.height = size + 'px';
+  if (className) img.className = className;
+  return img;
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined && text !== null) node.textContent = String(text);
+  return node;
+}
+
+function button(className, label, iconName, onClick) {
+  const b = el('div', className);
+  if (iconName) b.appendChild(icon(iconName, 15));
+  b.appendChild(el('div', null, label));
+  if (onClick) b.addEventListener('click', onClick);
+  return b;
+}
+
+/* --------------------------------------------------------------------------------------------- app ---- */
+
+class App {
+  #snap = null;
+  #takenAt = 0;        // local ms when #snap was read, so the clock can run on between snapshots
+  #pane = s1.storage.get('pane', 'board');
+  #category = 'all';
+  #editing = null;     // key of the rule whose value is being typed
+  #clock = null;
+  #gauge = null;
+  #whistle = null;
+
+  start() {
+    this.#clock = new SevenSegment($('clock'), 4);
+    this.#gauge = new Gauge($('gauge'), 28);
+
+    for (const tab of all('.tab')) {
+      tab.addEventListener('click', () => {
+        this.#pane = tab.getAttribute('data-pane');
+        this.#editing = null;
+        s1.storage.set('pane', this.#pane);
+        this.render();
+      });
+    }
+
+    document.addEventListener('back', (e) => {
+      // Nothing to step back FROM unless a value is being typed: both panes are always on screen in landscape,
+      // and portrait keeps the tab bar. Taking the press otherwise would trap the player one level deep.
+      if (!this.#editing) return;
+      e.preventDefault();
+      this.#editing = null;
+      this.render();
+    });
+
+    document.addEventListener('orientationchange', () => this.render());
+
+    s1.on('ph.changed', () => this.pull());
+
+    this.pull();
+
+    // One second is all a seconds countdown needs, and this tick only ever writes background colours.
+    setInterval(() => this.tick(), 1000);
+
+    // The roster and the scoreboard carry values the host recomputes every second (how long someone has been
+    // alive). Those two panes ask for a fresh snapshot on the same beat; the other two do not, because nothing
+    // on them moves without an event.
+    setInterval(() => {
+      if (this.#pane === 'roster' || this.#pane === 'scores') this.pull();
+    }, 1000);
+  }
+
+  pull() {
+    const raw = s1.call('ph.snapshot');
+    if (!raw) { this.#snap = null; this.render(); return; }
+
+    try { this.#snap = JSON.parse(raw); }
+    catch (err) { console.error('bad snapshot: ' + err); this.#snap = null; }
+
+    this.#takenAt = Date.now();
+    this.render();
+  }
+
+  /** Host time right now, from the snapshot's own stamp plus how long ago we read it. */
+  now() {
+    if (!this.#snap) return 0;
+    return this.#snap.now + Math.floor((Date.now() - this.#takenAt) / 1000);
+  }
+
+  secondsLeft() {
+    const s = this.#snap;
+    if (!s || !s.ends) return -1;
+    return Math.max(0, s.ends - this.now());
+  }
+
+  /* ---- the per-second beat: colours only ---- */
+
+  tick() {
+    const s = this.#snap;
+    if (!s || !s.ok) { this.#clock.show('  --', '#3A4448'); return; }
+
+    const left = this.secondsLeft();
+
+    if (left < 0) {
+      this.#clock.show('----', '#3A4448');
+      this.#gauge.set(0, '#20272A');
+      this.#paintWhistle();
+      return;
+    }
+
+    const colour = left <= 15 ? '#E4572E' : left <= 45 ? '#E8B22A' : '#F2F4F4';
+    this.#clock.show(mmss(left), colour);
+
+    const span = s.phaseLen > 0 ? s.phaseLen : Math.max(1, left);
+    this.#gauge.set(left / span, left <= 15 ? '#E4572E' : left <= 45 ? '#E8B22A' : '#08A6A6');
+
+    this.#paintWhistle();
+  }
+
+  #paintWhistle() {
+    if (!this.#whistle) return;
+
+    const s = this.#snap;
+    const interval = Number(this.#settingValue('taunt') || 0);
+    const due = s && s.whistle >= 0 ? s.whistle : -1;
+
+    if (due < 0 || interval <= 0) { this.#whistle.set(0, '#20272A'); return; }
+
+    // Fills up TOWARDS the whistle rather than draining away from it: the useful question is how close the
+    // next forced reveal is, not how much quiet is left.
+    this.#whistle.set(1 - due / interval, due <= 5 ? '#E4572E' : '#E8B22A');
+  }
+
+  #settingValue(key) {
+    const s = this.#snap;
+    if (!s || !s.settings) return null;
+    for (const row of s.settings) if (row.key === key) return row.value;
+    return null;
+  }
+
+  /* ---- render ---- */
+
+  render() {
+    const s = this.#snap;
+
+    this.#renderRail(s);
+
+    const pane = $('pane');
+    pane.replaceChildren();
+
+    if (!s || !s.ok) { this.#renderNoSession(pane); this.tick(); return; }
+
+    if (this.#pane === 'board') this.#renderBoard(pane, s);
+    else if (this.#pane === 'roster') this.#renderRoster(pane, s);
+    else if (this.#pane === 'rules') this.#renderRules(pane, s);
+    else this.#renderScores(pane, s);
+
+    for (const tab of all('.tab'))
+      tab.className = tab.getAttribute('data-pane') === this.#pane ? 'tab on' : 'tab';
+
+    this.tick();
+  }
+
+  #renderNoSession(pane) {
+    $('phase').textContent = 'NO SESSION';
+    $('role').textContent = 'WAITING';
+    $('role').className = 'stamp role';
+    $('tallycount').textContent = '0 / 0';
+    $('tally').replaceChildren();
+    $('vitals').replaceChildren();
+    $('clocknote').textContent = '';
+
+    const box = el('div', 'empty');
+    box.appendChild(el('div', 'empty-title', 'No round running.'));
+    box.appendChild(el('div', 'empty-note', 'Start one from the main menu: Side Hustle, then PropHunt.'));
+    pane.appendChild(box);
+  }
+
+  #renderRail(s) {
+    if (!s || !s.ok) return;
+
+    $('phase').textContent = PHASE_LABEL[s.phase] || s.phase.toUpperCase();
+
+    const me = s.me;
+    const stamp = $('role');
+    const caught = me.eliminated && me.role === 'Hider';
+    stamp.textContent = ROLE_STAMP[caught ? 'Caught' : me.role] || 'WAITING';
+    stamp.className = 'stamp role ' + (caught ? 'caught' : me.role.toLowerCase());
+
+    // The tally is the headcount: one block per hider who started, filled while they are still out there.
+    const total = s.players.filter((p) => p.role === 'Hider').length;
+    $('tallycount').textContent = s.hidersAlive + ' / ' + total;
+
+    const tally = $('tally');
+    tally.replaceChildren();
+    for (let i = 0; i < total; i++) tally.appendChild(el('div', i < s.hidersAlive ? 'mark' : 'mark out'));
+
+    $('clocknote').textContent = this.#clockNote(s);
+
+    this.#renderVitals(s);
+  }
+
+  #clockNote(s) {
+    if (s.phase === 'Lobby') return plural(s.lobby, 'player in the lobby', 'players in the lobby');
+    if (s.phase === 'Hiding') return 'Hunters are released when this runs out.';
+    if (s.phase === 'Hunting') return 'Round ' + s.round;
+    if (s.phase === 'RoundEnd' || s.phase === 'Safehouse')
+      return s.nextRound >= 0 ? 'Next round in ' + s.nextRound + 's' : 'Waiting for the host.';
+    return '';
+  }
+
+  #renderVitals(s) {
+    const box = $('vitals');
+    box.replaceChildren();
+
+    const me = s.me;
+    const running = s.phase === 'Hiding' || s.phase === 'Hunting';
+
+    if (me.downed) box.appendChild(this.#vital('downed', 'Knocked down', me.downedLeft + 's', true));
+    if (me.outside) box.appendChild(this.#vital('oob', me.water ? 'In the water' : 'Out of bounds', me.grace + 's', true));
+
+    if (!running) {
+      // The whistle gauge belongs to the hunt. Build it anyway so the tick never has to test for it.
+      this.#whistle = null;
+      if (box.children.length === 0) box.appendChild(el('div', 'note', 'Nothing to report.'));
+      return;
+    }
+
+    if (me.role === 'Hider' && !me.eliminated) {
+      box.appendChild(this.#vital('hp', 'Prop HP', Math.max(0, me.maxHp - me.hp) + ' / ' + me.maxHp));
+      box.appendChild(this.#vital('change', 'Changes left',
+        me.freeChanges ? 'free' : me.maxChanges > 0 ? String(Math.max(0, me.maxChanges - me.changes)) : 'unlimited'));
+      if (me.maxDecoys > 0) box.appendChild(this.#vital('decoy', 'Decoys', String(Math.max(0, me.maxDecoys - me.decoys))));
+      if (me.maxConc > 0) box.appendChild(this.#vital('concussion', 'Concussions', String(Math.max(0, me.maxConc - me.conc))));
+    } else if (me.role === 'Hunter') {
+      box.appendChild(this.#vital('hp', 'Your HP', Math.max(0, me.hunterMaxHp - me.hunterHp) + ' / ' + me.hunterMaxHp));
+    }
+
+    if (s.phase === 'Hunting' && s.whistle >= 0) {
+      const row = el('div', 'vital');
+      row.appendChild(icon('whistle', 14));
+      row.appendChild(el('div', 'vital-label', 'Next whistle'));
+      box.appendChild(row);
+
+      const bar = el('div', 'gauge');
+      box.appendChild(bar);
+      this.#whistle = new Gauge(bar, 28);
+    } else {
+      this.#whistle = null;
+    }
+  }
+
+  #vital(iconName, label, value, alert) {
+    const row = el('div', alert ? 'vital alert' : 'vital');
+    row.appendChild(icon(iconName, 14));
+    row.appendChild(el('div', 'vital-label', label));
+    row.appendChild(el('div', 'vital-value', value));
+    return row;
+  }
+
+  /* ---- board ---- */
+
+  #renderBoard(pane, s) {
+    if (s.phase === 'Lobby') return this.#boardLobby(pane, s);
+    if (s.phase === 'Hiding') return this.#boardHiding(pane, s);
+    if (s.phase === 'Hunting') return this.#boardHunting(pane, s);
+    if (s.phase === 'RoundEnd' || s.phase === 'MatchEnd') return this.#boardResult(pane, s);
+    if (s.phase === 'Safehouse') return this.#boardSafehouse(pane, s);
+  }
+
+  #boardLobby(pane, s) {
+    const head = el('div', 'head');
+    head.appendChild(el('div', 'title', 'Waiting to start'));
+    head.appendChild(el('div', 'sub', plural(s.lobby, 'player', 'players')));
+    pane.appendChild(head);
+
+    if (s.host) {
+      const ready = s.lobby >= 2;
+      const act = button(ready ? 'act' : 'act off', ready ? 'START MATCH' : 'NEED 2 PLAYERS', 'start',
+        ready ? () => this.#send('ph.begin') : null);
+      pane.appendChild(act);
+      pane.appendChild(el('div', 'note', 'Set the rules first if you want to - they apply from the first round.'));
+    } else {
+      pane.appendChild(el('div', 'note', 'The host starts the match. Everything here stays live while you wait.'));
+    }
+
+    pane.appendChild(el('div', 'rule'));
+    this.#dressingRoom(pane, s);
+  }
+
+  /** The lobby dressing room. This is what used to be a whole tab that showed one sentence outside the lobby. */
+  #dressingRoom(pane, s) {
+    const head = el('div', 'head');
+    head.appendChild(el('div', 'title', 'Try a prop'));
+    pane.appendChild(head);
+
+    if (s.becomable <= 0) {
+      pane.appendChild(el('div', 'note', 'No props loaded here yet. Walk around a little and come back.'));
+      return;
+    }
+
+    const wearing = s.me.prop >= 0;
+
+    const dress = el('div', 'dress');
+    const shot = el('div', 'dress-shot');
+
+    if (wearing && s.me.propImage) {
+      shot.appendChild(picture(s.me.propImage, 88));
+    } else {
+      shot.appendChild(icon('prop', 34));
+      shot.appendChild(el('div', 'dress-empty', wearing ? 'DEVELOPING' : 'NOTHING ON'));
+    }
+
+    dress.appendChild(shot);
+
+    const main = el('div', 'dress-main');
+    main.appendChild(el('div', 'dress-name', wearing ? s.me.propName : plural(s.becomable, 'prop to try on', 'props to try on')));
+    main.appendChild(el('div', 'note', 'Press [2] for another one, hold [F] and move the mouse to turn it.'));
+
+    const pair = el('div', 'pair');
+    pair.appendChild(button('btn', wearing ? 'Try another' : 'Become a prop', 'change', () => this.#send('ph.prop.roll')));
+    if (wearing) pair.appendChild(button('btn', 'Back to normal', 'close', () => this.#send('ph.prop.clear')));
+    main.appendChild(pair);
+
+    dress.appendChild(main);
+    pane.appendChild(dress);
+  }
+
+  #boardHiding(pane, s) {
+    const head = el('div', 'head');
+    head.appendChild(el('div', 'title', 'Get hidden'));
+    head.appendChild(el('div', 'sub', 'Round ' + s.round));
+    pane.appendChild(head);
+
+    if (s.me.role === 'Hunter') {
+      pane.appendChild(el('div', 'note', 'You are blind until the hunt starts. Sit tight.'));
+    } else if (s.me.prop >= 0) {
+      this.#wearing(pane, s);
+      pane.appendChild(el('div', 'note', 'Hold [F] and move the mouse to face it the way a real one would sit.'));
+    } else {
+      pane.appendChild(el('div', 'note', 'Look at any prop and press [E] to become it. [2] picks one at random.'));
+    }
+
+    this.#hostRoundControls(pane, s);
+  }
+
+  #boardHunting(pane, s) {
+    const head = el('div', 'head');
+    head.appendChild(el('div', 'title', s.hidersAlive === 1 ? 'One left' : s.hidersAlive + ' still hidden'));
+    head.appendChild(el('div', 'sub', 'Round ' + s.round));
+    pane.appendChild(head);
+
+    if (s.me.role === 'Hider' && !s.me.eliminated && s.me.prop >= 0) this.#wearing(pane, s);
+    else if (s.me.role === 'Hunter') pane.appendChild(el('div', 'note', 'Shoot a prop to catch it. Bigger props take more hits.'));
+    else pane.appendChild(el('div', 'note', 'You are out. Press [4] to switch between follow-cam and freecam.'));
+
+    this.#hostRoundControls(pane, s);
+  }
+
+  /** The prop you are, as a picture. Falls back to its name alone, which is what the old app only ever had. */
+  #wearing(pane, s) {
+    const dress = el('div', 'dress');
+    const shot = el('div', 'dress-shot');
+
+    if (s.me.propImage) shot.appendChild(picture(s.me.propImage, 88));
+    else shot.appendChild(icon('prop', 34));
+
+    dress.appendChild(shot);
+
+    const main = el('div', 'dress-main');
+    main.appendChild(el('div', 'dress-name', s.me.propName || 'A prop'));
+    main.appendChild(el('div', 'note', 'You take ' + plural(s.me.maxHp, 'hit', 'hits') + ' before you are caught.'));
+    if (s.me.locked) main.appendChild(el('div', 'note', 'Facing is locked.'));
+    dress.appendChild(main);
+
+    pane.appendChild(dress);
+  }
+
+  #boardResult(pane, s) {
+    const result = el('div', 'result');
+    const word = s.winner === 0 ? 'HUNTERS WIN' : s.winner === 1 ? 'HIDERS WIN' : 'ROUND OVER';
+    const cls = s.winner === 0 ? 'verdict hunters' : s.winner === 1 ? 'verdict hiders' : 'verdict';
+    result.appendChild(el('div', cls, word));
+    if (s.phase === 'RoundEnd' && s.nextRound >= 0) result.appendChild(el('div', 'sub', 'Next round in ' + s.nextRound + 's'));
+    pane.appendChild(result);
+
+    if (s.awards.length > 0) {
+      pane.appendChild(el('div', 'rule'));
+      for (const a of s.awards) {
+        const row = el('div', 'award');
+        row.appendChild(el('div', 'award-label', a.label.toUpperCase()));
+        row.appendChild(el('div', 'award-name', a.name));
+        row.appendChild(el('div', 'award-value', a.value));
+        pane.appendChild(row);
+      }
+    }
+
+    const top = [...s.players].sort((a, b) => b.score - a.score).slice(0, 3);
+    if (top.length > 0) {
+      pane.appendChild(el('div', 'rule'));
+      for (let i = 0; i < top.length; i++) {
+        const row = el('div', top[i].self ? 'row me' : 'row');
+        row.appendChild(el('div', 'row-num', String(i + 1)));
+        row.appendChild(this.#face(top[i]));
+
+        const main = el('div', 'row-main');
+        main.appendChild(el('div', 'row-name', top[i].name));
+        row.appendChild(main);
+
+        row.appendChild(el('div', 'row-num', String(top[i].score)));
+        pane.appendChild(row);
+      }
+    }
+
+    if (s.phase === 'MatchEnd' && s.host) {
+      pane.appendChild(this.#tape());
+      pane.appendChild(button('danger', 'RETURN TO HUB', 'hub', () => this.#send('ph.hub')));
+    }
+  }
+
+  #boardSafehouse(pane, s) {
+    const head = el('div', 'head');
+    head.appendChild(el('div', 'title', 'Round ' + (s.round + 1) + ' next'));
+    head.appendChild(el('div', 'sub', s.safehouse.name));
+    pane.appendChild(head);
+
+    if (s.safehouse.ready) pane.appendChild(el('div', 'note', 'Doors opening - get ready.'));
+
+    if (!s.host) {
+      pane.appendChild(el('div', 'note', 'The host is picking where everyone starts.'));
+      return;
+    }
+
+    const pair = el('div', 'pair');
+    pair.appendChild(button('btn', 'Previous map', 'prev', () => this.#send('ph.map', '-1')));
+    pair.appendChild(button('btn', 'Next map', 'forward', () => this.#send('ph.map', '1')));
+    pane.appendChild(pair);
+
+    if (s.safehouse.options > 1)
+      pane.appendChild(el('div', 'note', s.safehouse.options + ' maps fit this many players.'));
+
+    pane.appendChild(button('act', 'START NEXT ROUND', 'next-round', () => this.#send('ph.next')));
+    this.#autoStart(pane, s);
+  }
+
+  #hostRoundControls(pane, s) {
+    if (!s.host) return;
+
+    pane.appendChild(el('div', 'rule'));
+    this.#autoStart(pane, s);
+    pane.appendChild(this.#tape());
+    pane.appendChild(button('danger', 'END ROUND NOW', 'end-round', () => this.#send('ph.endround')));
+  }
+
+  #autoStart(pane, s) {
+    const on = this.#settingValue('autostart') === '1';
+    pane.appendChild(button(on ? 'btn wide on' : 'btn wide',
+      on ? 'Auto-start next round: ON' : 'Auto-start next round: OFF', 'autostart',
+      () => this.#send('ph.set', 'autostart\n' + (on ? '0' : '1'))));
+  }
+
+  /** Hazard band. Only ever directly above something the host cannot take back. */
+  #tape() {
+    const band = el('div', 'tape');
+    for (let i = 0; i < 26; i++) band.appendChild(el('div', i % 2 ? 'tape-seg gap' : 'tape-seg'));
+    return band;
+  }
+
+  /* ---- roster ---- */
+
+  #renderRoster(pane, s) {
+    const head = el('div', 'head');
+    head.appendChild(el('div', 'title', 'Roster'));
+    head.appendChild(el('div', 'sub', plural(s.players.length, 'player', 'players')));
+    pane.appendChild(head);
+
+    if (s.players.length === 0) {
+      pane.appendChild(el('div', 'note', 'Nobody on the board yet.'));
+      return;
+    }
+
+    for (const p of s.players) {
+      const caught = p.eliminated && p.role === 'Hider';
+      let cls = 'row';
+      if (p.self) cls = 'row me';
+      else if (p.role === 'Hunter') cls = 'row hunter';
+      else if (p.role === 'Hider' && !p.eliminated) cls = 'row hider';
+
+      const row = el('div', cls);
+      row.appendChild(this.#face(p));
+
+      const main = el('div', 'row-main');
+      main.appendChild(el('div', 'row-name', p.name + (p.self ? '  (you)' : '')));
+      main.appendChild(el('div', 'row-note', this.#rosterNote(p, s, caught)));
+      row.appendChild(main);
+
+      // A caught hider's prop is no longer a secret worth keeping, and seeing what fooled you is the point.
+      if (p.propImage) row.appendChild(picture(p.propImage, 34, 'row-thumb'));
+
+      row.appendChild(el('div', 'stamp', ROLE_STAMP[caught ? 'Caught' : p.role] || '?'));
+
+      if (s.host && !p.self && p.id !== '0')
+        row.appendChild(button('btn', 'Kick', 'kick', () => this.#send('ph.kick', p.id)));
+
+      pane.appendChild(row);
+    }
+  }
+
+  #rosterNote(p, s, caught) {
+    if (p.role === 'Hunter') return plural(p.catches, 'catch', 'catches');
+    if (caught) return p.propName ? 'Caught as a ' + p.propName.toLowerCase() : 'Caught';
+    if (p.self && p.prop >= 0) return p.propName + '  -  ' + Math.max(0, p.maxHp - p.hp) + '/' + p.maxHp + ' HP';
+    if (p.role === 'Hider') return s.phase === 'Hunting' || s.phase === 'Hiding' ? 'Somewhere out there' : 'Hiding next round';
+    return 'Watching';
+  }
+
+  #face(p) {
+    if (p.face) return picture(p.face, 30, 'row-face');
+
+    const box = el('div', 'row-face');
+    box.appendChild(el('div', 'row-initial', (p.name || '?').trim().charAt(0).toUpperCase() || '?'));
+    return box;
+  }
+
+  /* ---- rules ---- */
+
+  #renderRules(pane, s) {
+    const head = el('div', 'head');
+    head.appendChild(el('div', 'title', 'Rules'));
+    head.appendChild(el('div', 'sub', s.host ? 'Applies from the next round' : 'The host sets these'));
+    pane.appendChild(head);
+
+    if (s.host && s.presets.length > 0) {
+      const chips = el('div', 'chips');
+      for (const name of s.presets)
+        chips.appendChild(button('chip', name, null, () => this.#send('ph.preset', name)));
+      pane.appendChild(chips);
+      pane.appendChild(el('div', 'rule'));
+    }
+
+    const cats = [];
+    for (const row of s.settings) if (!cats.includes(row.cat)) cats.push(row.cat);
+
+    const filter = el('div', 'chips');
+    filter.appendChild(button(this.#category === 'all' ? 'chip on' : 'chip', 'All', null,
+      () => { this.#category = 'all'; this.render(); }));
+    for (const c of cats)
+      filter.appendChild(button(this.#category === c ? 'chip on' : 'chip', CATEGORY_SHORT[c] || c, null,
+        () => { this.#category = c; this.render(); }));
+    pane.appendChild(filter);
+
+    for (const row of s.settings) {
+      if (this.#category !== 'all' && row.cat !== this.#category) continue;
+      pane.appendChild(this.#settingRow(row, s.host));
+    }
+  }
+
+  #settingRow(row, host) {
+    const line = el('div', 'setting');
+
+    const main = el('div', 'setting-main');
+    const label = el('div', 'setting-label');
+    label.appendChild(el('div', 'setting-name', row.label));
+    if (row.value !== row.def) label.appendChild(el('div', 'moved'));
+    main.appendChild(label);
+    if (row.hint) main.appendChild(el('div', 'setting-hint', row.hint));
+    line.appendChild(main);
+
+    line.appendChild(host ? this.#control(row) : el('div', 'readonly', this.#display(row)));
+    return line;
+  }
+
+  #display(row) {
+    if (row.type === 'toggle') return row.value === '1' ? 'ON' : 'OFF';
+    if (row.options) {
+      const at = row.values.indexOf(row.value);
+      if (at >= 0) return row.options[at];
+    }
+    return row.unit ? row.value + ' ' + row.unit : row.value;
+  }
+
+  #control(row) {
+    if (row.type === 'toggle') {
+      const on = row.value === '1';
+      return button(on ? 'btn on' : 'btn', on ? 'ON' : 'OFF', on ? 'check' : 'close',
+        () => this.#send('ph.set', row.key + '\n' + (on ? '0' : '1')));
+    }
+
+    if (row.type === 'segmented') {
+      const seg = el('div', 'seg');
+      for (let i = 0; i < row.options.length; i++) {
+        const value = row.values[i];
+        const opt = el('div', value === row.value ? 'seg-opt on' : 'seg-opt', row.options[i]);
+        opt.addEventListener('click', () => this.#send('ph.set', row.key + '\n' + value));
+        seg.appendChild(opt);
+      }
+      return seg;
+    }
+
+    if (row.type === 'choice') {
+      const at = Math.max(0, row.values.indexOf(row.value));
+      const box = el('div', 'stepper');
+      box.appendChild(this.#stepButton('prev', () =>
+        this.#send('ph.set', row.key + '\n' + row.values[(at - 1 + row.values.length) % row.values.length])));
+      box.appendChild(el('div', 'step-value', row.options[at] || row.value));
+      box.appendChild(this.#stepButton('forward', () =>
+        this.#send('ph.set', row.key + '\n' + row.values[(at + 1) % row.values.length])));
+      return box;
+    }
+
+    // A number. There is no slider in this renderer and a drag would be the wrong control on a phone anyway;
+    // the descriptors already carry sensible coarse steps, and tapping the value types an exact one.
+    const box = el('div', 'stepper');
+    const value = Number(row.value) || 0;
+    const step = Number(row.step) || 1;
+
+    box.appendChild(this.#stepButton('minus', () => this.#setNumber(row, value - step)));
+
+    if (this.#editing === row.key) {
+      const field = document.createElement('input');
+      field.className = 'step-input';
+      field.setAttribute('value', row.value);
+      field.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        this.#editing = null;
+        this.#setNumber(row, Number(e.value));
+      });
+      box.appendChild(field);
+    } else {
+      const shown = el('div', 'step-value', row.unit ? row.value + ' ' + row.unit : row.value);
+      shown.addEventListener('click', () => { this.#editing = row.key; this.render(); });
+      box.appendChild(shown);
+    }
+
+    box.appendChild(this.#stepButton('plus', () => this.#setNumber(row, value + step)));
+    return box;
+  }
+
+  #stepButton(iconName, onClick) {
+    const b = el('div', 'step');
+    b.appendChild(icon(iconName, 14));
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  #setNumber(row, raw) {
+    let v = Number(raw);
+    if (!isFinite(v)) return;
+
+    v = Math.max(Number(row.min), Math.min(Number(row.max), v));
+    const text = row.whole ? String(Math.round(v)) : String(Math.round(v * 100) / 100);
+    this.#send('ph.set', row.key + '\n' + text);
+  }
+
+  /* ---- scores ---- */
+
+  #renderScores(pane, s) {
+    const head = el('div', 'head');
+    head.appendChild(el('div', 'title', 'Scores'));
+    head.appendChild(el('div', 'sub', 'This session'));
+    pane.appendChild(head);
+
+    if (s.players.length === 0) {
+      pane.appendChild(el('div', 'note', 'No scores yet.'));
+      return;
+    }
+
+    if (s.awards.length > 0) {
+      for (const a of s.awards) {
+        const row = el('div', 'award');
+        row.appendChild(el('div', 'award-label', a.label.toUpperCase()));
+        row.appendChild(el('div', 'award-name', a.name));
+        row.appendChild(el('div', 'award-value', a.value));
+        pane.appendChild(row);
+      }
+      pane.appendChild(el('div', 'rule'));
+    }
+
+    const header = el('div', 'thead');
+    header.appendChild(el('div', 'th left', 'PLAYER'));
+    for (const [label, width] of [['CATCH', 44], ['HITS', 40], ['BAIT', 40], ['STUN', 40], ['ALIVE', 48], ['SCORE', 48]]) {
+      const th = el('div', 'th', label);
+      th.style.width = width + 'px';
+      header.appendChild(th);
+    }
+    pane.appendChild(header);
+
+    const ranked = [...s.players].sort((a, b) => b.score - a.score);
+
+    for (const p of ranked) {
+      const row = el('div', p.self ? 'row me' : 'row');
+
+      const main = el('div', 'row-main');
+      main.appendChild(el('div', 'row-name', p.name));
+      row.appendChild(main);
+
+      for (const [value, width] of [
+        [p.catches, 44], [p.hits, 40], [p.baits, 40], [p.stuns, 40],
+        [p.survived + 's', 48], [p.score, 48],
+      ]) {
+        const cell = el('div', 'row-num', String(value));
+        cell.style.width = width + 'px';
+        row.appendChild(cell);
+      }
+
+      pane.appendChild(row);
+    }
+  }
+
+  /* ---- commands ---- */
+
+  #send(name, arg) {
+    const answer = s1.call(name, arg === undefined ? '' : arg);
+    if (answer !== 'ok') console.error(name + ' was refused (' + answer + ')');
+    this.pull();
+  }
+}
+
+new App().start();

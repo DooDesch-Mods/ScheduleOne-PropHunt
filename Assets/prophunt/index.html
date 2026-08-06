@@ -1,0 +1,43 @@
+<link rel="stylesheet" href="app.css">
+
+<div class="app" id="app">
+
+  <!-- The rail is the instrument panel: what phase, how long, how many are left, what you are, how you are
+       doing. It never scrolls and it is never replaced, so a glance always lands in the same place. -->
+  <div class="rail" id="rail">
+
+    <div class="stamp phase" id="phase">LOBBY</div>
+
+    <div class="clockbox">
+      <div class="clock" id="clock"></div>
+      <div class="gauge" id="gauge"></div>
+      <div class="clock-note" id="clocknote"></div>
+    </div>
+
+    <div class="tally-box" id="tallybox">
+      <div class="tally-head">
+        <div class="tally-label">HIDERS LEFT</div>
+        <div class="tally-count" id="tallycount">0 / 0</div>
+      </div>
+      <div class="tally" id="tally"></div>
+    </div>
+
+    <div class="stamp role" id="role">WAITING</div>
+
+    <div class="vitals" id="vitals"></div>
+  </div>
+
+  <div class="main">
+    <div class="nav" id="nav">
+      <div class="tab on" data-pane="board"><img src="icons/board.png" width="17" height="17"><div class="tab-label">Board</div></div>
+      <div class="tab" data-pane="roster"><img src="icons/roster.png" width="17" height="17"><div class="tab-label">Roster</div></div>
+      <div class="tab" data-pane="rules"><img src="icons/rules.png" width="17" height="17"><div class="tab-label">Rules</div></div>
+      <div class="tab" data-pane="scores"><img src="icons/scores.png" width="17" height="17"><div class="tab-label">Scores</div></div>
+    </div>
+
+    <div class="pane" id="pane"></div>
+  </div>
+
+</div>
+
+<script src="app.js"></script>
