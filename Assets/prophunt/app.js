@@ -502,6 +502,10 @@ class App {
 
     const wearing = s.me.prop >= 0;
 
+    // The name and the buttons sit CENTRED against the picture rather than stacked under a paragraph. With the
+    // hint still in this column the block was taller than the 96px tile and the button hung below it, which is
+    // the kind of near-miss alignment that is more annoying than a wrong layout. The hint moved out to full
+    // width underneath, where a line of help belongs anyway.
     const dress = el('div', 'dress');
     const shot = el('div', 'dress-shot');
 
@@ -516,15 +520,15 @@ class App {
 
     const main = el('div', 'dress-main');
     main.appendChild(el('div', 'dress-name', wearing ? s.me.propName : plural(s.becomable, 'prop nearby', 'props nearby')));
-    main.appendChild(el('div', 'note', 'In a round you become one by looking at it and pressing [E], or [2] for a random one.'));
 
     const pair = el('div', 'pair');
-    pair.appendChild(button('btn', wearing ? 'Try another prop' : 'Try a random prop', 'change', () => this.#send('ph.prop.roll')));
-    if (wearing) pair.appendChild(button('btn', 'Take it off', 'close', () => this.#send('ph.prop.clear')));
+    pair.appendChild(button('btn', wearing ? 'Try another' : 'Try a random prop', 'random', () => this.#send('ph.prop.roll')));
+    if (wearing) pair.appendChild(button('btn', 'Take it off', 'takeoff', () => this.#send('ph.prop.clear')));
     main.appendChild(pair);
 
     dress.appendChild(main);
     pane.appendChild(dress);
+    pane.appendChild(el('div', 'note', 'Or press [2] out in the world.'));
   }
 
   #boardHiding(pane, s) {
@@ -572,8 +576,8 @@ class App {
 
     const main = el('div', 'dress-main');
     main.appendChild(el('div', 'dress-name', s.me.propName || 'A prop'));
-    main.appendChild(el('div', 'note', 'You take ' + plural(s.me.maxHp, 'hit', 'hits') + ' before you are caught.'));
-    if (s.me.locked) main.appendChild(el('div', 'note', 'Facing locked - press [F] to turn again.'));
+    main.appendChild(el('div', 'note', plural(s.me.maxHp, 'hit', 'hits') + ' before you are caught'));
+    if (s.me.locked) main.appendChild(el('div', 'note', 'Facing locked - [F] to turn'));
     dress.appendChild(main);
 
     pane.appendChild(dress);

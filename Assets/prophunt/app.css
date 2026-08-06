@@ -445,11 +445,13 @@ body {
 .verdict.hunters { border-color: var(--hunter); color: var(--hunter); }
 .verdict.hiders  { border-color: var(--hider);  color: var(--hider); }
 
+/* align-items: center, so the name and the buttons sit against the middle of the tile instead of starting at
+   its top and running past its bottom. */
 .dress { flex-direction: row; align-items: center; gap: 14px; }
 .dress-shot { width: 96px; height: 96px; background: var(--panel); border: 1px solid var(--hair); align-items: center; justify-content: center; }
 .dress-shot img { color: var(--hi); }
 .dress-empty { font-size: 10px; letter-spacing: 1px; color: var(--mute); text-align: center; }
-.dress-main { flex: 1; min-width: 0; gap: 8px; }
+.dress-main { flex: 1; min-width: 0; gap: 10px; }
 .dress-name { font-size: 17px; font-weight: 700; }
 
 .pair { flex-direction: row; gap: 8px; }
