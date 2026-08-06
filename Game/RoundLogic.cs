@@ -506,16 +506,25 @@ namespace PropHunt.Game
             return true;
         }
 
+        /// <summary>How many batches a hider gets when the host allows UNLIMITED prop changes. There has to be a
+        /// number: every decoy lives in the one replicated state blob and as a clone on every client, so "as many as
+        /// you can be bothered to earn" is unbounded growth in the network payload and in what each machine renders -
+        /// for the rest of a round, and across rounds when decoys are kept.</summary>
+        private const int UnlimitedChangeBatches = 10;
+
         /// <summary>
         /// Decoys one hider may drop in a whole round: their change budget times the per-prop batch, because that is
         /// how many batches they can ever earn. Without it the per-prop count refilled on every change and the real
         /// ceiling was however long the hunt lasted.
         ///
-        /// 0 when changes are UNLIMITED (MaxPropChanges = 0): there is no product to take, so only the per-prop batch
-        /// applies - the host asked for unlimited changes and that is what unlimited means.
+        /// Always finite, including with unlimited changes - see <see cref="UnlimitedChangeBatches"/>.
         /// </summary>
-        internal static int DecoyRoundCap(RoundSettings set) =>
-            set == null || set.MaxPropChanges <= 0 ? 0 : Math.Max(1, set.MaxDecoys) * set.MaxPropChanges;
+        internal static int DecoyRoundCap(RoundSettings set)
+        {
+            if (set == null || set.MaxDecoys <= 0) return 0;   // decoys off; ApplyDropDecoy refuses before this matters
+            int batches = set.MaxPropChanges > 0 ? set.MaxPropChanges : UnlimitedChangeBatches;
+            return set.MaxDecoys * batches;
+        }
 
         /// <summary>Host: a hunter hit a decoy. Only valid during Hunting; bounds-checked; a destroyed decoy
         /// ignores further hits. Returns true if state changed (Hits incremented or Destroyed newly set).</summary>

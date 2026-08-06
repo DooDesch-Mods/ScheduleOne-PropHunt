@@ -27,7 +27,6 @@ namespace PropHunt.Game
                 var tm = NetworkSingleton<TimeManager>.Instance;
                 if (tm != null) { tm.SetTimeAndSync(s.TimeOfDay); tm.SetTimeSpeedMultiplier(s.FreezeTime ? 0f : 1f); }
                 Core.Log.Msg($"[PropHunt] world: time set to {s.TimeOfDay}{(s.FreezeTime ? ", progression frozen" : ", progression running")}.");
-                ApplyFeetDrop(s);
                 SetSewerGoblin(s.SewerGoblin);
                 SetSewerKing(false);
                 UnlockSewer();

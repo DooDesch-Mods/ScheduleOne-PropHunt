@@ -959,6 +959,11 @@ namespace PropHunt.Game
 
             // keep the world day-locked + police off + the local player crime-free during a round (incl. the safehouse lobby)
             bool roundActive = RoundActive;
+            // The ground offset, on every machine, from whatever the settings currently say. Applying it only where the
+            // state ARRIVES made it a client-only change: the host published a new offset, every client moved its props
+            // and their hitboxes at once, and the host kept the old height until the next round - up to 40cm of
+            // disagreement about where a prop, and therefore a shot, actually is. Idempotent, so per frame is free.
+            RoundEnvironment.ApplyFeetDrop(_settings);
             Patches.PhoneAppVisibility.Tick(roundActive);   // the business apps have no place in a round; restored when it ends
             if (roundActive) RoundEnvironment.ClearLocalCrime();
             if (_isHost && roundActive) RoundEnvironment.SuppressPolice();
@@ -1106,13 +1111,7 @@ namespace PropHunt.Game
         {
             _state = GameState.Parse(blob);
             SyncClock(_state);   // before any effect reads a timer: every timestamp below is in host time
-            if (!string.IsNullOrEmpty(_state.SettingsBlob))
-            {
-                _settings = RoundSettings.Parse(_state.SettingsBlob);
-                // Disguise placement happens on EVERY machine, so the ground offset has to land on every machine -
-                // ApplyHostWorld runs on the host alone and would leave clients placing props at the old height.
-                RoundEnvironment.ApplyFeetDrop(_settings);
-            }
+            if (!string.IsNullOrEmpty(_state.SettingsBlob)) _settings = RoundSettings.Parse(_state.SettingsBlob);
             Core.LogDebug($"[PropHunt] client recv state: phase={_state.Phase} hash={_state.CatalogHash} players={_state.Players.Count} - applying effects...");
             // NOTE: do NOT scan/lock doors here. ApplyStateString runs in the SteamNetworkLib state-var callback,
             // which fires once PER host push (several in quick succession when entering the safehouse). A

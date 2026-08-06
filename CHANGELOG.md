@@ -17,9 +17,9 @@ All notable changes to PropHunt are documented here. The format follows
 
 - [2] has a one second cooldown, so nobody can flicker through props faster than a hunter can read what they are
   looking at.
-- Decoys are capped for a whole round at your per-prop count times your change budget. They used to refill on every
-  prop change, so anyone with changes to spare could keep dropping fresh batches. Setting decoys to 0 now means none
-  at all, which is what it always claimed - it used to mean unlimited.
+- Decoys are capped for a whole round at your per-prop count times your change budget, and with unlimited changes at
+  ten batches. They used to refill on every prop change, so anyone with changes to spare could keep dropping fresh
+  batches. Setting decoys to 0 now means none at all, which is what it always claimed - it used to mean unlimited.
 - A decoy takes exactly one shot, whatever prop it copies. A big prop's decoy used to soak several hits, which told
   the hunter it was worth shooting at.
 - Leaving the play area gives you 3 seconds instead of 10, and left click (lock your prop) is in the [H] list.
