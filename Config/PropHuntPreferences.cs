@@ -25,6 +25,7 @@ namespace PropHunt.Config
         private static MelonPreferences_Entry<int> _maxDecoys;
         private static MelonPreferences_Entry<int> _concussCharges;
         private static MelonPreferences_Entry<float> _concussRadius;
+        private static MelonPreferences_Entry<int> _feetDropCm;
         private static MelonPreferences_Entry<int> _tauntIntervalSeconds;
         private static MelonPreferences_Entry<float> _playAreaRadius;
         private static MelonPreferences_Entry<string> _caughtBehavior;
@@ -85,9 +86,12 @@ namespace PropHunt.Config
             _maxPropChanges = CreateEntry("MaxPropChanges", 5, "Max prop changes per round",
                 "How many times a hider may (re)pick a prop each round. Each change resets their HP. 0 = unlimited.");
             _maxDecoys = CreateEntry("MaxDecoys", 4, "Decoys per prop",
-                "How many decoys ([Q]) a hider may drop per prop (refills when they change prop) - static copies to mislead hunters. 0 = disabled.");
+                "How many decoys ([Q]) a hider may drop per prop (refills when they change prop) - static copies to mislead hunters. 0 = none. A whole round is capped at this many per prop change, so spare changes cannot turn into decoy spam.");
             _concussCharges = CreateEntry("ConcussCharges", 1, "Concussions per prop",
                 "How many concussions ([G]) a hider may use per prop (refills when they change prop, like CoD Prop Hunt) - stuns nearby hunters. 0 = disabled.");
+            _feetDropCm = CreateEntry("FeetDropCm", 97, "Prop ground offset (cm)",
+                "Centimetres from a player's root down to their feet, which is where a disguise's underside is placed. " +
+                "Raise it if props hover, lower it if they sink into the floor.");
             _concussRadius = CreateEntry("ConcussRadius", 7f, "Concussion radius (metres)",
                 "Hunters within this distance of the hider when they trigger a concussion get stunned.");
             _tauntIntervalSeconds = CreateEntry("TauntIntervalSeconds", 30, "Taunt interval (seconds)",
@@ -124,7 +128,7 @@ namespace PropHunt.Config
             _autoStartNextRound = CreateEntry("AutoStartNextRound", true, "Auto-start next round",
                 "After a round, automatically start the next one after a short safehouse pause. Off = the host starts each round manually. Can be toggled live in the phone app.");
             _propRotationSeconds = CreateEntry("PropRotationSeconds", 0, "Prop rotation (seconds)",
-                "Force every hider into a NEW random prop this often during the hunt, so nobody can sit still in one perfect spot. 0 = off.");
+                "Force every hider into a NEW random prop this often during the hunt, so nobody can sit still in one perfect spot. 0 = off. Takes effect from the next round: the interval is frozen when a round starts, so a change mid-round would move the countdown grid under everyone.");
             _propSizeCollision = CreateEntry("PropSizeCollision", true, "Hiders are prop-sized",
                 "A disguised hider physically shrinks to their prop, so a small prop fits under shelves and into corners a person cannot reach. Never larger than normal player size.");
             // Default ON. The sewer NPC that actually ruined rounds was the KING - he attacks on sight and wanders into
@@ -174,6 +178,7 @@ namespace PropHunt.Config
         internal static int MaxDecoys => Mathf.Max(0, _maxDecoys?.Value ?? 4);
         internal static int ConcussCharges => Mathf.Max(0, _concussCharges?.Value ?? 1);
         internal static float ConcussRadius => Mathf.Max(1f, _concussRadius?.Value ?? 7f);
+        internal static int FeetDropCm => Mathf.Clamp(_feetDropCm?.Value ?? 97, 80, 120);
         internal static int TauntIntervalSeconds => Mathf.Max(0, _tauntIntervalSeconds?.Value ?? 30);
         /// <summary>
         /// The shipped radius: the same 50m a small lobby gets from <see cref="Game.GameModeController.DefaultAreaRadiusFor"/>,
@@ -249,6 +254,7 @@ namespace PropHunt.Config
                 MaxDecoys = MaxDecoys,
                 ConcussCharges = ConcussCharges,
                 ConcussRadius = ConcussRadius,
+                FeetDropCm = FeetDropCm,
                 TauntIntervalSeconds = TauntIntervalSeconds,
                 PlayAreaRadius = PlayAreaRadius,
                 Caught = PropHunt.Game.RoundSettings.ParseCaught(CaughtBehaviorRaw),

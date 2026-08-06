@@ -27,6 +27,11 @@ namespace PropHunt.Game
         internal int MaxDecoys = 4;             // decoys ([Q]) a hider may drop PER PROP (refills on prop change; 0 = none)
         internal int ConcussCharges = 1;        // concussions ([G]) a hider may use PER PROP (refills on prop change, CoD-style; 0 = none)
         internal float ConcussRadius = 7f;      // metres: hunters within this of the hider get tazed/stunned
+        /// <summary>Centimetres from a player's root down to their feet - where a disguise's underside is placed. The
+        /// game gives no reliable figure for this (the capsule bottom sits above the visible feet), so it is dialed in,
+        /// and the right value differs enough between props that it belongs in the host's hands rather than in a
+        /// constant. Synced, so every client places every disguise identically.</summary>
+        internal int FeetDropCm = 97;
         internal CaughtBehavior Caught = CaughtBehavior.Spectator;
         internal RoundStructure Structure = RoundStructure.Continuous;
         internal int TimeOfDay = 1200;          // HHMM; world locked here during a round (1200 = noon/day, 0100 = night)
@@ -73,6 +78,7 @@ namespace PropHunt.Game
                 "decoy=" + MaxDecoys.ToString(ci),
                 "conc=" + ConcussCharges.ToString(ci),
                 "concr=" + ConcussRadius.ToString(ci),
+                "feetdrop=" + FeetDropCm.ToString(ci),
                 "caught=" + Caught,
                 "round=" + Structure,
                 "time=" + TimeOfDay.ToString(ci),
@@ -136,6 +142,7 @@ namespace PropHunt.Game
                 case "decoy": if (int.TryParse(v, NumberStyles.Integer, ci, out var dc)) MaxDecoys = dc; break;
                 case "conc": if (int.TryParse(v, NumberStyles.Integer, ci, out var cc)) ConcussCharges = cc; break;
                 case "concr": if (float.TryParse(v, NumberStyles.Float, ci, out var cr)) ConcussRadius = cr; break;
+                case "feetdrop": if (int.TryParse(v, NumberStyles.Integer, ci, out var fd)) FeetDropCm = fd; break;
                 case "caught": Caught = ParseCaught(v); break;
                 case "round": Structure = ParseStructure(v); break;
                 case "time": if (int.TryParse(v, NumberStyles.Integer, ci, out var tm)) TimeOfDay = tm; break;
@@ -170,6 +177,7 @@ namespace PropHunt.Game
         }
 
         public override string ToString() =>
-            $"hide={HideSeconds}s hunt={HuntSeconds}s pph={PlayersPerHunter} caught={Caught} round={Structure} tag={TagRange} hits={HitsToCatch} area={PlayAreaRadius}";
+            $"hide={HideSeconds}s hunt={HuntSeconds}s pph={PlayersPerHunter} caught={Caught} round={Structure} " +
+            $"tag={TagRange} hits={HitsToCatch} area={PlayAreaRadius} proprot={PropRotationSeconds}s taunt={TauntIntervalSeconds}s";
     }
 }

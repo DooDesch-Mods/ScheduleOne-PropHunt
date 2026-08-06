@@ -256,9 +256,10 @@ namespace PropHunt.UI.Hud
             SetActive(_downedPill, ref _aDowned, downed);
 
             // --- prop rotation warning ---
-            // Only for a hider who is actually wearing something - a hunter has no prop to lose, and warning an
-            // undisguised hider about a change to a prop they do not have would just be noise.
-            int rotIn = disguised ? ctl.SecondsToPropRotation : -1;
+            // Every live hider, not only one already wearing something: the rotation hands a prop to whoever is playing
+            // hider, so a hider who lost theirs (a fresh round, a prop that failed to build) is exactly who needs the
+            // warning. A hunter has nothing to lose and never sees it.
+            int rotIn = hider ? ctl.SecondsToPropRotation : -1;
             bool warnRot = rotIn >= 0 && rotIn <= PropRotationWarnSeconds;
             if (warnRot) SetText(_rot, ref _cRot, $"NEW PROP IN {rotIn}s");
             SetActive(_rotPill, ref _aRot, warnRot);

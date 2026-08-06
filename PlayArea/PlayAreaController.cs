@@ -12,7 +12,10 @@ namespace PropHunt.PlayArea
     /// </summary>
     internal sealed class PlayAreaController
     {
-        private const float GraceSeconds = 10f;
+        // Three seconds, not ten. The wall is visible and the beeps start immediately, so the window only has to be
+        // long enough to turn around - ten was long enough to cross a street and come back, which made the boundary
+        // a suggestion.
+        private const float GraceSeconds = 3f;
 
         /// <summary>
         /// How much of the prop the water has to cover before it counts as hiding in the water.

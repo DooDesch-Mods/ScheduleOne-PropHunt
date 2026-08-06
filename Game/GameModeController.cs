@@ -442,6 +442,9 @@ namespace PropHunt.Game
             _spectator = new PropHunt.View.SpectatorController(this);
             _state = new GameState { Phase = RoundPhase.Lobby, SettingsBlob = _settings.Serialize(), CatalogHash = PropCatalog.Hash };
             RoundLogic.SyncRoster(_state, GetMemberIds());
+            // Before the first safehouse phase, not just before the first round: the safehouse lock closes sewer
+            // hatches, and a closed hatch in a key-less world is a dead end until this has run.
+            RoundEnvironment.UnlockSewer();
             PushState();
             BroadcastPropPool(force: true);   // tell joiners which props they may become before anyone can pick one
             Core.Log.Msg($"[PropHunt] host session started (Lobby). Settings: {_settings}");
@@ -681,9 +684,17 @@ namespace PropHunt.Game
         /// host (FishNet server) swings it - the visual then replicates to clients. Idempotent.</summary>
         private const float SafehouseDoorRadius = 22f;   // non-property doors (RV/sewer/plain) within this of the spawn
 
+        /// <summary>Doors this session locked, with the access they had before. Restoring from this list rather than
+        /// re-running the radius sweep is the point: the second sweep resolves its own set from the CURRENT world, so a
+        /// door that was in range when we locked it and out of range (or gone) when we unlocked stayed locked - and only
+        /// on the machine that locked it, which is exactly how one player could open a door another could not.</summary>
+        private static readonly Dictionary<int, Il2CppScheduleOne.Doors.EDoorAccess> _lockedDoors =
+            new Dictionary<int, Il2CppScheduleOne.Doors.EDoorAccess>();
+
         private static void ApplyDoorAccess(string code, bool locked, bool swing)
         {
             if (string.IsNullOrEmpty(code)) return;
+            if (!locked) { RestoreLockedDoors(swing); return; }
             try
             {
                 // resolve the property's interior spawn so we can also catch nearby NON-PropertyDoorController doors
@@ -704,14 +715,14 @@ namespace PropHunt.Game
                     {
                         var d = doors[i];
                         if (d == null) continue;
-                        // NEVER a sewer door. On the exterior side its access is key-gated
-                        // (SewerDoorController.CanPlayerAccess): a door that is merely OPEN rather than UNLOCKED needs
-                        // the Sewer Key once it has been closed, and PlayerAccess = Open does not get a say - the
-                        // override returns false before it defers to the base. So swinging one shut during the
-                        // safehouse phase barred the sewer for the whole session: anyone already down there was
-                        // unreachable and nobody could follow them in. It is a route into a separate area, not a room
-                        // of the safehouse, and the safehouse lock has no business touching it.
-                        if (d.TryCast<Il2CppScheduleOne.Doors.SewerDoorController>() != null) continue;
+                        // Sewer doors DO belong in here: 'seweroffice' is one of the curated safehouses
+                        // (SafehouseSelector), its doors carry no Property back-reference, and exempting them let
+                        // players walk out of that safehouse before roles were even assigned.
+                        //
+                        // What made locking them dangerous was the key: once closed, SewerDoorController.CanPlayerAccess
+                        // demands the Sewer Key before it defers to the base, and a fresh round world has none - so one
+                        // closed hatch sealed the sewer for the session. RoundEnvironment.UnlockSewer removes that gate
+                        // at session start and at every round start, which is why they can be locked again safely.
                         bool belongs;
                         var pdc = d.TryCast<Il2CppScheduleOne.Building.Doors.PropertyDoorController>();
                         if (pdc != null)
@@ -720,12 +731,47 @@ namespace PropHunt.Game
                             belongs = haveCenter && UnityEngine.Vector3.Distance(d.transform.position, center) <= SafehouseDoorRadius;   // RV/sewer/plain
                         if (!belongs) continue;
                         n++;
-                        d.PlayerAccess = locked ? Il2CppScheduleOne.Doors.EDoorAccess.Locked : Il2CppScheduleOne.Doors.EDoorAccess.Open;
-                        if (swing) { try { d.SetIsOpen_Server(!locked, Il2CppScheduleOne.Doors.EDoorSide.Interior, false); } catch { } }
+                        int key = d.GetInstanceID();   // wrapper identity is not stable under interop; the instance id is
+                        if (!_lockedDoors.ContainsKey(key)) _lockedDoors[key] = d.PlayerAccess;
+                        d.PlayerAccess = Il2CppScheduleOne.Doors.EDoorAccess.Locked;
+                        if (swing)
+                        {
+                            try { d.SetIsOpen_Server(false, Il2CppScheduleOne.Doors.EDoorSide.Interior, false); }
+                            catch (Exception e) { Core.LogDebug("[PropHunt] door swing failed: " + e.Message); }
+                        }
                     }
-                Core.LogDebug($"[PropHunt] safehouse '{code}' doors {(locked ? "LOCKED" : "OPENED")} ({n}, swing={swing}).");
+                Core.LogDebug($"[PropHunt] safehouse '{code}' doors LOCKED ({n}, swing={swing}).");
             }
             catch (Exception e) { Core.LogDebug("[PropHunt] ApplyDoorAccess failed: " + e.Message); }
+        }
+
+        /// <summary>Give every door we locked its own previous access back. Doors that have since been destroyed are
+        /// skipped; the list is cleared either way, so a stale entry can never lock a door a later round never touched.</summary>
+        private static void RestoreLockedDoors(bool swing)
+        {
+            if (_lockedDoors.Count == 0) return;
+            int n = 0;
+            try
+            {
+                var doors = UnityEngine.Object.FindObjectsOfType<Il2CppScheduleOne.Doors.DoorController>();
+                if (doors != null)
+                    for (int i = 0; i < doors.Length; i++)
+                    {
+                        var d = doors[i];
+                        if (d == null) continue;
+                        if (!_lockedDoors.TryGetValue(d.GetInstanceID(), out var before)) continue;
+                        d.PlayerAccess = before;
+                        n++;
+                        if (swing)
+                        {
+                            try { d.SetIsOpen_Server(true, Il2CppScheduleOne.Doors.EDoorSide.Interior, false); }
+                            catch (Exception e) { Core.LogDebug("[PropHunt] door swing failed: " + e.Message); }
+                        }
+                    }
+            }
+            catch (Exception e) { Core.LogDebug("[PropHunt] RestoreLockedDoors failed: " + e.Message); }
+            Core.LogDebug($"[PropHunt] restored {n} of {_lockedDoors.Count} locked door(s) (swing={swing}).");
+            _lockedDoors.Clear();
         }
 
         private static Il2CppScheduleOne.Property.Property FindProperty(string code)
@@ -866,7 +912,13 @@ namespace PropHunt.Game
                 {
                     // re-apply the world time at the start of every round, so each round begins at the configured
                     // time of day (and, with FreezeTime off, the clock then runs from there instead of staying locked).
-                    if (_isHost) RoundEnvironment.ApplyHostWorld(_settings);
+                    if (_isHost)
+                    {
+                        RoundEnvironment.ApplyHostWorld(_settings);
+                        Core.Log.Msg($"[PropHunt] round {_state.RoundNumber}: prop rotation " +
+                                     (_state.RotationSeconds > 0 ? $"every {_state.RotationSeconds}s" : "OFF") +
+                                     $", whistle every {_settings.TauntIntervalSeconds}s.");
+                    }
                     // Every machine asks for itself: the unlock RPC runs locally on the caller and on the server, so a
                     // host-only call leaves the other clients still holding a locked sewer.
                     RoundEnvironment.UnlockSewer();
@@ -907,6 +959,12 @@ namespace PropHunt.Game
 
             // keep the world day-locked + police off + the local player crime-free during a round (incl. the safehouse lobby)
             bool roundActive = RoundActive;
+            // The ground offset, on every machine, from whatever the settings currently say. Applying it only where the
+            // state ARRIVES made it a client-only change: the host published a new offset, every client moved its props
+            // and their hitboxes at once, and the host kept the old height until the next round - up to 40cm of
+            // disagreement about where a prop, and therefore a shot, actually is. Idempotent, so per frame is free.
+            RoundEnvironment.ApplyFeetDrop(_settings);
+            Patches.PhoneAppVisibility.Tick(roundActive);   // the business apps have no place in a round; restored when it ends
             if (roundActive) RoundEnvironment.ClearLocalCrime();
             if (_isHost && roundActive) RoundEnvironment.SuppressPolice();
 
@@ -1542,12 +1600,19 @@ namespace PropHunt.Game
             }
             int maxHits = ComputeMaxHits(propId);
             bool freeChange = _settings.FreeChangesInHiding && _state.Phase == RoundPhase.Hiding;
-            bool ok = RoundLogic.ApplySelectProp(_state, sender, propId, maxHits, _settings.MaxPropChanges, freeChange);
+            bool ok = RoundLogic.ApplySelectProp(_state, sender, propId, maxHits, _settings.MaxPropChanges, freeChange,
+                                                NowUnix(), PropChangeCooldownSeconds);
             _state.Players.TryGetValue(sender, out var sp);
             Core.LogDebug($"[PropHunt] host: select from {sender} prop {propId} hp {maxHits} -> {(ok ? "ACCEPTED" : "rejected")}" +
                           (sp != null ? $" (role={sp.Role} elim={sp.Eliminated} changes={sp.Changes}/{_settings.MaxPropChanges})" : " (sender NOT in roster)"));
             if (ok) PushState();
         }
+
+        /// <summary>Smallest gap between two prop changes a PLAYER asks for, host-enforced. One second: long enough
+        /// that a hider cannot flicker through props faster than a hunter can read what they are looking at, short
+        /// enough that it never gets in the way of a deliberate change. The forced rotation is exempt - it is not the
+        /// player's doing.</summary>
+        internal const int PropChangeCooldownSeconds = 1;
 
         /// <summary>Prop HP for a catalog id, for host-side code outside this class (the forced prop rotation).</summary>
         internal int MaxHitsFor(int propId) => ComputeMaxHits(propId);
@@ -1602,16 +1667,14 @@ namespace PropHunt.Game
         private void HandleDropDecoy(ulong sender, float x, float y, float z, float yaw)
         {
             if (!_isHost) return;
-            // compute the same size-based HP the hider's own prop would have, so the decoy has identical durability
-            _state.Players.TryGetValue(sender, out var sp);
-            int maxHits = sp != null ? ComputeMaxHits(sp.PropId) : 1;
-            if (RoundLogic.ApplyDropDecoy(_state, _settings, sender, x, y, z, yaw, maxHits))
+            if (RoundLogic.ApplyDropDecoy(_state, _settings, sender, x, y, z, yaw))
             {
-                Core.Log.Msg($"[PropHunt] {sender} dropped a decoy (hp={maxHits}, {_state.Decoys.Count} total).");
+                Core.Log.Msg($"[PropHunt] {sender} dropped a decoy ({_state.Decoys.Count} total).");
                 PushState();
             }
             else
             {
+                _state.Players.TryGetValue(sender, out var sp);   // only for the rejection reason
                 Core.Log.Msg($"[PropHunt] decoy from {sender} rejected (phase={_state.Phase}, used={(sp != null ? sp.DecoysUsed : -1)}/{_settings.MaxDecoys}, propId={(sp != null ? sp.PropId : -99)})");
             }
         }
@@ -1885,6 +1948,16 @@ namespace PropHunt.Game
         internal static bool DebugSoloMode;
 #endif
 
+        private static bool _loggedMemberFault;
+        /// <summary>Report a member-list fault ONCE. It is read every frame, so a broken lobby handle would bury the
+        /// log in its own warning - and a silent catch here is what hid the roster wipe for a whole session.</summary>
+        private static void LogMemberFault(string what)
+        {
+            if (_loggedMemberFault) return;
+            _loggedMemberFault = true;
+            Core.Log.Warning("[PropHunt] lobby member list unavailable (" + what + ") - keeping the roster as it is.");
+        }
+
         private List<ulong> GetMemberIds()
         {
             var list = new List<ulong>();
@@ -1893,7 +1966,10 @@ namespace PropHunt.Game
                 var ms = PropHuntNet.Client?.GetLobbyMembers();
                 if (ms != null) foreach (var m in ms) if (m.SteamId64 != 0) list.Add(m.SteamId64);
             }
-            catch { }
+            catch (Exception e) { LogMemberFault(e.Message); }
+            // An empty result is a lobby that did not answer. Callers must treat it as "unknown" - SyncRoster does -
+            // because acting on it as "the lobby is empty" wipes the roster and every session score with it.
+            if (list.Count == 0) LogMemberFault("the lobby returned no members");
 #if DEBUG
             // Solo test harness: add the stand-in AND ourselves, because with no real lobby the member list is empty
             // and even the local player is missing. Everything downstream then runs its normal two-player path.

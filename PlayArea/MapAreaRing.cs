@@ -34,8 +34,12 @@ namespace PropHunt.PlayArea
         private GameObject _outGo;       // the out-of-bounds wash, stretched over the whole map
         private RectTransform _outRect;
         private Image _outImg;
-        private Sprite _outSprite;       // the wash sprite this session made, the only one safe to destroy
-        private static Sprite _sprite;
+        private Sprite _outSprite;       // the wash sprite this session made
+        /// <summary>The band's sprite. Per SESSION, deliberately not static: a Sprite belongs to the scene that made
+        /// it, and hosting a new lobby loads a new world. The static cache kept handing out the destroyed sprite of
+        /// the previous session - a reference that is not null but draws nothing, which is why the red zone went
+        /// missing at random after re-hosting. Building it costs one texture upload.</summary>
+        private Sprite _sprite;
 
         // last drawn values, so the ring is only touched when the area actually changes
         private float _cx, _cz, _radius;
@@ -359,7 +363,7 @@ namespace PropHunt.PlayArea
         /// opposite. What carries the colour is <see cref="PaintOutside"/>, over everything the wall shuts off. This
         /// band's only job is the exact line, drawn on top of that wash.
         /// </summary>
-        private static Sprite RingSprite()
+        private Sprite RingSprite()
         {
             if (_sprite != null) return _sprite;
             try
@@ -400,7 +404,8 @@ namespace PropHunt.PlayArea
 
         internal void Destroy()
         {
-            // The per-round wash owns its own texture and sprite; the band's sprite is shared and static, so it stays.
+            // Both sprites belong to this session and to the scene it ran in, so both go with it. Leaving either
+            // behind is what made the boundary invisible in the NEXT lobby.
             try
             {
                 if (_outSprite != null)
@@ -409,8 +414,18 @@ namespace PropHunt.PlayArea
                     UnityEngine.Object.Destroy(_outSprite);
                 }
             }
-            catch { }
+            catch (Exception e) { Core.LogDebug("[PropHunt] map wash sprite teardown failed: " + e.Message); }
             _outSprite = null;
+            try
+            {
+                if (_sprite != null)
+                {
+                    if (_sprite.texture != null) UnityEngine.Object.Destroy(_sprite.texture);
+                    UnityEngine.Object.Destroy(_sprite);
+                }
+            }
+            catch (Exception e) { Core.LogDebug("[PropHunt] map ring sprite teardown failed: " + e.Message); }
+            _sprite = null;
             try { if (_outGo != null) UnityEngine.Object.Destroy(_outGo); } catch { }
             try { if (_go != null) UnityEngine.Object.Destroy(_go); } catch { }
             _go = null; _rect = null;

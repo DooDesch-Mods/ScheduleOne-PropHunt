@@ -134,13 +134,48 @@ namespace PropHunt.Disguise
                 var bc = go.AddComponent<BoxCollider>();
                 bc.isTrigger = true;
                 bc.center = lb.center;   // already in the clone root's local space
-                bc.size = lb.size;
+                bc.size = MinimumHitboxSize(lb.size, go.transform.lossyScale);
                 return bc;
             }
             catch (System.Exception e) { Core.LogDebug("[PropHunt] AddTriggerHitbox failed: " + e.Message); return null; }
         }
 
-        /// <summary>Bounds of the clone's meshes expressed in the ROOT's local space (every mesh corner taken to
+        /// <summary>
+        /// Floor for a hitbox axis, so a genuinely tiny prop is still shootable.
+        ///
+        /// A cigarette packet's own bounds are a couple of centimetres. Even the 0.35m catch sweep then depends on the
+        /// packet being the NEAREST hit, and lying on the ground it never is - the floor answers first, and the
+        /// line-of-sight test measures against a point inside that floor. The result was a decoy that could not be
+        /// destroyed at all.
+        ///
+        /// This widens only what a shot has to touch, never the prop's HP (ComputeMaxHits keeps reading the real size),
+        /// so a small prop is still a small target - just not an impossible one.
+        /// </summary>
+        private const float MinHitboxExtent = 0.30f;
+
+        /// <summary>
+        /// The floor is 0.30 metres in the WORLD, so it has to be divided by the root's scale before it goes into a
+        /// BoxCollider - collider size is local. The clone root is given the source prop's lossyScale
+        /// (DisguiseController/DecoyController), so a local 0.30 would mean 0.30 x scale in the world: still
+        /// unshootable under a small scale, and an invisible oversized target above one.
+        /// </summary>
+        private static UnityEngine.Vector3 MinimumHitboxSize(UnityEngine.Vector3 size, UnityEngine.Vector3 scale)
+        {
+            return new UnityEngine.Vector3(
+                UnityEngine.Mathf.Max(size.x, LocalFloor(scale.x)),
+                UnityEngine.Mathf.Max(size.y, LocalFloor(scale.y)),
+                UnityEngine.Mathf.Max(size.z, LocalFloor(scale.z)));
+        }
+
+        /// <summary>The world-space floor expressed in this axis' local units. A degenerate scale would divide by ~0
+        /// and produce an absurd box, so it falls back to the world figure.</summary>
+        private static float LocalFloor(float scale)
+        {
+            float s = UnityEngine.Mathf.Abs(scale);
+            return s > 0.0001f ? MinHitboxExtent / s : MinHitboxExtent;
+        }
+
+        /// <summary>Bounds of the clone's meshes expressed in the ROOT's local space        /// <summary>Bounds of the clone's meshes expressed in the ROOT's local space (every mesh corner taken to
         /// world, then back into root-local). A BoxCollider built from this is oriented along the prop's own axes,
         /// so a rotated or flat prop gets a matching box instead of a twisted world-AABB one.</summary>
         internal static bool TryGetLocalBounds(GameObject root, out Bounds local)
@@ -405,7 +440,7 @@ namespace PropHunt.Disguise
                 var bc = go.AddComponent<BoxCollider>();
                 bc.isTrigger = true;
                 bc.center = localBounds.center;
-                bc.size = localBounds.size;
+                bc.size = MinimumHitboxSize(localBounds.size, go.transform.lossyScale);
                 return bc;
             }
             catch (System.Exception e) { Core.LogDebug("[PropHunt] AddTriggerHitbox(bounds) failed: " + e.Message); return null; }
