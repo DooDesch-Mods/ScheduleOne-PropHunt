@@ -74,6 +74,10 @@ namespace PropHunt.Patches
     /// <c>Player.SetFlashlightOn_Server</c> is where the state actually leaves this machine, and it is public, so it
     /// survives as a real method. Blocking it is what makes the light stay off for everyone else.
     /// </summary>
+    // A SECOND prefix used to sit on this same method (Patches/FlashlightPatch.cs) and cancelled the toggle for the
+    // whole round, not just while disguised - so a HUNTER could not switch their torch on either. Two prefixes on one
+    // method both run and the stricter one wins, which is why the narrower rule here never got a say. Removed; hunters
+    // carry a light, hiders do not.
     [HarmonyPatch(typeof(Il2CppScheduleOne.UI.Phone.Phone), "ToggleFlashlight")]
     internal static class FlashlightTogglePrefix
     {

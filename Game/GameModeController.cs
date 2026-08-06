@@ -2023,14 +2023,33 @@ namespace PropHunt.Game
         /// its own while a round is running; a cached "already applied" would then never correct it again. The actual
         /// input block is <see cref="Patches.HotbarSelectionBlockPrefix"/> - these flags are what keeps the UI honest.
         /// </summary>
-        /// <summary>Clear the phone's flashlight flag. Phone.Update rebuilds the light's visibility from it every frame,
-        /// so this is all that is needed - and it compares first, so it is free to call while disguised.</summary>
+        /// <summary>
+        /// Put the phone torch out for a player who was already holding one when they became a prop.
+        ///
+        /// Clearing the flag is not enough, and that was the bug: Phone.Update rebuilds only the LOCAL light from it
+        /// (Phone.cs:127), while the state other players render arrived earlier over Player.SetFlashlightOn_Server. So
+        /// the owner's light went dark, every other player still saw a glowing crate, and pressing [F] could not fix it -
+        /// the local flag was already false, so the toggle tried to switch the light ON, which the round blocks.
+        ///
+        /// Vanilla's own toggle does three things (Phone.cs:136-143); this repeats all three for the off direction. The
+        /// visibility attribute matters as much as the beam: left at its lit values a doused prop stays easier for NPCs
+        /// to notice. Runs once per transition, because the flag it tests is what it clears.
+        /// </summary>
         private static void DouseFlashlight()
         {
             try
             {
                 var phone = PlayerSingleton<Il2CppScheduleOne.UI.Phone.Phone>.Instance;
-                if (phone != null && phone.FlashlightOn) phone.FlashlightOn = false;
+                if (phone == null || !phone.FlashlightOn) return;
+                phone.FlashlightOn = false;
+                try
+                {
+                    var vis = phone.flashlightVisibility;
+                    if (vis != null) { vis.pointsChange = 0f; vis.multiplier = 1f; }
+                }
+                catch (Exception e) { Core.LogDebug("[PropHunt] flashlight visibility reset failed: " + e.Message); }
+                var local = Il2CppScheduleOne.PlayerScripts.Player.Local;
+                if (local != null) local.SetFlashlightOn_Server(false);   // our network prefix always allows OFF
             }
             catch (Exception e) { Core.LogDebug("[PropHunt] douse flashlight failed: " + e.Message); }
         }
