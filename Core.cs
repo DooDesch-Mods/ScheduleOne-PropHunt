@@ -5,9 +5,10 @@ using PropHunt.Config;
 [assembly: MelonInfo(typeof(PropHunt.Core), "PropHunt", DooDesch.ModVersion.Current, "DooDesch", "https://github.com/DooDesch-Mods/ScheduleOne-PropHunt")]
 [assembly: MelonGame("TVGS", "Schedule I")]
 [assembly: MelonOptionalDependencies("SideHustle")]   // PropHunt is launched from the Side Hustle gamemode hub
-// WhatsDab carries the in-round chat. Declared as an additional dependency so MelonLoader loads it BEFORE PropHunt;
-// it is a hard requirement of the gamemode and is also listed in the Side Hustle mod policy below.
-[assembly: MelonAdditionalDependencies("WhatsDab")]
+// WhatsDab carries the in-round chat, Sideload renders both its screen and PropHunt's own phone app. Declared as
+// additional dependencies so MelonLoader loads them BEFORE PropHunt; both are hard requirements of the gamemode and
+// are also listed in the Side Hustle mod policy below.
+[assembly: MelonAdditionalDependencies("WhatsDab", "Sideload")]
 
 namespace PropHunt
 {
@@ -40,6 +41,8 @@ namespace PropHunt
             // OnInitializeMelon alive when the optional dependency is absent.
             try { RegisterWithSideHustle(); }
             catch (Exception e) { Log.Warning("Side Hustle not available - PropHunt runs without the hub entry: " + e.Message); }
+
+            RegisterPhoneApp();
 
             Log.Msg($"PropHunt initialized. Enabled={PropHuntPreferences.Enabled}");
         }
@@ -167,9 +170,58 @@ namespace PropHunt
         {
             Log.Msg("[PropHunt] session ended; tearing down.");
             UI.Hud.HudController.Teardown();   // destroy the uGUI HUD canvas with the session
+            Phone.PhoneImages.Reset();         // the next session has a different roster and a different prop catalog
             _controller?.Dispose();
             _controller = null;
             _session = null;
+        }
+
+        // ---------------------------------------------------------------------------- phone app ----
+        private static Sideload.Api.AppHandle _phone;
+        private static bool _phoneWasOpen;
+
+        /// <summary>
+        /// Register the PropHunt app on the in-game phone.
+        ///
+        /// Called unconditionally and early: <c>Apps.Register</c> is load-order proof - made before Sideload has
+        /// loaded, the call is queued and replayed once the host appears - and every method on the handle is a
+        /// no-op while it is absent. Sideload is a hard requirement of a PropHunt session anyway (it is in the mod
+        /// policy above, because WhatsDab carries the chat), so this is registration, not a gamble.
+        /// </summary>
+        private static void RegisterPhoneApp()
+        {
+            _phone = Sideload.Api.Apps.Register(
+                    id: "prophunt",
+                    bundlePrefix: "PropHunt.Assets.prophunt",
+                    title: "PropHunt",
+                    iconLabel: "PropHunt")
+                .Orientation("landscape", "portrait");
+
+            Phone.PhoneImages.UseHandle(_phone);
+            Phone.PhoneBackend.Install(_phone, new Phone.GameHost());
+        }
+
+        /// <summary>
+        /// Per-frame phone upkeep: push a state change when there is one, drain a little of the picture queue, and
+        /// notice the moment the player opens the app.
+        ///
+        /// Sideload has no "app opened" event, so the guide quest watches <c>IsOnScreen</c> for a rising edge -
+        /// which is what the old uGUI app's own per-frame IsOpen() check amounted to anyway.
+        /// </summary>
+        private static void TickPhone()
+        {
+            if (_phone == null) return;
+
+            Phone.PhoneImages.Tick();
+            Phone.PhoneBackend.Tick();
+
+            bool open = _phone.IsOnScreen;
+            if (open && !_phoneWasOpen)
+            {
+                try { Quests.GuideQuest.OnAppOpened(); } catch { }
+            }
+
+            _phoneWasOpen = open;
         }
 
         /// <summary>
@@ -267,7 +319,7 @@ namespace PropHunt
             Net.PropHuntNet.Tick();
             _controller?.Tick(UnityEngine.Time.deltaTime);
 #endif
-            Phone.PropHuntPhoneApp.Instance?.Tick();   // refresh the in-game phone app while it is open
+            TickPhone();                   // push state to the Sideload phone app + drain its picture queue
             UI.Hud.HudController.Tick();   // build/refresh/teardown the in-game uGUI HUD with the session
 #if DEBUG
             Disguise.PropCurator.Tick();   // prop curation tool (toggled by the phcurate console command)

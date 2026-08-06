@@ -127,12 +127,43 @@
     </EmbeddedResource>
   </ItemGroup>
 
-  <!-- The phone-app icon (teal crate with peeking eyes). Loaded by Phone/PropHuntPhoneApp.cs IconSprite via this
-       exact LogicalName, so it ships inside the DLL (no Mods-folder PNG needed). Exists-guarded. -->
-  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)Assets/phone_icon.png')">
-    <EmbeddedResource Include="Assets/phone_icon.png">
-      <LogicalName>PropHunt.Assets.phone_icon.png</LogicalName>
+  <!-- The Sideload phone app.
+
+       The LogicalName prefix IS the bundlePrefix passed to Apps.Register in Core.cs; get them out of step and the
+       page is blank with "index.html not found in bundle or override" and nothing else to go on. Sideload resolves
+       a bundle path by turning "/" into ".", so the icons live under their own item with the folder in the prefix
+       and the page asks for them as <img src="icons/play.png"> (Sideload/Bundle/AppBundle.cs:36).
+
+       preview.html and s1-mock.js are authoring tools - they run the very same app.js in Chrome without launching
+       the game - and have no business inside the shipped DLL. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets/prophunt/*" Exclude="Assets/prophunt/preview.html;Assets/prophunt/s1-mock.js">
+      <LogicalName>PropHunt.Assets.prophunt.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="Assets/prophunt/icons/*.png">
+      <LogicalName>PropHunt.Assets.prophunt.icons.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <!-- The Sideload API as SOURCE rather than a second DLL: one file, one assembly to install, and no hard
+       reference to Sideload itself - every call is a no-op when it is absent and registrations made before it
+       loads are replayed once it appears.
+
+       Three locations for the same file, because the same line has to work in three checkouts: the development
+       monorepo (Sideload is a sibling folder), a standalone checkout of Sideload.Api, and CI (which only has the
+       copy under Workspace/lib).
+
+       This Include MUST stay below the `<Compile Remove="Workspace/**/*.cs" />` near the top of this file. In CI
+       the Workspace repo is checked out as a SUBFOLDER, so the third fallback path resolves inside Workspace/ and
+       that Remove would delete it again. Moving this block up keeps every local build green and breaks CI alone. -->
+  <PropertyGroup>
+    <SideloadShimPath Condition="Exists('$(MSBuildThisFileDirectory)../Sideload/Sideload.Api/Sideload.cs')">$(MSBuildThisFileDirectory)../Sideload/Sideload.Api/Sideload.cs</SideloadShimPath>
+    <SideloadShimPath Condition="'$(SideloadShimPath)' == '' And Exists('$(MSBuildThisFileDirectory)../Sideload.Api/Sideload.cs')">$(MSBuildThisFileDirectory)../Sideload.Api/Sideload.cs</SideloadShimPath>
+    <SideloadShimPath Condition="'$(SideloadShimPath)' == '' And Exists('$(WorkspaceLibPath)/sideload-api/Sideload.cs')">$(WorkspaceLibPath)/sideload-api/Sideload.cs</SideloadShimPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Condition="'$(SideloadShimPath)' != ''" Include="$(SideloadShimPath)" Link="Sideload.Api.cs" />
   </ItemGroup>
 
   <!-- Backend-specific GlobalUsings: keep only the active backend's file -->
