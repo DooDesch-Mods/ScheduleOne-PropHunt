@@ -108,7 +108,7 @@ body {
   flex-direction: row;
   align-items: center;
   gap: 3px;
-  height: 54px;
+  height: 62px;
   color: var(--hi);
 }
 
@@ -116,16 +116,18 @@ body {
 .clock.warn   { color: var(--tape); }
 .clock.urgent { color: var(--hunter); }
 
+/* 62 = the 60px cell plus the two 1px borders. The cell has to clear the glyph's whole line box, not just the
+   digit's ink: at 52 with a 44px face the tops and tails were being clipped by this box's own overflow. */
 .digit {
   width: 30px;
-  height: 54px;
+  height: 62px;
   overflow: hidden;
   background: #0F1416;
   border: 1px solid #171D20;
 }
 
 /* The segments an unlit digit still shows. Static: drawn once, never touched again. */
-.digit-ghost { position: absolute; left: 0; top: 0; width: 28px; height: 52px; justify-content: center; }
+.digit-ghost { position: absolute; left: 0; top: 0; width: 28px; height: 60px; justify-content: center; }
 .digit-ghost .glyph { color: #191F22; }
 
 /* flex: none, or the reel is shrunk to the one cell its parent is tall and every glyph piles up. */
@@ -135,12 +137,12 @@ body {
    text is the text leaf, and its height is whatever TMP measures for that glyph - which differs per character,
    so a reel built that way drifts a little further with every stop. justify-content centres the glyph on the
    main axis, which is the vertical one here; text-align does the other. */
-.cell { height: 52px; justify-content: center; }
+.cell { height: 60px; justify-content: center; }
 
-.glyph { font-family: game-segment; font-size: 44px; text-align: center; }
+.glyph { font-family: game-segment; font-size: 40px; text-align: center; }
 
-.colon { width: 13px; height: 54px; justify-content: center; }
-.colon .glyph { font-size: 40px; }
+.colon { width: 13px; height: 62px; justify-content: center; }
+.colon .glyph { font-size: 36px; }
 
 /* The gauge under it is segmented for the same reason: filling a bar by width would relayout every second. */
 .gauge { flex-direction: row; gap: 2px; height: 4px; }
@@ -206,7 +208,10 @@ body {
 
 .tab:hover { background: var(--raised); }
 
-.tab.on { border-bottom-color: var(--teal); background: var(--ink); }
+/* border-COLOR, not border-bottom-color: a box carries ONE border colour in this renderer, and the per-side
+   colour properties are parsed and dropped with no error. In a browser the underline appeared; in the game it
+   never did. Only the bottom edge has a width, so colouring the whole border still draws just the underline. */
+.tab.on { border-color: var(--teal); background: var(--ink); }
 .tab.on img { color: var(--teal); }
 .tab.on .tab-label { color: var(--teal); }
 
@@ -445,13 +450,17 @@ body {
 .verdict.hunters { border-color: var(--hunter); color: var(--hunter); }
 .verdict.hiders  { border-color: var(--hider);  color: var(--hider); }
 
-/* align-items: center, so the name and the buttons sit against the middle of the tile instead of starting at
-   its top and running past its bottom. */
+/* One line: picture, then what it is, then what you can do about it. Stacking the name over the buttons left
+   the actions floating somewhere beside the tile with nothing to line up against. */
 .dress { flex-direction: row; align-items: center; gap: 14px; }
 .dress-shot { width: 96px; height: 96px; background: var(--panel); border: 1px solid var(--hair); align-items: center; justify-content: center; }
 .dress-shot img { color: var(--hi); }
 .dress-empty { font-size: 10px; letter-spacing: 1px; color: var(--mute); text-align: center; }
-.dress-main { flex: 1; min-width: 0; gap: 10px; }
+.dress-main { flex: 1; min-width: 0; gap: 4px; }
+
+/* The dressing room's row: the name takes the slack, the buttons sit at the end of the same line. */
+.dress-main.inline { flex-direction: row; align-items: center; gap: 12px; }
+.dress-main.inline .dress-name { flex: 1; min-width: 0; }
 .dress-name { font-size: 17px; font-weight: 700; }
 
 .pair { flex-direction: row; gap: 8px; }

@@ -43,8 +43,9 @@ function all(selector) {
 const REEL = ['-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 /* The reel travels exactly one cell per glyph, so this MUST equal .cell's height in app.css - the digit box is
- * taller by its two 1px borders, and stepping by the box instead leaves a sliver of the next glyph showing. */
-const CELL_H = 52;
+ * taller by its two 1px borders, and stepping by the box instead leaves a sliver of the next glyph showing.
+ * The cell also has to clear the glyph's whole line box, or the digit is clipped top and bottom. */
+const CELL_H = 60;
 
 class SevenSegment {
   #reels = [];
@@ -518,7 +519,7 @@ class App {
 
     dress.appendChild(shot);
 
-    const main = el('div', 'dress-main');
+    const main = el('div', 'dress-main inline');
     main.appendChild(el('div', 'dress-name', wearing ? s.me.propName : plural(s.becomable, 'prop nearby', 'props nearby')));
 
     const pair = el('div', 'pair');
