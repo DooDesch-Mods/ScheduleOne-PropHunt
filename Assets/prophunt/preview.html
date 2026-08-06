@@ -17,7 +17,21 @@
   .controls button.on { border-color: #08A6A6; color: #08A6A6; }
 
   .frame-label { font-size: 11px; color: #6b7378; margin: 0 0 6px; letter-spacing: .5px; }
-  #viewport { border: 1px solid #3a4148; background: #0E1113; width: 733px; height: 400px; overflow: hidden; }
+
+  /* The game does NOT render this page at 733x400 device pixels. The phone panel is about 1201x655 and the
+     renderer scales the whole viewport to fit, so one CSS pixel is 1.6375 device pixels (Sideload/Host/WebView.cs
+     computes exactly that, and ARCHITECTURE.md measured the panel). A browser showing 733x400 at 1:1 therefore
+     draws the same page smaller and at a different density - which is most of what makes the two look unalike.
+     So the stage scales by the same factor, and the toggle exists because 1:1 is still the honest way to check
+     whether something fits. */
+  #stage { width: 1200px; height: 655px; }
+  #viewport {
+    border: 1px solid #3a4148; background: #0E1113; width: 733px; height: 400px; overflow: hidden;
+    transform: scale(1.6375);
+    transform-origin: top left;
+  }
+  #stage.raw { width: 735px; height: 402px; }
+  #stage.raw #viewport { transform: none; }
 
   /* The renderer treats every element as a flex container defaulting to COLUMN, and border-box is always in
      force. `:where` so this carries zero specificity and can never outrank a class in app.css. */
@@ -55,8 +69,8 @@
 </p>
 
 <div class="controls" id="controls"></div>
-<div class="frame-label" id="framelabel">LANDSCAPE 733 x 400</div>
-<div id="viewport"></div>
+<div class="frame-label" id="framelabel">733 x 400 css, drawn at 1.64x - the density the game uses</div>
+<div id="stage"><div id="viewport"></div></div>
 
 <script src="s1-mock.js"></script>
 <script>
@@ -108,6 +122,7 @@ fetch('app.js')
   .then((src) => new Function('document', 's1', 'console', src)(scoped, s1, console))
   .catch((e) => { document.body.innerHTML += '<pre style="color:#E4572E">' + e + '</pre>'; });
 
+const stage = document.getElementById('stage');
 const controls = document.getElementById('controls');
 
 function chip(label, onClick) {
@@ -118,10 +133,19 @@ function chip(label, onClick) {
   return b;
 }
 
+const zoom = chip('show at 1:1 instead', () => {
+  const raw = stage.classList.toggle('raw');
+  zoom.classList.toggle('on', raw);
+  zoom.textContent = raw ? 'show at game density (1.64x)' : 'show at 1:1 instead';
+  document.getElementById('framelabel').textContent = raw
+    ? '733 x 400 css at 1:1 - smaller and denser than the game draws it'
+    : '733 x 400 css, drawn at 1.64x - the density the game uses';
+});
+
 for (const name of __mock.scenarios) {
   const b = chip(name, () => {
     __mock.pick(name);
-    for (const other of controls.children) other.classList.toggle('on', other === b);
+    for (const other of controls.children) if (other !== zoom) other.classList.toggle('on', other === b);
   });
 }
 </script>
