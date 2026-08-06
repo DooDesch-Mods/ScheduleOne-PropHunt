@@ -100,7 +100,7 @@ body {
 .rail-mid { gap: 10px; }
 .clockbox { gap: 7px; }
 
-.clock { flex-direction: row; align-items: center; gap: 4px; height: 45px; }
+.clock { flex-direction: row; align-items: center; gap: 4px; height: 52px; }
 .digit { flex: 0; }
 .colon { flex: 0; }
 
@@ -109,6 +109,11 @@ body {
 .gcell { flex: 1; height: 4px; background: #20272A; transition: background-color 300ms; }
 
 .clock-note { font-size: 11px; color: var(--mute); }
+
+/* No countdown in this phase: the slab goes away rather than sitting there showing dashes. */
+.clockbox.blank .clock { display: none; }
+.clockbox.blank .gauge { display: none; }
+.clockbox.blank .clock-note { font-size: 13px; color: var(--mid); }
 
 /* ---- the tally: one block per hider, filled while they are still out there ---- */
 
@@ -410,45 +415,3 @@ body {
 .dress-name { font-size: 17px; font-weight: 700; }
 
 .pair { flex-direction: row; gap: 8px; }
-
-/* ------------------------------------------------------------------------------------- portrait ---- */
-
-@media (orientation: portrait) {
-
-  .app { flex-direction: column; }
-
-  /* The rail becomes a header: the clock and the tally side by side, the vitals wrapping underneath as cells.
-     Stacking it unchanged would eat half the screen before a single row of content. */
-  .rail {
-    width: 100%;
-    border-right: 0;
-    border-bottom: 1px solid var(--hair);
-    padding: 10px 12px;
-    gap: 8px;
-  }
-
-  /* Clock and headcount side by side, so the header costs one block of height instead of two. They may only
-     take a flex basis HERE, inside a row - as children of the auto-height column rail they collapse to nothing
-     and their text draws on top of the next thing down. */
-  .rail-mid { flex-direction: row; align-items: flex-end; gap: 14px; }
-  .clockbox { flex: 1; min-width: 0; }
-  .tally-box { flex: 1; min-width: 0; }
-
-  .clock { height: 38px; }
-  .digit { width: 20px; height: 38px; }
-
-  .vitals { flex-direction: row; flex-wrap: wrap; gap: 6px; flex: 0; overflow: visible; }
-
-  .vital {
-    padding: 4px 8px;
-    border: 1px solid var(--hair);
-    gap: 5px;
-  }
-
-  .vital-label { flex: 0; }
-
-  .pane { padding: 12px 14px 16px 14px; }
-
-  .row-face { width: 34px; height: 34px; }
-  .row-name { font-size: 14px; }
-}

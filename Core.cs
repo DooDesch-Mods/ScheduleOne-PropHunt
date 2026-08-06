@@ -190,12 +190,14 @@ namespace PropHunt
         /// </summary>
         private static void RegisterPhoneApp()
         {
+            // Landscape only. The app is a board - a rail of state beside a working surface - and at 400px wide
+            // that split has to become a stack, which pushes the type down to a size nobody reads mid-round.
             _phone = Sideload.Api.Apps.Register(
                     id: "prophunt",
                     bundlePrefix: "PropHunt.Assets.prophunt",
                     title: "PropHunt",
                     iconLabel: "PropHunt")
-                .Orientation("landscape", "portrait");
+                .Orientation("landscape");
 
             Phone.PhoneImages.UseHandle(_phone);
             Phone.PhoneBackend.Install(_phone, new Phone.GameHost());

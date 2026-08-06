@@ -30,14 +30,14 @@ function all(selector) {
 
 /* ------------------------------------------------------------------------------------ seven segment ---- */
 
-const DIGIT_W = 24, DIGIT_H = 45, SEG_T = 5;
+const DIGIT_W = 28, DIGIT_H = 52, SEG_T = 6;
 const SEG_GEOM = {
   a: { left: SEG_T, top: 0, width: DIGIT_W - 2 * SEG_T, height: SEG_T },
-  b: { left: DIGIT_W - SEG_T, top: SEG_T, width: SEG_T, height: 15 },
-  f: { left: 0, top: SEG_T, width: SEG_T, height: 15 },
-  g: { left: SEG_T, top: 20, width: DIGIT_W - 2 * SEG_T, height: SEG_T },
-  c: { left: DIGIT_W - SEG_T, top: 25, width: SEG_T, height: 15 },
-  e: { left: 0, top: 25, width: SEG_T, height: 15 },
+  b: { left: DIGIT_W - SEG_T, top: SEG_T, width: SEG_T, height: 17 },
+  f: { left: 0, top: SEG_T, width: SEG_T, height: 17 },
+  g: { left: SEG_T, top: 23, width: DIGIT_W - 2 * SEG_T, height: SEG_T },
+  c: { left: DIGIT_W - SEG_T, top: 29, width: SEG_T, height: 17 },
+  e: { left: 0, top: 29, width: SEG_T, height: 17 },
   d: { left: SEG_T, top: DIGIT_H - SEG_T, width: DIGIT_W - 2 * SEG_T, height: SEG_T },
 };
 
@@ -91,13 +91,13 @@ class SevenSegment {
     box.style.width = '9px';
     box.style.height = DIGIT_H + 'px';
 
-    for (const top of [14, 28]) {
+    for (const top of [16, 33]) {
       const dot = document.createElement('div');
       dot.style.position = 'absolute';
-      dot.style.left = '2px';
+      dot.style.left = '3px';
       dot.style.top = top + 'px';
-      dot.style.width = '5px';
-      dot.style.height = '5px';
+      dot.style.width = '6px';
+      dot.style.height = '6px';
       dot.style.background = '#3A4448';
       box.appendChild(dot);
     }
@@ -221,15 +221,13 @@ class App {
     }
 
     document.addEventListener('back', (e) => {
-      // Nothing to step back FROM unless a value is being typed: both panes are always on screen in landscape,
-      // and portrait keeps the tab bar. Taking the press otherwise would trap the player one level deep.
+      // The rail and the tab bar are always on screen, so there is nothing to step back FROM unless a value is
+      // being typed. Taking the press otherwise would leave the player unable to close the app at all.
       if (!this.#editing) return;
       e.preventDefault();
       this.#editing = null;
       this.render();
     });
-
-    document.addEventListener('orientationchange', () => this.render());
 
     s1.on('ph.changed', () => this.pull());
 
@@ -371,17 +369,24 @@ class App {
     tally.replaceChildren();
     for (let i = 0; i < total; i++) tally.appendChild(el('div', i < s.hidersAlive ? 'mark' : 'mark out'));
 
+    // A phase without a deadline has no clock, and a seven-segment frame showing two dashes reads as a broken
+    // instrument rather than as "no timer". Hide the slab and let the line under it carry the phase instead.
+    const running = s.ends > 0;
+    $('clockbox').className = running ? 'clockbox' : 'clockbox blank';
     $('clocknote').textContent = this.#clockNote(s);
 
     this.#renderVitals(s);
   }
 
+  /** The line under the clock. In a phase with no deadline it stands in for the clock entirely, so it has to
+   *  say something on its own rather than annotate a number that is not there. */
   #clockNote(s) {
     if (s.phase === 'Lobby') return plural(s.lobby, 'player in the lobby', 'players in the lobby');
     if (s.phase === 'Hiding') return 'Hunters are released when this runs out.';
     if (s.phase === 'Hunting') return 'Round ' + s.round;
     if (s.phase === 'RoundEnd' || s.phase === 'Safehouse')
       return s.nextRound >= 0 ? 'Next round in ' + s.nextRound + 's' : 'Waiting for the host.';
+    if (s.phase === 'MatchEnd') return 'Match over.';
     return '';
   }
 

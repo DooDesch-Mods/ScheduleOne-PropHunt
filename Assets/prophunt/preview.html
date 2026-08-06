@@ -18,7 +18,6 @@
 
   .frame-label { font-size: 11px; color: #6b7378; margin: 0 0 6px; letter-spacing: .5px; }
   #viewport { border: 1px solid #3a4148; background: #0E1113; width: 733px; height: 400px; overflow: hidden; }
-  #viewport.portrait { width: 400px; height: 733px; }
 
   /* The renderer treats every element as a flex container defaulting to COLUMN, and border-box is always in
      force. `:where` so this carries zero specificity and can never outrank a class in app.css. */
@@ -48,7 +47,7 @@ viewport.innerHTML = `
   <div class="app" id="app">
     <div class="rail" id="rail">
       <div class="stamp phase" id="phase">LOBBY</div>
-      <div class="clockbox">
+      <div class="clockbox" id="clockbox">
         <div class="clock" id="clock"></div>
         <div class="gauge" id="gauge"></div>
         <div class="clock-note" id="clocknote"></div>
@@ -89,18 +88,6 @@ fetch('app.js')
   .then((src) => new Function('document', 's1', 'console', src)(scoped, s1, console))
   .catch((e) => { document.body.innerHTML += '<pre style="color:#E4572E">' + e + '</pre>'; });
 
-// Portrait is a media query the browser will not honour for a 400px-wide element, so the toggle rewrites those
-// rules onto a class instead. Same stylesheet, same rules, just re-scoped.
-fetch('app.css').then((r) => r.text()).then((css) => {
-  const at = css.indexOf('@media (orientation: portrait)');
-  if (at < 0) return;
-  const body = css.slice(css.indexOf('{', at) + 1, css.lastIndexOf('}'));
-  const style = document.createElement('style');
-  style.textContent = body.replace(/(^|\})\s*([^{}@]+)\{/g,
-    (m, close, sel) => close + ' ' + sel.split(',').map((s) => '#viewport.portrait ' + s.trim()).join(',') + '{');
-  document.head.appendChild(style);
-});
-
 const controls = document.getElementById('controls');
 
 function chip(label, onClick) {
@@ -111,17 +98,10 @@ function chip(label, onClick) {
   return b;
 }
 
-const turn = chip('turn the phone', () => {
-  const portrait = viewport.classList.toggle('portrait');
-  s1.setOrientation(portrait ? 'portrait' : 'landscape');
-  document.getElementById('framelabel').textContent = portrait ? 'PORTRAIT 400 x 733' : 'LANDSCAPE 733 x 400';
-  turn.classList.toggle('on', portrait);
-});
-
 for (const name of __mock.scenarios) {
   const b = chip(name, () => {
     __mock.pick(name);
-    for (const other of controls.children) if (other !== turn) other.classList.toggle('on', other === b);
+    for (const other of controls.children) other.classList.toggle('on', other === b);
   });
 }
 </script>
