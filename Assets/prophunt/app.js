@@ -749,8 +749,7 @@ class App {
       const chips = el('div', 'chips');
       for (const name of s.presets) {
         const on = name === s.activePreset;
-        chips.appendChild(button(on ? 'chip on' : 'chip', name, on ? 'check' : null,
-          () => this.#send('ph.preset', name)));
+        chips.appendChild(button(on ? 'chip on' : 'chip', name, null, () => this.#send('ph.preset', name)));
       }
       pane.appendChild(chips);
       pane.appendChild(el('div', 'note', s.activePreset
