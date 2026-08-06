@@ -198,6 +198,18 @@ namespace PropHunt.Phone
                 try { spec = PropHuntSettingsSpec.Build(); }
                 catch { return views; }
 
+                // Marks are measured against the preset the settings still match, not against the saved host
+                // preference - see BaselineFor.
+                SettingPreset live = null;
+                try
+                {
+                    string active = ActivePreset;
+                    if (active.Length > 0)
+                        foreach (SettingPreset p in RoundPresets.Build())
+                            if (string.Equals(p.Name, active, StringComparison.Ordinal)) { live = p; break; }
+                }
+                catch { }
+
                 foreach (SettingDescriptor d in spec)
                 {
                     values.TryGetValue(d.Key, out string value);
@@ -210,7 +222,7 @@ namespace PropHunt.Phone
                         Type = TypeName(d.Type),
                         Unit = d.Unit,
                         Value = value ?? d.Default,
-                        Default = d.Default,
+                        Default = BaselineFor(d, live),
                         Min = d.Min,
                         Max = d.Max,
                         Step = d.Step <= 0 ? 1 : d.Step,
@@ -248,6 +260,63 @@ namespace PropHunt.Phone
                 catch { }
                 return names;
             }
+        }
+
+        /// <summary>
+        /// The preset the live settings still match, or "" when they match none.
+        ///
+        /// Nothing records which preset was applied - `SetSetting` writes values, not a choice - so this asks the
+        /// only question that can be answered from the state that exists: does every value this preset names still
+        /// hold? Tweak one of them and the answer becomes no, which is exactly when the app should stop claiming
+        /// a preset is selected.
+        /// </summary>
+        public string ActivePreset
+        {
+            get
+            {
+                var c = Ctl;
+                if (c == null) return "";
+
+                try
+                {
+                    Dictionary<string, string> live = c.Settings.ToValues();
+
+                    foreach (SettingPreset p in RoundPresets.Build())
+                    {
+                        if (p.Values == null || p.Values.Count == 0) continue;
+                        if (MatchesEveryValue(p, live)) return p.Name;
+                    }
+                }
+                catch { }
+
+                return "";
+            }
+        }
+
+        /// <summary>Every value the preset names, compared as text the way both sides were written.</summary>
+        private static bool MatchesEveryValue(SettingPreset preset, Dictionary<string, string> live)
+        {
+            foreach (KeyValuePair<string, string> want in preset.Values)
+            {
+                if (!live.TryGetValue(want.Key, out string have)) return false;
+                if (!string.Equals(have, want.Value, StringComparison.OrdinalIgnoreCase)) return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// What a setting is measured against for the "changed" mark.
+        ///
+        /// The descriptor's own Default is the saved host preference, which nobody can see and which drifts with
+        /// every session someone hosted. Measuring against the PRESET the settings currently match is the thing a
+        /// player can actually reason about: the mark then means "this is not what Classic Hunt says", and it
+        /// disappears again when the value is put back.
+        /// </summary>
+        private static string BaselineFor(SettingDescriptor d, SettingPreset preset)
+        {
+            if (preset?.Values != null && preset.Values.TryGetValue(d.Key, out string fromPreset)) return fromPreset;
+            return d.Default;
         }
 
         // ---- safehouse ----

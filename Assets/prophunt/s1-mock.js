@@ -106,6 +106,7 @@ function base(over) {
       downed: false, downedLeft: 0, outside: false, water: false, grace: 0,
     },
     players: [], settings: settings(), presets: ['Classic Hunt', 'Infection', 'Panic Room', 'Deep Cover'],
+    activePreset: 'Classic Hunt',
     safehouse: { name: 'Motel Room 2', code: 'motel2', options: 3, ready: false },
     awards: [],
     ...over,

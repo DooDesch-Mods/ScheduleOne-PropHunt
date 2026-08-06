@@ -743,10 +743,19 @@ class App {
     pane.appendChild(head);
 
     if (s.host && s.presets.length > 0) {
+      // The mod does not record which preset was applied - it only stores values - so "active" means every value
+      // this preset names still holds. Tweak one and the highlight goes out, which is the truth: the rules are no
+      // longer that preset.
       const chips = el('div', 'chips');
-      for (const name of s.presets)
-        chips.appendChild(button('chip', name, null, () => this.#send('ph.preset', name)));
+      for (const name of s.presets) {
+        const on = name === s.activePreset;
+        chips.appendChild(button(on ? 'chip on' : 'chip', name, on ? 'check' : null,
+          () => this.#send('ph.preset', name)));
+      }
       pane.appendChild(chips);
+      pane.appendChild(el('div', 'note', s.activePreset
+        ? 'Rules match ' + s.activePreset + '. A dot marks anything changed away from it.'
+        : 'Rules do not match any preset. A dot marks anything changed away from the last one applied.'));
       pane.appendChild(el('div', 'rule'));
     }
 

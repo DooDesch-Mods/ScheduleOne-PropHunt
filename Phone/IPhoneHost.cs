@@ -66,6 +66,10 @@ namespace PropHunt.Phone
         /// <summary>Preset names the host may apply live. Empty for clients.</summary>
         IReadOnlyList<string> Presets { get; }
 
+        /// <summary>The preset the live settings still match, or "" when a value has been tweaked away from all
+        /// of them. Nothing records which one was applied, so this is answered by comparing values.</summary>
+        string ActivePreset { get; }
+
         SafehouseView Safehouse { get; }
 
         IReadOnlyList<AwardView> Awards { get; }

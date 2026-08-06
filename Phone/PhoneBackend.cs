@@ -90,6 +90,7 @@ namespace PropHunt.Phone
               .Append(_host.AliveHiders).Append('|')
               .Append(_host.LobbyMembers).Append('|')
               .Append(_host.Safehouse.Code).Append('|')
+              .Append(_host.ActivePreset).Append('|')
               .Append(_host.Safehouse.Ready ? 1 : 0).Append('|');
 
             LocalView me = _host.Me;
@@ -151,6 +152,7 @@ namespace PropHunt.Phone
                 .Add("players", Roster(host))
                 .Add("settings", SettingsArray(host))
                 .Add("presets", Strings(host.Presets))
+                .Add("activePreset", host.ActivePreset ?? "")
                 .Add("safehouse", Json.Object()
                     .Add("name", house.Name)
                     .Add("code", house.Code)
