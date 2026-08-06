@@ -4,6 +4,14 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-08-06
+
+### Fixed
+
+- Hunters can use the phone torch again. A running round blocked it for everyone instead of only for hiders.
+- A hider who was already carrying a lit torch stops glowing inside their prop. The light went out on their own
+  screen only, so every other player still saw it, and pressing [F] could not switch it off.
+
 ## [1.3.1] - 2026-08-06
 
 ### Fixed
