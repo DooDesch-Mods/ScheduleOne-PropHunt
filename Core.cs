@@ -171,6 +171,7 @@ namespace PropHunt
             Log.Msg("[PropHunt] session ended; tearing down.");
             UI.Hud.HudController.Teardown();   // destroy the uGUI HUD canvas with the session
             Phone.PhoneImages.Reset();         // the next session has a different roster and a different prop catalog
+            Phone.GameHost.ForgetPreset();     // and its rules start from whatever the next host picks
             _controller?.Dispose();
             _controller = null;
             _session = null;

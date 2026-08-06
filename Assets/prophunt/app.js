@@ -784,9 +784,14 @@ class App {
         chips.appendChild(button(on ? 'chip on' : 'chip', name, null, () => this.#send('ph.preset', name)));
       }
       pane.appendChild(chips);
-      pane.appendChild(el('div', 'note', s.activePreset
-        ? 'Rules match ' + s.activePreset + '. A dot marks anything changed away from it.'
-        : 'Rules do not match any preset. A dot marks anything changed away from the last one applied.'));
+      // Say what the dots measure against, because after one tweak nothing is highlighted any more and a mark
+      // with an unnamed baseline is just a dot.
+      pane.appendChild(el('div', 'note',
+        s.baselinePreset
+          ? (s.activePreset
+              ? 'Rules match ' + s.activePreset + '. A dot marks anything changed away from it.'
+              : 'Changed away from ' + s.baselinePreset + '. A dot marks each one.')
+          : 'Pick a preset to start from, or tune the rules one by one.'));
       pane.appendChild(el('div', 'rule'));
     }
 

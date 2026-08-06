@@ -21,6 +21,21 @@ namespace PropHunt.Phone
     {
         private static GameModeController Ctl => GameModeController.Active;
 
+        /// <summary>
+        /// The preset the host last applied from the phone, which is what the change marks are read against.
+        ///
+        /// It cannot be derived from the settings: the moment one value is tweaked they match no preset at all,
+        /// and that is exactly the moment the marks matter most. Deriving it was the first attempt and it left
+        /// every mark pointing at the saved host preference - invisible, and different on every machine.
+        ///
+        /// Static because it belongs to the session rather than to this object, and forgotten when the session
+        /// ends. A round started from the Side Hustle host form leaves it empty, and the exact-match answer below
+        /// stands in until someone picks one here.
+        /// </summary>
+        private static string _appliedPreset = "";
+
+        internal static void ForgetPreset() => _appliedPreset = "";
+
         public bool Available => Ctl != null;
 
         public bool IsHost => Ctl?.IsHost ?? false;
@@ -203,12 +218,16 @@ namespace PropHunt.Phone
                 SettingPreset live = null;
                 try
                 {
-                    string active = ActivePreset;
-                    if (active.Length > 0)
+                    // The one the host picked, if they picked one - it stays the reference after a tweak, which is
+                    // when a mark is worth anything. Otherwise fall back to whichever preset the values still
+                    // match exactly, so a session launched from the host form is not left without a baseline.
+                    string against = _appliedPreset.Length > 0 ? _appliedPreset : ActivePreset;
+
+                    if (against.Length > 0)
                     {
                         SettingPreset[] all = RoundPresets.Build();
                         foreach (SettingPreset p in all)
-                            if (string.Equals(p.Name, active, StringComparison.Ordinal))
+                            if (string.Equals(p.Name, against, StringComparison.Ordinal))
                             {
                                 live = BaselinePresetFor(p, all);
                                 break;
@@ -299,6 +318,9 @@ namespace PropHunt.Phone
                 return "";
             }
         }
+
+        /// <summary>What the change marks are read against. See <see cref="_appliedPreset"/>.</summary>
+        public string BaselinePreset => _appliedPreset.Length > 0 ? _appliedPreset : ActivePreset;
 
         /// <summary>Every value the preset names, compared as text the way both sides were written.</summary>
         private static bool MatchesEveryValue(SettingPreset preset, Dictionary<string, string> live)
@@ -440,6 +462,7 @@ namespace PropHunt.Phone
                     if (p.Values == null) return "error";
 
                     foreach (KeyValuePair<string, string> kv in p.Values) c.SetSetting(kv.Key, kv.Value);
+                    _appliedPreset = p.Name;
                     return "ok";
                 }
             }

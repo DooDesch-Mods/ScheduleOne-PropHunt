@@ -66,9 +66,13 @@ namespace PropHunt.Phone
         /// <summary>Preset names the host may apply live. Empty for clients.</summary>
         IReadOnlyList<string> Presets { get; }
 
-        /// <summary>The preset the live settings still match, or "" when a value has been tweaked away from all
-        /// of them. Nothing records which one was applied, so this is answered by comparing values.</summary>
+        /// <summary>The preset the live settings still match exactly, or "" once any value differs. This is what
+        /// the chip highlight follows.</summary>
         string ActivePreset { get; }
+
+        /// <summary>The preset the change marks are read against - the one the host applied, which survives a
+        /// tweak. Empty when nobody has picked one this session.</summary>
+        string BaselinePreset { get; }
 
         SafehouseView Safehouse { get; }
 

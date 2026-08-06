@@ -153,6 +153,7 @@ namespace PropHunt.Phone
                 .Add("settings", SettingsArray(host))
                 .Add("presets", Strings(host.Presets))
                 .Add("activePreset", host.ActivePreset ?? "")
+                .Add("baselinePreset", host.BaselinePreset ?? "")
                 .Add("safehouse", Json.Object()
                     .Add("name", house.Name)
                     .Add("code", house.Code)
