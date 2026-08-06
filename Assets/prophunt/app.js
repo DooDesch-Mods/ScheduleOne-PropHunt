@@ -197,10 +197,19 @@ function el(tag, className, text) {
   return node;
 }
 
+/* An icon needs the label in a sibling; without one the text goes straight on the button and the whole control
+ * is a single box. A render rebuilds every box at well over a millisecond each, so on a pane full of chips and
+ * rows that second box per button is real time - and it buys nothing. */
 function button(className, label, iconName, onClick) {
   const b = el('div', className);
-  if (iconName) b.appendChild(icon(iconName, 15));
-  b.appendChild(el('div', null, label));
+
+  if (iconName) {
+    b.appendChild(icon(iconName, 15));
+    b.appendChild(el('div', null, label));
+  } else {
+    b.textContent = label;
+  }
+
   if (onClick) b.addEventListener('click', onClick);
   return b;
 }
@@ -211,11 +220,15 @@ class App {
   #snap = null;
   #takenAt = 0;        // local ms when #snap was read, so the clock can run on between snapshots
   #pane = s1.storage.get('pane', 'board');
-  #category = 'all';
+  /* Opens on one category, not on all of them. Every row is about a dozen boxes and a render rebuilds each one,
+   * so "All" was 378 boxes and 554ms of frozen frame every time the pane opened - measured, not guessed. The
+   * category chips exist to make thirty-one rules navigable; making them the default is what they were for. */
+  #category = s1.storage.get('rules.category', 'Round');
   #editing = null;     // key of the rule whose value is being typed
   #clock = null;
   #gauge = null;
   #whistle = null;
+  #renderQueued = false;
 
   start() {
     this.#clock = new SevenSegment($('clock'), 4);
@@ -226,7 +239,7 @@ class App {
         this.#pane = tab.getAttribute('data-pane');
         this.#editing = null;
         s1.storage.set('pane', this.#pane);
-        this.render();
+        this.queueRender();
       });
     }
 
@@ -236,7 +249,7 @@ class App {
       if (!this.#editing) return;
       e.preventDefault();
       this.#editing = null;
-      this.render();
+      this.queueRender();
     });
 
     s1.on('ph.changed', () => this.pull());
@@ -256,13 +269,32 @@ class App {
 
   pull() {
     const raw = s1.call('ph.snapshot');
-    if (!raw) { this.#snap = null; this.render(); return; }
 
-    try { this.#snap = JSON.parse(raw); }
-    catch (err) { console.error('bad snapshot: ' + err); this.#snap = null; }
+    if (!raw) this.#snap = null;
+    else {
+      try { this.#snap = JSON.parse(raw); }
+      catch (err) { console.error('bad snapshot: ' + err); this.#snap = null; }
+    }
 
     this.#takenAt = Date.now();
-    this.render();
+    this.queueRender();
+  }
+
+  /**
+   * Render at most once per burst.
+   *
+   * Anything the host does arrives twice: the command's own answer, and the state change the mod pushes a frame
+   * or two later because that same command moved the state. Each render rebuilds every box on the page, so
+   * applying a preset cost two full rebuilds back to back - which is exactly the stutter you feel when clicking
+   * from one ruleset to the next. The snapshot itself is fetched every time and is cheap; only the drawing waits.
+   *
+   * The window is short enough not to read as lag on a tab switch and long enough to swallow the echo.
+   */
+  queueRender() {
+    if (this.#renderQueued) return;
+
+    this.#renderQueued = true;
+    setTimeout(() => { this.#renderQueued = false; this.render(); }, 30);
   }
 
   /** Host time right now, from the snapshot's own stamp plus how long ago we read it. */
@@ -761,18 +793,27 @@ class App {
     const cats = [];
     for (const row of s.settings) if (!cats.includes(row.cat)) cats.push(row.cat);
 
+    // A remembered category that no longer exists would show an empty pane with no way to tell why.
+    if (this.#category !== 'all' && !cats.includes(this.#category)) this.#category = cats[0] || 'all';
+
     const filter = el('div', 'chips');
     filter.appendChild(button(this.#category === 'all' ? 'chip on' : 'chip', 'All', null,
-      () => { this.#category = 'all'; this.render(); }));
+      () => this.#pickCategory('all')));
     for (const c of cats)
       filter.appendChild(button(this.#category === c ? 'chip on' : 'chip', CATEGORY_SHORT[c] || c, null,
-        () => { this.#category = c; this.render(); }));
+        () => this.#pickCategory(c)));
     pane.appendChild(filter);
 
     for (const row of s.settings) {
       if (this.#category !== 'all' && row.cat !== this.#category) continue;
       pane.appendChild(this.#settingRow(row, s.host));
     }
+  }
+
+  #pickCategory(name) {
+    this.#category = name;
+    s1.storage.set('rules.category', name);
+    this.queueRender();
   }
 
   #settingRow(row, host) {
@@ -848,7 +889,7 @@ class App {
       box.appendChild(field);
     } else {
       const shown = el('div', 'step-value', row.unit ? row.value + ' ' + row.unit : row.value);
-      shown.addEventListener('click', () => { this.#editing = row.key; this.render(); });
+      shown.addEventListener('click', () => { this.#editing = row.key; this.queueRender(); });
       box.appendChild(shown);
     }
 

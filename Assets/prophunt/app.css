@@ -245,6 +245,7 @@ body {
   font-weight: 700;
   letter-spacing: 1px;
   transition: background-color 140ms, border-color 140ms;
+  text-align: center;   /* a button whose label is direct text is a text leaf, not a flex row */
 }
 
 .act img { color: #04211F; }
@@ -269,6 +270,7 @@ body {
   font-size: 12px;
   letter-spacing: 0.6px;
   transition: background-color 140ms, border-color 140ms, color 140ms;
+  text-align: center;   /* a button whose label is direct text is a text leaf, not a flex row */
 }
 
 .btn img { color: var(--mid); }
@@ -300,6 +302,7 @@ body {
   font-weight: 700;
   letter-spacing: 1px;
   transition: background-color 140ms;
+  text-align: center;   /* a button whose label is direct text is a text leaf, not a flex row */
 }
 
 .danger img { color: var(--hunter); }
@@ -344,6 +347,7 @@ body {
 
 .chip {
   padding: 5px 10px;
+  text-align: center;
   border: 1px solid var(--hair);
   color: var(--mute);
   font-size: 11px;

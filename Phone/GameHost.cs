@@ -198,15 +198,22 @@ namespace PropHunt.Phone
                 try { spec = PropHuntSettingsSpec.Build(); }
                 catch { return views; }
 
-                // Marks are measured against the preset the settings still match, not against the saved host
-                // preference - see BaselineFor.
+                // Marks are measured against a preset rather than against the saved host preference, and a saved
+                // "Custom - X" is measured against X - see BaselineFor and BaselinePresetFor.
                 SettingPreset live = null;
                 try
                 {
                     string active = ActivePreset;
                     if (active.Length > 0)
-                        foreach (SettingPreset p in RoundPresets.Build())
-                            if (string.Equals(p.Name, active, StringComparison.Ordinal)) { live = p; break; }
+                    {
+                        SettingPreset[] all = RoundPresets.Build();
+                        foreach (SettingPreset p in all)
+                            if (string.Equals(p.Name, active, StringComparison.Ordinal))
+                            {
+                                live = BaselinePresetFor(p, all);
+                                break;
+                            }
+                    }
                 }
                 catch { }
 
@@ -309,14 +316,33 @@ namespace PropHunt.Phone
         /// What a setting is measured against for the "changed" mark.
         ///
         /// The descriptor's own Default is the saved host preference, which nobody can see and which drifts with
-        /// every session someone hosted. Measuring against the PRESET the settings currently match is the thing a
-        /// player can actually reason about: the mark then means "this is not what Classic Hunt says", and it
-        /// disappears again when the value is put back.
+        /// every session someone hosted. Measuring against a PRESET is the thing a player can reason about: the
+        /// mark then means "this is not what Classic Hunt says", and it clears again when the value goes back.
+        ///
+        /// A saved "Custom - X" is measured against X, not against itself. It is X with someone's tweaks - that is
+        /// what its name says and what its Mode records - so measuring it against its own values would mark
+        /// nothing, which is exactly the question it exists to answer.
         /// </summary>
-        private static string BaselineFor(SettingDescriptor d, SettingPreset preset)
+        private static string BaselineFor(SettingDescriptor d, SettingPreset baseline)
         {
-            if (preset?.Values != null && preset.Values.TryGetValue(d.Key, out string fromPreset)) return fromPreset;
+            if (baseline?.Values != null && baseline.Values.TryGetValue(d.Key, out string fromPreset)) return fromPreset;
             return d.Default;
+        }
+
+        /// <summary>
+        /// The preset a given preset's changes should be read against: the one its <c>Mode</c> names when that is a
+        /// different preset - "Custom - Classic Hunt" carries Mode "Classic Hunt" - and otherwise itself.
+        /// </summary>
+        private static SettingPreset BaselinePresetFor(SettingPreset active, SettingPreset[] all)
+        {
+            if (active == null) return null;
+            if (string.IsNullOrEmpty(active.Mode) || string.Equals(active.Mode, active.Name, StringComparison.Ordinal))
+                return active;
+
+            foreach (SettingPreset p in all)
+                if (string.Equals(p.Name, active.Mode, StringComparison.Ordinal)) return p;
+
+            return active;   // its base is not on the list any more - better its own values than the hidden default
         }
 
         // ---- safehouse ----
