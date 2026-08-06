@@ -930,6 +930,9 @@ namespace PropHunt.Game
             // ...and put the phone torch out. Blocking the toggle stops it being switched on, but someone who was
             // already holding a light when they became a prop would keep glowing inside it.
             if (Patches.HotbarSuppression.Disguised) DouseFlashlight();
+            // ...and stand a prop back up. A ForcePlayerCrouch trigger sets the flag directly, so blocking the toggle
+            // never sees it; the capsule is prop-sized either way, so there is no low ceiling to duck under.
+            if (Patches.HotbarSuppression.Disguised) StandUpIfCrouched();
             TickPropLock();   // a lock lives and dies with the prop it holds
             _disguise?.Apply(_state);
             _decoy?.Apply(_state);
@@ -2063,6 +2066,19 @@ namespace PropHunt.Game
                 if (local != null) local.SetFlashlightOn_Server(false);   // our network prefix always allows OFF
             }
             catch (Exception e) { Core.LogDebug("[PropHunt] douse flashlight failed: " + e.Message); }
+        }
+
+        /// <summary>Clear a crouch a prop never asked for. The world sets it directly through
+        /// ScheduleOne.Tools.ForcePlayerCrouch (OnTriggerEnter, no exit handler), which no toggle patch can intercept -
+        /// and a crouching crate reads as a player. Compares first, so it is free to call every frame.</summary>
+        private static void StandUpIfCrouched()
+        {
+            try
+            {
+                var pm = PlayerSingleton<Il2CppScheduleOne.PlayerScripts.PlayerMovement>.Instance;
+                if (pm != null && pm.IsCrouched) pm.SetCrouched(false);
+            }
+            catch (Exception e) { Core.LogDebug("[PropHunt] stand-up failed: " + e.Message); }
         }
 
         private void SetHotbar(bool enabled)
