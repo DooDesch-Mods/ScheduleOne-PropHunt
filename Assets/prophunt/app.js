@@ -10,12 +10,10 @@
  * 2. THE ONE-SECOND TICK MUST NOT REBUILD THE PAGE. Writing textContent marks the document dirty and the host
  *    rebuilds the whole thing at roughly half a millisecond per box - a hitch every second, worst exactly when a
  *    twenty-player roster is on screen and the player most needs a smooth frame. Only `transform`, `background*`,
- *    `border-color`, `border-radius` and `box-shadow` repaint without a rebuild. So everything that moves once a
- *    second is drawn as boxes and animated by background colour: the clock is a seven-segment display and every
- *    continuous countdown is a gauge. Numbers that change on an EVENT stay text, because an event rebuilds anyway.
- *
- * Both are also why the clock looks the way it does. A yard timer is a seven-segment display; here that is the
- * cheap way to draw it as well as the right one.
+ *    `border-color`, `border-radius` and `box-shadow` repaint without a rebuild. So nothing that moves once a
+ *    second writes text: the clock slides reels of pre-rendered glyphs with `transform`, and every continuous
+ *    countdown is a gauge of fixed cells recoloured by `background`. Numbers that change on an EVENT stay text,
+ *    because an event rebuilds the page anyway.
  */
 
 const $ = (id) => document.getElementById(id);
@@ -30,87 +28,74 @@ function all(selector) {
 
 /* ------------------------------------------------------------------------------------ seven segment ---- */
 
-const DIGIT_W = 28, DIGIT_H = 52, SEG_T = 6;
-const SEG_GEOM = {
-  a: { left: SEG_T, top: 0, width: DIGIT_W - 2 * SEG_T, height: SEG_T },
-  b: { left: DIGIT_W - SEG_T, top: SEG_T, width: SEG_T, height: 17 },
-  f: { left: 0, top: SEG_T, width: SEG_T, height: 17 },
-  g: { left: SEG_T, top: 23, width: DIGIT_W - 2 * SEG_T, height: SEG_T },
-  c: { left: DIGIT_W - SEG_T, top: 29, width: SEG_T, height: 17 },
-  e: { left: 0, top: 29, width: SEG_T, height: 17 },
-  d: { left: SEG_T, top: DIGIT_H - SEG_T, width: DIGIT_W - 2 * SEG_T, height: SEG_T },
-};
+/* The game ships a real seven-segment typeface - Sideload exposes it as `font-family: game-segment`
+ * (Sideload/Paint/TextSupport.cs) - so the clock is set in it rather than drawn out of rectangles.
+ *
+ * The catch is that changing a digit means changing text, and any text write rebuilds every box on the page.
+ * So nothing here writes text after construction: each digit is a reel of the eleven glyphs it can show, clipped
+ * to one cell, and the digit changes by sliding the reel with `transform` - the one property that both repaints
+ * without a rebuild AND carries its children with it. A tenth of a second of travel turns that into the roll a
+ * split-flap or an odometer has, which is the motion this instrument has in life anyway.
+ *
+ * Behind each reel sits a static "8" in near-black: the segments a real display leaves faintly visible. It never
+ * changes, so it costs nothing. */
 
-const SEG_ORDER = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+const REEL = ['-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
-const DIGITS = {
-  '0': 'abcdef', '1': 'bc', '2': 'abged', '3': 'abgcd', '4': 'fgbc',
-  '5': 'afgcd', '6': 'afgecd', '7': 'abc', '8': 'abcdefg', '9': 'abfgcd',
-  '-': 'g', ' ': '',
-};
-
-const OFF = '#161C1F';
+/* The reel travels exactly one cell per glyph, so this MUST equal .cell's height in app.css - the digit box is
+ * taller by its two 1px borders, and stepping by the box instead leaves a sliver of the next glyph showing. */
+const CELL_H = 52;
 
 class SevenSegment {
-  #digits = [];
+  #reels = [];
 
-  /** Builds `count` digits with a colon before the last two, once. Nothing here runs again. */
+  /** Builds `count` digit reels with a colon before the last two, once. Nothing here runs again. */
   constructor(host, count) {
     host.replaceChildren();
 
     for (let i = 0; i < count; i++) {
       if (i === count - 2) host.appendChild(this.#colon());
-
-      const digit = document.createElement('div');
-      digit.className = 'digit';
-      digit.style.width = DIGIT_W + 'px';
-      digit.style.height = DIGIT_H + 'px';
-
-      const segs = {};
-      for (const name of SEG_ORDER) {
-        const g = SEG_GEOM[name];
-        const seg = document.createElement('div');
-        seg.style.position = 'absolute';
-        seg.style.left = g.left + 'px';
-        seg.style.top = g.top + 'px';
-        seg.style.width = g.width + 'px';
-        seg.style.height = g.height + 'px';
-        seg.style.background = OFF;
-        digit.appendChild(seg);
-        segs[name] = seg;
-      }
-
-      this.#digits.push(segs);
-      host.appendChild(digit);
+      host.appendChild(this.#digit());
     }
+  }
+
+  #digit() {
+    const box = document.createElement('div');
+    box.className = 'digit';
+
+    // The unlit segments, as a real display shows them. Static, so it is drawn once and never touched again.
+    const ghost = document.createElement('div');
+    ghost.className = 'digit-ghost';
+    ghost.textContent = '8';
+    box.appendChild(ghost);
+
+    const reel = document.createElement('div');
+    reel.className = 'reel';
+    for (const glyph of REEL) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.textContent = glyph;
+      reel.appendChild(cell);
+    }
+
+    box.appendChild(reel);
+    this.#reels.push(reel);
+    return box;
   }
 
   #colon() {
     const box = document.createElement('div');
     box.className = 'colon';
-    box.style.width = '9px';
-    box.style.height = DIGIT_H + 'px';
-
-    for (const top of [16, 33]) {
-      const dot = document.createElement('div');
-      dot.style.position = 'absolute';
-      dot.style.left = '3px';
-      dot.style.top = top + 'px';
-      dot.style.width = '6px';
-      dot.style.height = '6px';
-      dot.style.background = '#3A4448';
-      box.appendChild(dot);
-    }
-
+    box.textContent = ':';
     return box;
   }
 
-  /** `text` is one character per digit. Only background colours change, so this never rebuilds the page. */
-  show(text, colour) {
-    for (let i = 0; i < this.#digits.length; i++) {
-      const lit = DIGITS[text[i]] ?? '';
-      const segs = this.#digits[i];
-      for (const name of SEG_ORDER) segs[name].style.background = lit.includes(name) ? colour : OFF;
+  /** `text` is one character per digit. Only transforms move, so this never rebuilds the page. */
+  show(text) {
+    for (let i = 0; i < this.#reels.length; i++) {
+      let at = REEL.indexOf(text[i]);
+      if (at < 0) at = 0;                                  // anything unexpected shows a dash
+      this.#reels[i].style.transform = 'translateY(-' + (at * CELL_H) + 'px)';
     }
   }
 }
@@ -271,19 +256,24 @@ class App {
 
   tick() {
     const s = this.#snap;
-    if (!s || !s.ok) { this.#clock.show('  --', '#3A4448'); return; }
+    if (!s || !s.ok) { this.#clock.show('----'); return; }
 
     const left = this.secondsLeft();
 
     if (left < 0) {
-      this.#clock.show('----', '#3A4448');
+      this.#clock.show('----');
       this.#gauge.set(0, '#20272A');
       this.#paintWhistle();
       return;
     }
 
-    const colour = left <= 15 ? '#E4572E' : left <= 45 ? '#E8B22A' : '#F2F4F4';
-    this.#clock.show(mmss(left), colour);
+    this.#clock.show(mmss(left));
+
+    // The colour walk to amber and then to orange is a `color` write, which is inherited and so costs a rebuild -
+    // but it crosses a threshold twice in a phase rather than once a second, so it is paid where it is cheap.
+    const urgency = left <= 15 ? 'clock urgent' : left <= 45 ? 'clock warn' : 'clock';
+    const clock = $('clock');
+    if (clock.className !== urgency) clock.className = urgency;
 
     const span = s.phaseLen > 0 ? s.phaseLen : Math.max(1, left);
     this.#gauge.set(left / span, left <= 15 ? '#E4572E' : left <= 45 ? '#E8B22A' : '#08A6A6');

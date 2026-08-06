@@ -18,9 +18,12 @@
  *
  * Sideload notes that shaped the code below: px and % only (no rem/em/vh/calc), no grid, no z-index, no
  * keyframes, every element is a flex container defaulting to COLUMN, `margin: 0 auto` does not centre, one
- * border colour per box, and a scrolling child needs `min-height: 0` or it never scrolls. Icons are PNGs tinted
- * through `color`; that tint does NOT follow :hover (the repaint path never touches an image), so hover moves
- * backgrounds and borders and the icon colour changes only on a state the script re-renders.
+ * border colour per box, and a scrolling child needs `min-height: 0` or it never scrolls. `flex: 0` is a trap - it
+ * means 0 1 0%, so the box gets no basis and shrinks away; `flex: none` is what keeps a declared width. Icons are
+ * PNGs tinted through `color`; that tint does NOT follow :hover (the repaint path never touches an image), so
+ * hover moves backgrounds and borders and an icon recolours only on a state the script re-renders.
+ *
+ * Landscape only. At 400px the rail-beside-surface split has to become a stack, and the type with it.
  */
 
 :root {
@@ -92,17 +95,68 @@ body {
 
 /* ---- the clock slab ----
  *
- * A yard timer, drawn as seven-segment digits out of plain boxes. That is the world's own device, and it is also
- * the only shape that can tick once a second for free: lighting a segment is a background-colour write, which
- * repaints, while re-writing a text node marks the document dirty and rebuilds every box on the page. The
- * geometry lives in app.js next to the digit map, so the two cannot drift. */
+ * A yard timer, set in the game's own seven-segment face (Sideload maps `game-segment` onto the fs-sevegment
+ * asset the game already ships). Each digit is a reel of its eleven glyphs clipped to one cell; the digit
+ * changes by sliding the reel, because `transform` is the only property that repaints without rebuilding the
+ * page AND carries its children with it. Writing the text instead would rebuild every box on the page once a
+ * second. The travel is short enough to read as a roll rather than as a lag. */
 
 .rail-mid { gap: 10px; }
 .clockbox { gap: 7px; }
 
-.clock { flex-direction: row; align-items: center; gap: 4px; height: 52px; }
-.digit { flex: 0; }
-.colon { flex: 0; }
+.clock {
+  flex-direction: row;
+  align-items: center;
+  gap: 3px;
+  height: 54px;
+  color: var(--hi);
+}
+
+/* Two thresholds a phase, not one a second - a `color` write is inherited and takes the rebuild path. */
+.clock.warn   { color: var(--tape); }
+.clock.urgent { color: var(--hunter); }
+
+.digit {
+  width: 30px;
+  height: 54px;
+  overflow: hidden;
+  background: #0F1416;
+  border: 1px solid #171D20;
+}
+
+/* The segments an unlit digit still shows. Static: drawn once, never touched again. */
+.digit-ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: 52px;
+  font-family: game-segment;
+  font-size: 44px;
+  text-align: center;
+  align-items: center;
+  color: #191F22;
+}
+
+/* flex: none, or the reel is shrunk to the one cell its parent is tall and every glyph piles up. */
+.reel { flex: none; transition: transform 120ms; }
+
+.cell {
+  height: 52px;
+  font-family: game-segment;
+  font-size: 44px;
+  text-align: center;
+  align-items: center;
+}
+
+.colon {
+  width: 13px;
+  height: 54px;
+  font-family: game-segment;
+  font-size: 40px;
+  text-align: center;
+  align-items: center;
+}
 
 /* The gauge under it is segmented for the same reason: filling a bar by width would relayout every second. */
 .gauge { flex-direction: row; gap: 2px; height: 4px; }
@@ -126,7 +180,7 @@ body {
 .mark { width: 7px; height: 16px; background: var(--hider); }
 .mark.out { background: transparent; border: 1px solid var(--hair); }
 
-/* ---- vitals: label, bar, number. In portrait these wrap into a row of compact cells. ---- */
+/* ---- vitals: icon, label, value - the rail is the only place these live ---- */
 
 .vitals { gap: 7px; flex: 1; min-height: 0; overflow: auto; }
 

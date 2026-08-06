@@ -23,6 +23,16 @@
      force. `:where` so this carries zero specificity and can never outrank a class in app.css. */
   :where(#viewport, #viewport *) { display: flex; flex-direction: column; box-sizing: border-box; position: relative; }
   :where(#viewport img) { display: block; }
+
+  /* The game's faces do not exist in a browser. Its house typeface IS Open Sans (Sideload/Paint/TextSupport.cs),
+     so `game-ui` maps to it here and the text metrics land close. The clock is set in the game's own
+     seven-segment asset and has no web equivalent installed - it falls back to a monospace and is the one part
+     of this preview that looks materially different from the real thing. */
+  :where(#viewport, #viewport *) { font-family: "Open Sans", "Segoe UI", system-ui, sans-serif; }
+  #viewport .cell, #viewport .colon, #viewport .digit-ghost { font-family: "DSEG7 Classic", "Segment7", ui-monospace, monospace; }
+
+  /* Sideload has no align-content: wrapped lines stack tightly from the cross start. */
+  :where(#viewport, #viewport *) { align-content: flex-start; }
 </style>
 </head>
 <body>
@@ -30,8 +40,8 @@
 <h1>PropHunt phone app - browser preview</h1>
 <p class="note">
   Runs the shipped app.js and app.css against a stand-in mod, so structure, copy, state and flow can be checked
-  without launching the game. It is NOT the renderer: Chrome has real CSS, and the game does not. Check the layout
-  itself in game with F9 and Ctrl+F10.
+  without launching the game. It is NOT the renderer: Chrome has real CSS and the game does not, and the clock is
+  set in a font only the game has. Check the layout itself in game with F9 and Ctrl+F10.
 </p>
 
 <div class="controls" id="controls"></div>
