@@ -26,12 +26,12 @@ namespace PropHunt.Game
             {
                 var tm = NetworkSingleton<TimeManager>.Instance;
                 if (tm != null) { tm.SetTimeAndSync(s.TimeOfDay); tm.SetTimeSpeedMultiplier(s.FreezeTime ? 0f : 1f); }
-                Core.Log.Msg($"[PropHunt] world: time set to {s.TimeOfDay}{(s.FreezeTime ? ", progression frozen" : ", progression running")}.");
+                Core.Log.Msg($"world: time set to {s.TimeOfDay}{(s.FreezeTime ? ", progression frozen" : ", progression running")}.");
                 SetSewerGoblin(s.SewerGoblin);
                 SetSewerKing(false);
                 UnlockSewer();
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] ApplyHostWorld failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("ApplyHostWorld failed: " + e.Message); }
         }
 
         /// <summary>Host: resume normal time when the session ends.</summary>
@@ -65,9 +65,9 @@ namespace PropHunt.Game
                 var mgr = NetworkSingleton<Il2CppScheduleOne.Map.SewerManager>.Instance;
                 if (mgr == null || mgr.IsSewerUnlocked) return;
                 mgr.SetSewerUnlocked_Server();
-                Core.Log.Msg("[PropHunt] world: sewer unlocked for the round (no key needed).");
+                Core.Log.Msg("world: sewer unlocked for the round (no key needed).");
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] could not unlock the sewer: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("could not unlock the sewer: " + e.Message); }
         }
 
         private static bool _goblinDisabled;
@@ -91,9 +91,9 @@ namespace PropHunt.Game
                 if (npc.gameObject.activeSelf == enabled) { _kingDisabled = !enabled; return; }
                 npc.gameObject.SetActive(enabled);
                 _kingDisabled = !enabled;
-                Core.Log.Msg($"[PropHunt] world: sewer king {(enabled ? "restored" : "disabled for the round")}.");
+                Core.Log.Msg($"world: sewer king {(enabled ? "restored" : "disabled for the round")}.");
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] SetSewerKing failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("SetSewerKing failed: " + e.Message); }
         }
 
         /// <summary>
@@ -115,9 +115,9 @@ namespace PropHunt.Game
                 if (npc.gameObject.activeSelf == enabled) { _goblinDisabled = !enabled; return; }
                 npc.gameObject.SetActive(enabled);
                 _goblinDisabled = !enabled;
-                Core.Log.Msg($"[PropHunt] world: sewer goblin {(enabled ? "restored" : "disabled for the round")}.");
+                Core.Log.Msg($"world: sewer goblin {(enabled ? "restored" : "disabled for the round")}.");
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] SetSewerGoblin failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("SetSewerGoblin failed: " + e.Message); }
         }
 
         /// <summary>Dev/curation: lock the world to a bright time of day (HHMM) and freeze progression so props
@@ -125,14 +125,14 @@ namespace PropHunt.Game
         internal static void LockTimeOfDay(int hhmm)
         {
             try { var tm = NetworkSingleton<TimeManager>.Instance; if (tm != null) { tm.SetTimeAndSync(hhmm); tm.SetTimeSpeedMultiplier(0f); } }
-            catch (Exception e) { Core.LogDebug("[PropHunt] LockTimeOfDay failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("LockTimeOfDay failed: " + e.Message); }
         }
 
         /// <summary>Resume normal time progression (pair with <see cref="LockTimeOfDay"/>).</summary>
         internal static void RestoreTimeProgression()
         {
             try { var tm = NetworkSingleton<TimeManager>.Instance; if (tm != null) tm.SetTimeSpeedMultiplier(1f); }
-            catch (Exception e) { Core.LogDebug("[PropHunt] RestoreTimeProgression failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("RestoreTimeProgression failed: " + e.Message); }
         }
 
         /// <summary>Host: make police ignore players (applied once per officer; cheap to call each tick).</summary>
@@ -152,7 +152,7 @@ namespace PropHunt.Game
                     _suppressedOfficers.Add(id);
                 }
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] SuppressPolice failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("SuppressPolice failed: " + e.Message); }
         }
 
         /// <summary>All clients: keep the LOCAL player crime-free so NPCs/police never engage or arrest.</summary>
@@ -164,7 +164,7 @@ namespace PropHunt.Game
                 var cd = p != null ? p.CrimeData : null;
                 if (cd != null) { cd.ClearCrimes(); cd.SetPursuitLevel(PlayerCrimeData.EPursuitLevel.None); }
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] ClearLocalCrime failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("ClearLocalCrime failed: " + e.Message); }
         }
 
         /// <summary>Local: teleport the local player into the play area, spread on a small deterministic ring.</summary>
@@ -213,9 +213,9 @@ namespace PropHunt.Game
                 {
                     p.transform.position = pos;   // fallback if the teleporter component isn't present
                 }
-                Core.LogDebug($"[PropHunt] teleported local player to ({pos.x:F0},{pos.y:F0},{pos.z:F0}).");
+                Core.LogDebug($"teleported local player to ({pos.x:F0},{pos.y:F0},{pos.z:F0}).");
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] teleport failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("teleport failed: " + e.Message); }
         }
 
         // Live-switchable feet-Y modes ([4]/[5] cycle) so we can find the one that handles jump/stairs AND
@@ -316,17 +316,17 @@ namespace PropHunt.Game
                 if (inv.GetAmountOfItem(id) > 0) return;   // already armed - AddItemToInventory is additive, never stack a 2nd weapon
                 ItemDefinition def = null;
                 try { def = Reg.GetItem(id); } catch { }
-                if (def == null) { Core.Log.Warning($"[PropHunt] weapon '{id}' not in the item registry."); return; }
+                if (def == null) { Core.Log.Warning($"weapon '{id}' not in the item registry."); return; }
                 var inst = def.GetDefaultInstance(1);
                 if (inst != null && inv.CanItemFitInInventory(inst, 1))
                 {
                     // normal magazine; the weapon-reload patches refill the clip on reload (no magazine item
                     // needed) so the hunter reloads normally but never runs out.
                     inv.AddItemToInventory(inst);
-                    Core.Log.Msg($"[PropHunt] armed hunter with '{id}'.");
+                    Core.Log.Msg($"armed hunter with '{id}'.");
                 }
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] GiveWeapon failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("GiveWeapon failed: " + e.Message); }
         }
 
         /// <summary>Local: strip the hunter weapon from the local inventory and holster it cleanly. RemoveAmountOfItem
@@ -341,9 +341,9 @@ namespace PropHunt.Game
                 if (inv == null) return;
                 if (inv.GetAmountOfItem(id) == 0) return;   // nothing to strip (idempotent)
                 inv.RemoveAmountOfItem(id, 99u);
-                Core.Log.Msg($"[PropHunt] disarmed former hunter ('{id}').");
+                Core.Log.Msg($"disarmed former hunter ('{id}').");
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] RemoveWeapon failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("RemoveWeapon failed: " + e.Message); }
         }
     }
 }

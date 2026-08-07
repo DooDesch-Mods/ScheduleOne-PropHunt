@@ -102,7 +102,7 @@ namespace PropHunt.Game
                     map[code] = GridArea(p);
                 }
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] safehouse gather failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("safehouse gather failed: " + e.Message); }
             return map;
         }
 
@@ -130,8 +130,8 @@ namespace PropHunt.Game
             try
             {
                 var props = Property.Properties;
-                if (props == null) { Core.Log.Msg("[PropHunt] phsafehouse: Property.Properties is null (scene not loaded?)."); return; }
-                Core.Log.Msg($"[PropHunt] phsafehouse: {props.Count} loaded properties (sorted by grid area):");
+                if (props == null) { Core.Log.Msg("phsafehouse: Property.Properties is null (scene not loaded?)."); return; }
+                Core.Log.Msg($"phsafehouse: {props.Count} loaded properties (sorted by grid area):");
                 var rows = new List<(string code, string name, int area)>();
                 for (int i = 0; i < props.Count; i++)
                 {
@@ -141,11 +141,11 @@ namespace PropHunt.Game
                 }
                 rows.Sort((a, b) => a.area.CompareTo(b.area));
                 foreach (var r in rows)
-                    Core.Log.Msg($"[PropHunt]   area={r.area,5}  cap={Capacity(r.area),3}  code='{r.code}'  name='{r.name}'");
+                    Core.Log.Msg($"  area={r.area,5}  cap={Capacity(r.area),3}  code='{r.code}'  name='{r.name}'");
                 for (int pc = 2; pc <= 16; pc += 2)
-                    Core.Log.Msg($"[PropHunt]   -> {pc} players: default='{SelectForPlayerCount(pc)}'  options=[{string.Join(", ", AvailableForPlayerCount(pc).ToArray())}]");
+                    Core.Log.Msg($"  -> {pc} players: default='{SelectForPlayerCount(pc)}'  options=[{string.Join(", ", AvailableForPlayerCount(pc).ToArray())}]");
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] phsafehouse dump failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("phsafehouse dump failed: " + e.Message); }
         }
 #endif
     }

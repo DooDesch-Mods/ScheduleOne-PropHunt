@@ -37,13 +37,13 @@ namespace PropHunt.Debug
             Collect();
             if (_clips == null || _clips.Count == 0)
             {
-                Core.Log.Warning("[PropHunt] phsounds: no AudioClips loaded yet - load a world (and let NPCs spawn) first.");
+                Core.Log.Warning("phsounds: no AudioClips loaded yet - load a world (and let NPCs spawn) first.");
                 return;
             }
             _index = 0;
             _active = true;
             EnsurePlayer();
-            Core.Log.Msg($"[PropHunt] sound browser ON: {_clips.Count} clips.  [Space] replay  [<- / ->] prev/next  [PgUp/PgDn] +-10  [F] favourite  (phsounds = exit)");
+            Core.Log.Msg($"sound browser ON: {_clips.Count} clips.  [Space] replay  [<- / ->] prev/next  [PgUp/PgDn] +-10  [F] favourite  (phsounds = exit)");
             Play();
         }
 
@@ -51,7 +51,7 @@ namespace PropHunt.Debug
         {
             _active = false;
             if (_go != null) { try { Object.Destroy(_go); } catch { } _go = null; _src = null; }
-            if (_favorites.Count > 0) Core.Log.Msg("[PropHunt] sound favourites: " + string.Join(", ", _favorites));
+            if (_favorites.Count > 0) Core.Log.Msg("sound favourites: " + string.Join(", ", _favorites));
         }
 
         private static void Collect()
@@ -69,7 +69,7 @@ namespace PropHunt.Debug
                     }
                 _clips.Sort((a, b) => string.Compare(a.name, b.name, StringComparison.OrdinalIgnoreCase));
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] phsounds collect failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("phsounds collect failed: " + e.Message); }
         }
 
         private static void EnsurePlayer()
@@ -90,7 +90,7 @@ namespace PropHunt.Debug
             var c = Current;
             if (c == null || _src == null) return;
             try { _src.Stop(); _src.clip = c; _src.Play(); }
-            catch (Exception e) { Core.LogDebug("[PropHunt] sound play failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("sound play failed: " + e.Message); }
         }
 
         private static void Move(int d)
@@ -118,7 +118,7 @@ namespace PropHunt.Debug
                     {
                         _favorites.Add(c.name);
                         PropHunt.Taunt.TauntSounds.AddFavorite(c.name);   // persist for the manual-taunt wheel
-                        Core.Log.Msg($"[PropHunt] sound favourite saved: {c.name}");
+                        Core.Log.Msg($"sound favourite saved: {c.name}");
                     }
                 }
             }

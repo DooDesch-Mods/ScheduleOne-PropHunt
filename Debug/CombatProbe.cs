@@ -23,30 +23,30 @@ namespace PropHunt.Debug
         {
             try
             {
-                Core.Log.Msg($"[PropHunt] phcombat: Physics.queriesHitTriggers={Physics.queriesHitTriggers}");
+                Core.Log.Msg($"phcombat: Physics.queriesHitTriggers={Physics.queriesHitTriggers}");
 
                 var cm = NetworkSingleton<CombatManager>.Instance;
-                if (cm == null) Core.Log.Warning("[PropHunt] phcombat: CombatManager not spawned yet.");
+                if (cm == null) Core.Log.Warning("phcombat: CombatManager not spawned yet.");
                 else
                 {
                     int ranged = cm.RangedWeaponLayerMask.value;
                     int melee = cm.MeleeLayerMask.value;
-                    Core.Log.Msg($"[PropHunt] phcombat: RangedWeaponLayerMask={ranged} -> {DescribeMask(ranged)}");
-                    Core.Log.Msg($"[PropHunt] phcombat: MeleeLayerMask={melee} -> {DescribeMask(melee)}");
+                    Core.Log.Msg($"phcombat: RangedWeaponLayerMask={ranged} -> {DescribeMask(ranged)}");
+                    Core.Log.Msg($"phcombat: MeleeLayerMask={melee} -> {DescribeMask(melee)}");
                 }
 
                 var lp = Player.Local;
-                if (lp == null) { Core.Log.Warning("[PropHunt] phcombat: no local player."); return; }
+                if (lp == null) { Core.Log.Warning("phcombat: no local player."); return; }
 
                 int rootLayer = lp.gameObject.layer;
-                Core.Log.Msg($"[PropHunt] phcombat: local Player root layer={rootLayer} \"{LayerMask.LayerToName(rootLayer)}\"");
+                Core.Log.Msg($"phcombat: local Player root layer={rootLayer} \"{LayerMask.LayerToName(rootLayer)}\"");
 
                 var cap = lp.CapCol;
-                if (cap == null) Core.Log.Warning("[PropHunt] phcombat: Player.CapCol is null.");
+                if (cap == null) Core.Log.Warning("phcombat: Player.CapCol is null.");
                 else
                 {
                     int l = cap.gameObject.layer;
-                    Core.Log.Msg($"[PropHunt] phcombat: CapCol layer={l} \"{LayerMask.LayerToName(l)}\" " +
+                    Core.Log.Msg($"phcombat: CapCol layer={l} \"{LayerMask.LayerToName(l)}\" " +
                                  $"isTrigger={cap.isTrigger} enabled={cap.enabled} " +
                                  $"onObject=\"{cap.gameObject.name}\" damageableFound={(cap.GetComponentInParent<Player>() != null)}");
                 }
@@ -60,7 +60,7 @@ namespace PropHunt.Debug
                         var p = all[i];
                         if (p == null || p.Equals(lp)) continue;
                         var c = p.CapCol;
-                        Core.Log.Msg($"[PropHunt] phcombat: remote \"{p.PlayerName}\" rootLayer={p.gameObject.layer} " +
+                        Core.Log.Msg($"phcombat: remote \"{p.PlayerName}\" rootLayer={p.gameObject.layer} " +
                                      (c == null ? "CapCol=null" : $"capLayer={c.gameObject.layer} isTrigger={c.isTrigger} enabled={c.enabled}"));
                     }
                 }
@@ -77,7 +77,7 @@ namespace PropHunt.Debug
                     var owner = box.GetComponentInParent<Player>();
                     int layer = box.gameObject.layer;
                     bool inRangedMask = cm != null && (cm.RangedWeaponLayerMask.value & (1 << layer)) != 0;
-                    Core.Log.Msg($"[PropHunt] phcombat: hitbox \"{n}\" layer={layer} \"{LayerMask.LayerToName(layer)}\" " +
+                    Core.Log.Msg($"phcombat: hitbox \"{n}\" layer={layer} \"{LayerMask.LayerToName(layer)}\" " +
                                  $"inRangedMask={inRangedMask} isTrigger={box.isTrigger} " +
                                  $"parent=\"{(box.transform.parent == null ? "NONE" : box.transform.parent.name)}\" " +
                                  $"resolvesToPlayer={(owner != null ? owner.PlayerName : "NULL - bullets would STOP here")} " +
@@ -88,7 +88,7 @@ namespace PropHunt.Debug
                 // a player - their CharacterController, which is not necessarily on the same object as the capsule.
                 var ccLocal = lp.GetComponentInChildren<CharacterController>();
                 int ccLayer = ccLocal != null ? ccLocal.gameObject.layer : -1;
-                Core.Log.Msg($"[PropHunt] phcombat: CharacterController layer={ccLayer} " +
+                Core.Log.Msg($"phcombat: CharacterController layer={ccLayer} " +
                              $"\"{(ccLayer >= 0 ? LayerMask.LayerToName(ccLayer) : "none")}\" " +
                              $"detectCollisions={(ccLocal != null ? ccLocal.detectCollisions.ToString() : "n/a")} " +
                              $"stepOffset={(ccLocal != null ? ccLocal.stepOffset.ToString("F2") : "n/a")} " +
@@ -106,13 +106,13 @@ namespace PropHunt.Debug
                         if (usable.Length > 0) usable.Append(", ");
                         usable.Append(i).Append(':').Append(LayerMask.LayerToName(i));
                     }
-                    Core.Log.Msg($"[PropHunt] phcombat: layers that are BOTH shootable AND block a player: " +
+                    Core.Log.Msg($"phcombat: layers that are BOTH shootable AND block a player: " +
                                  (usable.Length == 0 ? "(NONE - a solid prop is impossible without a physics-matrix change)" : usable.ToString()));
                 }
 
                 int pl = LayerMask.NameToLayer("Player");
                 if (pl >= 0)
-                    Core.Log.Msg($"[PropHunt] phcombat: Player-vs-Player ignored={Physics.GetIgnoreLayerCollision(pl, pl)}, " +
+                    Core.Log.Msg($"phcombat: Player-vs-Player ignored={Physics.GetIgnoreLayerCollision(pl, pl)}, " +
                                  $"Player-vs-Default ignored={Physics.GetIgnoreLayerCollision(pl, 0)}");
 
                 // Does the "pass a bullet through me" tag the shot loop checks even exist in this build?
@@ -123,11 +123,11 @@ namespace PropHunt.Debug
                     try { tagExists = probe.CompareTag("CombatIgnore"); tagExists = true; }
                     catch { tagExists = false; }
                     UnityEngine.Object.DestroyImmediate(probe);
-                    Core.Log.Msg($"[PropHunt] phcombat: tag \"CombatIgnore\" defined={tagExists}");
+                    Core.Log.Msg($"phcombat: tag \"CombatIgnore\" defined={tagExists}");
                 }
                 catch { }
             }
-            catch (Exception e) { Core.Log.Error("[PropHunt] phcombat THREW - " + e); }
+            catch (Exception e) { Core.Log.Error("phcombat THREW - " + e); }
         }
 
         private static string DescribeMask(int mask)

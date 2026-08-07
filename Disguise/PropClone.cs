@@ -52,7 +52,7 @@ namespace PropHunt.Disguise
 
                 vc.ApplyColor(pick[Mathf.Abs(e.Id) % pick.Count]);
             }
-            catch (System.Exception ex) { Core.LogDebug("[PropHunt] vehicle paint failed: " + ex.Message); }
+            catch (System.Exception ex) { Core.LogDebug("vehicle paint failed: " + ex.Message); }
         }
 
         internal static GameObject Build(PropEntry e, string name)
@@ -63,7 +63,7 @@ namespace PropHunt.Disguise
                 if (e.CloneWholeRoot && e.SourceRoot != null) return BuildSubtree(e, name);
                 return e.SourceLodGroup != null ? BuildLod(e, name) : BuildSingle(e, name);
             }
-            catch (System.Exception ex) { Core.LogDebug("[PropHunt] PropClone.Build failed: " + ex.Message); return null; }
+            catch (System.Exception ex) { Core.LogDebug("PropClone.Build failed: " + ex.Message); return null; }
         }
 
         /// <summary>Clone an ENTIRE composite prefab subtree (a whole vehicle / buildable with all its parts + any
@@ -91,7 +91,7 @@ namespace PropHunt.Disguise
             }
             catch (System.Exception ex)
             {
-                Core.LogDebug("[PropHunt] BuildSubtree failed: " + ex.Message);
+                Core.LogDebug("BuildSubtree failed: " + ex.Message);
                 return e.SourceLodGroup != null ? BuildLod(e, name) : BuildSingle(e, name);
             }
             finally
@@ -174,7 +174,7 @@ namespace PropHunt.Disguise
                 bc.size = MinimumHitboxSize(lb.size, go.transform.lossyScale);
                 return bc;
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] AddTriggerHitbox failed: " + e.Message); return null; }
+            catch (System.Exception e) { Core.LogDebug("AddTriggerHitbox failed: " + e.Message); return null; }
         }
 
         /// <summary>
@@ -375,7 +375,7 @@ namespace PropHunt.Disguise
                     }
                 if (any) return true;
             }
-            catch (System.Exception ex) { Core.LogDebug("[PropHunt] prop bounds (source) failed: " + ex.Message); }
+            catch (System.Exception ex) { Core.LogDebug("prop bounds (source) failed: " + ex.Message); }
             return TryGetSourceLocalBounds(e, out local);
         }
 
@@ -447,7 +447,7 @@ namespace PropHunt.Disguise
                 }
                 return any;
             }
-            catch (System.Exception ex) { Core.LogDebug("[PropHunt] whole-root bounds failed: " + ex.Message); return false; }
+            catch (System.Exception ex) { Core.LogDebug("whole-root bounds failed: " + ex.Message); return false; }
         }
 
         /// <summary>True if a source MeshFilter belongs to a placement-only visualization (the grid FootprintTile/
@@ -480,7 +480,7 @@ namespace PropHunt.Disguise
                 bc.size = MinimumHitboxSize(localBounds.size, go.transform.lossyScale);
                 return bc;
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] AddTriggerHitbox(bounds) failed: " + e.Message); return null; }
+            catch (System.Exception e) { Core.LogDebug("AddTriggerHitbox(bounds) failed: " + e.Message); return null; }
         }
 
         private static void EncapsulateMeshLocal(MeshFilter mf, Transform rt, ref Bounds local, ref bool any)
@@ -524,7 +524,7 @@ namespace PropHunt.Disguise
             }
             catch (System.Exception ex)
             {
-                Core.LogDebug("[PropHunt] BuildLod failed: " + ex.Message);
+                Core.LogDebug("BuildLod failed: " + ex.Message);
                 return BuildSingle(e, name);
             }
             finally

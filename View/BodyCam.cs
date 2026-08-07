@@ -43,7 +43,7 @@ namespace PropHunt.View
                 cam.OverrideTransform(pull, look, StartLerp, false);   // detach + world-space ease-out; also sets canLook = false
                 _active = true;
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] bodycam start failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("bodycam start failed: " + e.Message); }
         }
 
         /// <summary>Keep the pulled-out camera aimed at the settling ragdoll (called every frame from the camera
@@ -72,7 +72,7 @@ namespace PropHunt.View
                 var cam = PlayerSingleton<PlayerCamera>.Instance;
                 if (cam != null) cam.StopTransformOverride(StopLerp, true, true);   // reenableCameraLook MUST be true, or the camera stays locked
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] bodycam stop failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("bodycam stop failed: " + e.Message); }
             try { Player.Local?.SetVisibleToLocalPlayer(false); } catch { }
         }
 

@@ -35,17 +35,17 @@ namespace PropHunt.Debug
                 _codes = Game.SafehouseSelector.AvailableForPlayerCount(2);   // 2 = min -> every loaded map
                 if (_codes == null || _codes.Count == 0)
                 {
-                    Core.Log.Warning("[PropHunt] phspawn: no safehouse properties loaded (load a save first).");
+                    Core.Log.Warning("phspawn: no safehouse properties loaded (load a save first).");
                     return;
                 }
                 _index = 0;
                 _active = true;
                 TeleportToCurrent();
                 OpenAllDoors();
-                Core.Log.Msg($"[PropHunt] spawn editor ON: {_codes.Count} properties.  " +
+                Core.Log.Msg($"spawn editor ON: {_codes.Count} properties.  " +
                              "[,/.] cycle  [Enter] place  [Backspace] undo  [Delete] clear  [F5] save  (phspawn = exit)");
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] phspawn enter failed: " + e.Message); Exit(); }
+            catch (System.Exception e) { Core.Log.Warning("phspawn enter failed: " + e.Message); Exit(); }
         }
 
         private static void Exit()
@@ -53,7 +53,7 @@ namespace PropHunt.Debug
             bool was = _active;
             _active = false;
             _codes = null;
-            if (was) Core.Log.Msg("[PropHunt] spawn editor OFF (saved).");
+            if (was) Core.Log.Msg("spawn editor OFF (saved).");
         }
 
         internal static void Tick()
@@ -70,7 +70,7 @@ namespace PropHunt.Debug
                 // keep doors open while authoring (in case any auto-closed since the last teleport)
                 if (Time.frameCount % 120 == 0) OpenAllDoors();
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] phspawn tick failed: " + e.Message); Exit(); }
+            catch (System.Exception e) { Core.Log.Warning("phspawn tick failed: " + e.Message); Exit(); }
         }
 
         private static void Move(int d)
@@ -86,21 +86,21 @@ namespace PropHunt.Debug
             string code = CurrentCode();
             if (string.IsNullOrEmpty(code)) return;
             var lp = Player.Local;
-            if (lp == null) { Core.Log.Warning("[PropHunt] phspawn: Player.Local is null."); return; }
+            if (lp == null) { Core.Log.Warning("phspawn: Player.Local is null."); return; }
             var pos = lp.transform.position;
             float yaw = lp.transform.eulerAngles.y;
             Game.SpawnStore.Add(code, pos, yaw);
             var pts = Game.SpawnStore.GetSpawns(code);
-            Core.Log.Msg($"[PropHunt] phspawn: placed point {(pts != null ? pts.Count : 0)} for '{code}' at ({pos.x:F2},{pos.y:F2},{pos.z:F2}) yaw={yaw:F0}");
+            Core.Log.Msg($"phspawn: placed point {(pts != null ? pts.Count : 0)} for '{code}' at ({pos.x:F2},{pos.y:F2},{pos.z:F2}) yaw={yaw:F0}");
         }
 
         private static void UndoLast()
         {
             string code = CurrentCode();
             var pts = code != null ? Game.SpawnStore.GetSpawns(code) : null;
-            if (pts == null || pts.Count == 0) { Core.Log.Msg($"[PropHunt] phspawn: nothing to undo for '{code}'."); return; }
+            if (pts == null || pts.Count == 0) { Core.Log.Msg($"phspawn: nothing to undo for '{code}'."); return; }
             pts.RemoveAt(pts.Count - 1);
-            Core.Log.Msg($"[PropHunt] phspawn: undid last point for '{code}' ({pts.Count} left).");
+            Core.Log.Msg($"phspawn: undid last point for '{code}' ({pts.Count} left).");
         }
 
         private static void ClearCurrent()
@@ -108,7 +108,7 @@ namespace PropHunt.Debug
             string code = CurrentCode();
             if (string.IsNullOrEmpty(code)) return;
             Game.SpawnStore.ClearCode(code);
-            Core.Log.Msg($"[PropHunt] phspawn: cleared all points for '{code}'.");
+            Core.Log.Msg($"phspawn: cleared all points for '{code}'.");
         }
 
         private static void TeleportToCurrent()
@@ -118,13 +118,13 @@ namespace PropHunt.Debug
             try
             {
                 var prop = FindProperty(code);
-                if (prop == null) { Core.Log.Warning($"[PropHunt] phspawn: '{code}' not found in scene."); return; }
+                if (prop == null) { Core.Log.Warning($"phspawn: '{code}' not found in scene."); return; }
                 var t = prop.InteriorSpawnPoint != null ? prop.InteriorSpawnPoint : prop.SpawnPoint;
-                if (t == null) { Core.Log.Warning($"[PropHunt] phspawn: '{code}' has no spawn transform."); return; }
+                if (t == null) { Core.Log.Warning($"phspawn: '{code}' has no spawn transform."); return; }
                 Game.RoundEnvironment.TeleportLocalToInstant(t.position + Vector3.up * 1f);   // +1m: vanilla teleport offset; no blink while authoring
-                Core.Log.Msg($"[PropHunt] phspawn: teleported into '{code}' ({prop.PropertyName}).");
+                Core.Log.Msg($"phspawn: teleported into '{code}' ({prop.PropertyName}).");
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] phspawn teleport failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("phspawn teleport failed: " + e.Message); }
         }
 
         // Force every property door OPEN so the dev can move through interiors freely while authoring.
@@ -142,7 +142,7 @@ namespace PropHunt.Debug
                     try { d.SetIsOpen_Server(true, Il2CppScheduleOne.Doors.EDoorSide.Interior, false); } catch { }
                 }
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] phspawn OpenAllDoors failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("phspawn OpenAllDoors failed: " + e.Message); }
         }
 
         private static Il2CppScheduleOne.Property.Property FindProperty(string code)

@@ -44,7 +44,7 @@ namespace PropHunt.View
                 if (KeyBinds.Down(KeyBinds.SpectatorNext)) CycleTarget();
                 UpdateFollowCam();
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] spectator tick failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("spectator tick failed: " + e.Message); }
         }
 
         internal void ForceExit() { if (_active) Exit(); }
@@ -70,7 +70,7 @@ namespace PropHunt.View
             PlayerRegistry.Refresh();
             EnsureTarget();
             SpectatorCam.Active = true;
-            Core.LogDebug("[PropHunt] spectator: entered (follow-cam).");
+            Core.LogDebug("spectator: entered (follow-cam).");
         }
 
         private void Exit()
@@ -82,7 +82,7 @@ namespace PropHunt.View
             SetCanLook(true);
             SetCanMove(true);
             HudText = null;
-            Core.LogDebug("[PropHunt] spectator: exited.");
+            Core.LogDebug("spectator: exited.");
         }
 
         private void ToggleMode()

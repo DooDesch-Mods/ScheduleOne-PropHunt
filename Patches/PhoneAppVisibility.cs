@@ -58,7 +58,7 @@ namespace PropHunt.Patches
                     _applied = true;
                 }
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] hiding phone apps failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("hiding phone apps failed: " + e.Message); }
         }
 
         private static void Restore()
@@ -66,7 +66,7 @@ namespace PropHunt.Patches
             for (int i = 0; i < _hidden.Count; i++)
             {
                 try { if (_hidden[i] != null) _hidden[i].SetActive(true); }
-                catch (Exception e) { Core.LogDebug("[PropHunt] restoring a phone app failed: " + e.Message); }
+                catch (Exception e) { Core.LogDebug("restoring a phone app failed: " + e.Message); }
             }
             _hidden.Clear();
             _applied = false;

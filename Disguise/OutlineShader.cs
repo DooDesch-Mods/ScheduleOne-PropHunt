@@ -83,35 +83,35 @@ namespace PropHunt.Disguise
                 var bundle = AssetLoader.GetAssetBundleFromStream(ResourceName, Assembly.GetExecutingAssembly());
                 if (bundle == null)
                 {
-                    Core.Log?.Warning("[PropHunt] outline shader: bundle is null after load - resource name mismatch?");
+                    Core.Log?.Warning("outline shader: bundle is null after load - resource name mismatch?");
                     return null;
                 }
-                Core.LogDebug($"[PropHunt] outline shader: bundle loaded ok");
+                Core.LogDebug($"outline shader: bundle loaded ok");
 
                 Shader[] shaders = bundle.LoadAllAssets<Shader>();
-                Core.LogDebug($"[PropHunt] outline shader: LoadAllAssets<Shader> count={(shaders != null ? shaders.Length.ToString() : "null")}");
+                Core.LogDebug($"outline shader: LoadAllAssets<Shader> count={(shaders != null ? shaders.Length.ToString() : "null")}");
 
                 _shader = (shaders != null && shaders.Length > 0) ? shaders[0] : null;
 
                 if (_shader != null)
                 {
-                    Core.LogDebug($"[PropHunt] outline shader loaded: {_shader.name} isSupported={_shader.isSupported}");
+                    Core.LogDebug($"outline shader loaded: {_shader.name} isSupported={_shader.isSupported}");
                 }
                 else
                 {
                     // Bundle loaded but no shader asset found - try by name as fallback.
-                    Core.Log?.Warning("[PropHunt] outline shader: LoadAllAssets returned empty - trying LoadAsset by name");
+                    Core.Log?.Warning("outline shader: LoadAllAssets returned empty - trying LoadAsset by name");
                     _shader = bundle.LoadAsset<Shader>("PropOutline");
                     if (_shader == null) _shader = bundle.LoadAsset<Shader>("PropHunt/PropOutline");
                     if (_shader != null)
-                        Core.LogDebug($"[PropHunt] outline shader loaded via name fallback: {_shader.name} isSupported={_shader.isSupported}");
+                        Core.LogDebug($"outline shader loaded via name fallback: {_shader.name} isSupported={_shader.isSupported}");
                     else
-                        Core.Log?.Warning("[PropHunt] outline shader: not found by LoadAllAssets or LoadAsset - using glow fallback");
+                        Core.Log?.Warning("outline shader: not found by LoadAllAssets or LoadAsset - using glow fallback");
                 }
             }
             catch (Exception e)
             {
-                Core.Log?.Warning("[PropHunt] outline shader load failed (using glow fallback): " + e.Message);
+                Core.Log?.Warning("outline shader load failed (using glow fallback): " + e.Message);
                 _shader = null;
             }
             return _shader;

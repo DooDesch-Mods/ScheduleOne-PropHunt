@@ -102,18 +102,18 @@ namespace PropHunt.Disguise
                 _candidates = source();
                 if (_candidates == null || _candidates.Count == 0)
                 {
-                    Core.Log.Warning($"[PropHunt] phcurate {tag}: no candidates (load a world first so the database is populated).");
+                    Core.Log.Warning($"phcurate {tag}: no candidates (load a world first so the database is populated).");
                     return;
                 }
                 _index = 0;
                 BuildPreview();
                 Game.RoundEnvironment.LockTimeOfDay(1200);
                 _active = true;
-                Core.Log.Msg($"[PropHunt] prop curation ON ({tag}): {_candidates.Count} whole-objects. " +
+                Core.Log.Msg($"prop curation ON ({tag}): {_candidates.Count} whole-objects. " +
                              "[Y]=keep  [N]=skip  Left/Right=prev/next  PgUp/PgDn=+-10  (same command = save+exit).");
                 ShowCurrent();
             }
-            catch (System.Exception e) { Core.Log.Warning($"[PropHunt] phcurate {tag} enter failed: " + e.Message); Exit(); }
+            catch (System.Exception e) { Core.Log.Warning($"phcurate {tag} enter failed: " + e.Message); Exit(); }
         }
 
         private static void Enter(CurateFilter filter)
@@ -161,7 +161,7 @@ namespace PropHunt.Disguise
                                : filter == CurateFilter.Kept       ? "no kept props in the curation yet (nothing to review)."
                                : filter == CurateFilter.Skipped    ? "no SKIPPED candidates in this world (nothing to rescue)."
                                :                                      "no candidate meshes in this world (load a world first).";
-                    Core.Log.Warning("[PropHunt] phcurate: " + why);
+                    Core.Log.Warning("phcurate: " + why);
                     return;
                 }
                 _index = 0;
@@ -169,11 +169,11 @@ namespace PropHunt.Disguise
                 Game.RoundEnvironment.LockTimeOfDay(1200);   // bright daylight so props are clearly visible
                 _active = true;
                 string tag = filter == CurateFilter.Unreviewed ? " (UNREVIEWED only)" : filter == CurateFilter.Kept ? " (KEPT only)" : filter == CurateFilter.Skipped ? " (SKIPPED - rescue good ones with [Y])" : "";
-                Core.Log.Msg($"[PropHunt] prop curation ON{tag}: {_candidates.Count} meshes. " +
+                Core.Log.Msg($"prop curation ON{tag}: {_candidates.Count} meshes. " +
                              "[Y]=keep  [N]=skip  Left/Right=prev/next  PgUp/PgDn=+-10  phcurate=save+exit.");
                 ShowCurrent();
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] phcurate enter failed: " + e.Message); Exit(); }
+            catch (System.Exception e) { Core.Log.Warning("phcurate enter failed: " + e.Message); Exit(); }
         }
 
         /// <summary>True when a candidate is currently KEPT (becomable). For a LOD prop, kept = ANY of its LOD meshes
@@ -249,7 +249,7 @@ namespace PropHunt.Disguise
             // Coverage proof: EVERY keep=1 key is represented. entries < keys means LOD props folded into one entry;
             // by-name entries are kept props whose mesh isn't loaded here (still skippable). If this log is absent or
             // the numbers don't add up, an OLD build is running (the old world-scan curator never logged this).
-            Core.Log.Msg($"[PropHunt] phcuratekeep allowlist: {list.Count} entries covering ALL {keys.Count} keep keys " +
+            Core.Log.Msg($"phcuratekeep allowlist: {list.Count} entries covering ALL {keys.Count} keep keys " +
                          $"({preview} with live preview, {byName} by-name/not-loaded, {keys.Count - list.Count} folded into LOD groups).");
             return list;
         }
@@ -276,14 +276,14 @@ namespace PropHunt.Disguise
             if (_anchor != null) { try { Object.Destroy(_anchor); } catch { } }
             if (_mat != null) { try { Object.Destroy(_mat); } catch { } }
             _meshGo = _anchor = _lightGo = null; _mat = null; _candidates = null;
-            if (was) Core.Log.Msg($"[PropHunt] prop curation OFF: saved ({PropCatalog.KeepCount()} kept). Rebuild the catalog (new round) to apply.");
+            if (was) Core.Log.Msg($"prop curation OFF: saved ({PropCatalog.KeepCount()} kept). Rebuild the catalog (new round) to apply.");
         }
 
         internal static void Tick()
         {
             if (!_active) return;
             try { HandleKeys(); UpdatePreview(); }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] phcurate tick failed: " + e.Message); Exit(); }
+            catch (System.Exception e) { Core.Log.Warning("phcurate tick failed: " + e.Message); Exit(); }
         }
 
         /// <summary>Un-cull every <see cref="Il2CppScheduleOne.Property.Property"/> so its distance-deactivated
@@ -311,9 +311,9 @@ namespace PropHunt.Disguise
                     }
                     catch { }
                 }
-                Core.LogDebug($"[PropHunt] phcurate: un-culled {n} properties (interiors forced active for review).");
+                Core.LogDebug($"phcurate: un-culled {n} properties (interiors forced active for review).");
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] phcurate un-cull failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("phcurate un-cull failed: " + e.Message); }
         }
 
         /// <summary>Restore each property to the content-culling state captured by <see cref="UncullAllProperties"/>,
@@ -429,7 +429,7 @@ namespace PropHunt.Disguise
             if (cam == null) cam = Object.FindObjectOfType<Camera>();
             if (cam == null)
             {
-                if (!_warnedNoCam) { _warnedNoCam = true; Core.Log.Warning("[PropHunt] phcurate: no camera found - preview cannot be placed."); }
+                if (!_warnedNoCam) { _warnedNoCam = true; Core.Log.Warning("phcurate: no camera found - preview cannot be placed."); }
                 return;
             }
             var t = cam.transform;
@@ -526,7 +526,7 @@ namespace PropHunt.Disguise
         private static void ShowCurrent()
         {
             var e = Current; if (e == null) return;
-            Core.LogDebug($"[PropHunt] curate [{_index + 1}/{_candidates.Count}] '{e.Name}' ({e.Key}) -> {DecisionTextFor(e)}  ({_infoFlags})");
+            Core.LogDebug($"curate [{_index + 1}/{_candidates.Count}] '{e.Name}' ({e.Key}) -> {DecisionTextFor(e)}  ({_infoFlags})");
             try { CuratePreview.Set(e.Key); } catch { }   // live on-player preview on the OTHER clients
         }
 

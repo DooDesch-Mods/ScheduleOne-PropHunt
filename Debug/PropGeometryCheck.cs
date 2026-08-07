@@ -25,7 +25,7 @@ namespace PropHunt.Disguise
         {
             List<PropEntry> entries;
             try { entries = PropCatalog.CatalogSnapshot(); }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] phpropcheck: catalog unavailable - " + e.Message); return; }
+            catch (System.Exception e) { Core.Log.Warning("phpropcheck: catalog unavailable - " + e.Message); return; }
 
             int checkedCount = 0, bad = 0;
             foreach (var e in entries)
@@ -39,8 +39,8 @@ namespace PropHunt.Disguise
                 if (CheckOne(e)) bad++;
             }
 
-            if (checkedCount == 0) { Core.Log.Warning($"[PropHunt] phpropcheck: no catalog entry matches \"{filter}\"."); return; }
-            Core.Log.Msg($"[PropHunt] phpropcheck: {checkedCount} prop(s) checked, {bad} misplaced.");
+            if (checkedCount == 0) { Core.Log.Warning($"phpropcheck: no catalog entry matches \"{filter}\"."); return; }
+            Core.Log.Msg($"phpropcheck: {checkedCount} prop(s) checked, {bad} misplaced.");
         }
 
         /// <summary>True when this prop would visibly float or sink.</summary>
@@ -51,16 +51,16 @@ namespace PropHunt.Disguise
             {
                 if (!PropClone.TryGetPropBoundsFromSource(e, out var placing))
                 {
-                    Core.Log.Msg($"[PropHunt] phpropcheck  {e.Key}: no source bounds - the disguise falls back to clone bounds, nothing to compare.");
+                    Core.Log.Msg($"phpropcheck  {e.Key}: no source bounds - the disguise falls back to clone bounds, nothing to compare.");
                     return false;
                 }
 
                 clone = PropClone.Build(e, "ph_geomcheck");
-                if (clone == null) { Core.Log.Warning($"[PropHunt] phpropcheck  {e.Key}: clone build FAILED (this prop cannot be worn)."); return true; }
+                if (clone == null) { Core.Log.Warning($"phpropcheck  {e.Key}: clone build FAILED (this prop cannot be worn)."); return true; }
 
                 if (!PropClone.TryGetPropLocalBounds(clone, out var visible))
                 {
-                    Core.Log.Warning($"[PropHunt] phpropcheck  {e.Key}: the built clone has no visible mesh at all.");
+                    Core.Log.Warning($"phpropcheck  {e.Key}: the built clone has no visible mesh at all.");
                     return true;
                 }
 
@@ -70,14 +70,14 @@ namespace PropHunt.Disguise
                 bool misplaced = Mathf.Abs(gap) > 0.05f;
 
                 string verdict = !misplaced ? "ok" : (gap > 0f ? $"FLOATS {gap:F2}m" : $"SUNK {(-gap):F2}m");
-                Core.Log.Msg($"[PropHunt] phpropcheck  {e.Key}: {verdict}  " +
+                Core.Log.Msg($"phpropcheck  {e.Key}: {verdict}  " +
                              $"placing.min.y={placing.min.y:F2} visible.min.y={visible.min.y:F2} " +
                              $"size={placing.size.x:F1}x{placing.size.y:F1}x{placing.size.z:F1}");
 
                 if (misplaced) NameTheCulprit(e, placing);
                 return misplaced;
             }
-            catch (System.Exception ex) { Core.Log.Warning($"[PropHunt] phpropcheck  {e.Key}: threw - {ex.Message}"); return true; }
+            catch (System.Exception ex) { Core.Log.Warning($"phpropcheck  {e.Key}: threw - {ex.Message}"); return true; }
             finally { if (clone != null) { try { UnityEngine.Object.DestroyImmediate(clone); } catch { } } }
         }
 
@@ -102,7 +102,7 @@ namespace PropHunt.Disguise
                     if (minY > placing.min.y + 0.05f) continue;   // not one of the lowest
 
                     var mr = mf.GetComponent<MeshRenderer>();
-                    Core.Log.Msg($"[PropHunt] phpropcheck    bottom mesh \"{mf.sharedMesh.name}\" on \"{mf.gameObject.name}\" " +
+                    Core.Log.Msg($"phpropcheck    bottom mesh \"{mf.sharedMesh.name}\" on \"{mf.gameObject.name}\" " +
                                  $"minY={minY:F2} activeSelf={mf.gameObject.activeSelf} " +
                                  $"renderer={(mr == null ? "none" : (mr.enabled ? "on" : "off"))}");
                 }

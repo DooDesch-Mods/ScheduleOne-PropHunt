@@ -4,6 +4,15 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.7] - 2026-08-07
+
+### Fixed
+
+- Settings you change in the lobby are still there next time you host. Only the host form ever saved anything, so
+  everything you tuned from the phone after starting - prop rotation most of all, because you set it once the lobby
+  has filled up - was gone with the session.
+- Every log line says PropHunt once instead of twice.
+
 ## [1.3.6] - 2026-08-07
 
 ### Fixed

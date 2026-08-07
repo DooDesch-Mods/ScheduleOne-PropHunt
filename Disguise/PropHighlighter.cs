@@ -120,7 +120,7 @@ namespace PropHunt.Disguise
             if (_shells.Count != _lastLoggedCount)
             {
                 _lastLoggedCount = _shells.Count;
-                Core.LogDebug($"[PropHunt] highlighting {_shells.Count} becomable prop(s) nearby ({_candidates.Count} in {ScanRadius}m).");
+                Core.LogDebug($"highlighting {_shells.Count} becomable prop(s) nearby ({_candidates.Count} in {ScanRadius}m).");
             }
         }
 
@@ -236,7 +236,7 @@ namespace PropHunt.Disguise
         private void Fail(string why)
         {
             _failed = true;
-            Core.Log.Warning("[PropHunt] " + why + " - prop highlight disabled (HUD look-at hint still works).");
+            Core.Log.Warning("" + why + " - prop highlight disabled (HUD look-at hint still works).");
             try { ClearAll(); } catch { }
         }
 

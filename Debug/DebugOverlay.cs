@@ -32,7 +32,7 @@ namespace PropHunt.Debug
             if (now - _lastToggle < 0.4f) return;
             _lastToggle = now;
             Visible = !Visible;
-            Core.Log.Msg($"[PropHunt] debug overlay {(Visible ? "ON" : "OFF")} (F3 toggles).");
+            Core.Log.Msg($"debug overlay {(Visible ? "ON" : "OFF")} (F3 toggles).");
         }
 
         /// <summary>Called every frame from Core.OnUpdate (DEBUG). Hotkey toggle.</summary>

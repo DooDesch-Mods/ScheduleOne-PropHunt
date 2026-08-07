@@ -119,7 +119,7 @@ namespace PropHunt.PlayArea
                 }
                 else { _outsideSince = -1f; }
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] playarea tick failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("playarea tick failed: " + e.Message); }
         }
     }
 }

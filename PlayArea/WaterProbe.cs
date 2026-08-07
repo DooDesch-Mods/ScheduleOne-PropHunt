@@ -123,19 +123,19 @@ namespace PropHunt.PlayArea
             {
                 int layer = LayerMask.NameToLayer("Water");
                 var p = Player.Local;
-                if (p == null) { Core.Log.Warning("[PropHunt] phwater: no local player."); return; }
+                if (p == null) { Core.Log.Warning("phwater: no local player."); return; }
 
                 float depth = DepthOverFeet(p, out float surface);
                 var pos = p.transform.position;
-                Core.Log.Msg($"[PropHunt] phwater: layer \"Water\"={layer} mask={Mask} pos=({pos.x:F1},{pos.y:F1},{pos.z:F1}) " +
+                Core.Log.Msg($"phwater: layer \"Water\"={layer} mask={Mask} pos=({pos.x:F1},{pos.y:F1},{pos.z:F1}) " +
                              $"feetY={FeetY(p):F2} surfaceY={surface:F2} depthOverFeet={depth:F2}m");
 
-                if (Mask == 0) { Core.Log.Warning("[PropHunt] phwater: no \"Water\" layer in this build - water handling stays off."); return; }
+                if (Mask == 0) { Core.Log.Warning("phwater: no \"Water\" layer in this build - water handling stays off."); return; }
 
                 Vector3 from = pos + Vector3.up * RayStartHeight;
                 if (!Physics.Raycast(from, Vector3.down, out var hit, RayLength, Mask, QueryTriggerInteraction.Collide))
                 {
-                    Core.Log.Msg("[PropHunt] phwater: no water collider under this spot (stand in/next to water and repeat).");
+                    Core.Log.Msg("phwater: no water collider under this spot (stand in/next to water and repeat).");
                     return;
                 }
                 string tag = "none";
@@ -145,10 +145,10 @@ namespace PropHunt.PlayArea
                     if (mt != null) tag = mt.MaterialType.ToString();
                 }
                 catch { }
-                Core.Log.Msg($"[PropHunt] phwater: hit \"{hit.collider.gameObject.name}\" layer={hit.collider.gameObject.layer} " +
+                Core.Log.Msg($"phwater: hit \"{hit.collider.gameObject.name}\" layer={hit.collider.gameObject.layer} " +
                              $"isTrigger={hit.collider.isTrigger} materialTag={tag} at y={hit.point.y:F2}");
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] phwater failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("phwater failed: " + e.Message); }
         }
 #endif
     }

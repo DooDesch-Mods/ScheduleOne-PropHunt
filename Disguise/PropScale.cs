@@ -112,7 +112,7 @@ namespace PropHunt.Disguise
                     player.SetScale(scale);   // instant overload; the lerp one would keep writing over us
                 ApplyWidth(player, scale, worldWidth);
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] prop scale failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("prop scale failed: " + e.Message); }
         }
 
         /// <summary>
@@ -156,7 +156,7 @@ namespace PropHunt.Disguise
                     _baseRadius.Remove(key);
                 }
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] prop scale restore failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("prop scale restore failed: " + e.Message); }
         }
 
         private static CharacterController ResolveController(Player player)

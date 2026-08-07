@@ -41,7 +41,7 @@ namespace PropHunt.PlayArea
                 if (_root != null) _root.SetActive(true);
                 UpdateProximity(s);
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] border tick failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("border tick failed: " + e.Message); }
         }
 
         // horizontal distance to the wall -> _Proximity (0 = at the wall, 1 = far inside); ignores Y for stability.
@@ -77,7 +77,7 @@ namespace PropHunt.PlayArea
             _mr.enabled = _mat != null;
             BorderMesh.Build(_mf, radius, BorderMesh.Height);
             _builtSig = sig;
-            Core.LogDebug($"[PropHunt] border wall built at ({cx:F0},{cz:F0}) r={radius:F0} mat={(_mat != null)}");
+            Core.LogDebug($"border wall built at ({cx:F0},{cz:F0}) r={radius:F0} mat={(_mat != null)}");
         }
 
         private void EnsureMat()
@@ -85,7 +85,7 @@ namespace PropHunt.PlayArea
             if (_mat != null) return;
             _mat = BorderShader.TryCreateMaterial(new Color(1f, 0.25f, 0.10f, 0.45f), new Color(1f, 0.55f, 0.20f, 1f));
             if (_mat != null) UnityEngine.Object.DontDestroyOnLoad(_mat);
-            else Core.Log?.Warning("[PropHunt] border shader bundle missing - play-area wall is invisible until 'propborder' is built.");
+            else Core.Log?.Warning("border shader bundle missing - play-area wall is invisible until 'propborder' is built.");
         }
 
         private void Destroy()

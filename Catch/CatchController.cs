@@ -76,7 +76,7 @@ namespace PropHunt.Catch
                     {
                         SpawnPropHitFx(h.point);   // immediate local hit feedback on the decoy (it reads as a real prop)
                         PropHunt.UI.Hud.HudController.ShowHitmarker();
-                        Core.LogDebug($"[PropHunt] hit decoy idx={decoyIdx}");
+                        Core.LogDebug($"hit decoy idx={decoyIdx}");
                         _ctl.RequestHitDecoy(decoyIdx);
                         return;
                     }
@@ -87,7 +87,7 @@ namespace PropHunt.Catch
                         SpawnPropHitFx(h.point);
                         PropHunt.UI.Hud.HudController.ShowHitmarker();
                         _ctl.RequestClaimTag(propVictim, t.forward);
-                        Core.LogDebug($"[PropHunt] claim tag on {propVictim} via prop hitbox (size {PropCatalog.SizeOf(_ctl.PropIdOf(propVictim)):F2})");
+                        Core.LogDebug($"claim tag on {propVictim} via prop hitbox (size {PropCatalog.SizeOf(_ctl.PropIdOf(propVictim)):F2})");
                         return;
                     }
 
@@ -106,18 +106,18 @@ namespace PropHunt.Catch
                         {
                             PropHunt.UI.Hud.HudController.ShowHitmarker();
                             _ctl.RequestHitHunter(victimId, t.forward);
-                            Core.LogDebug($"[PropHunt] friendly-fire hit on hunter {victimId}");
+                            Core.LogDebug($"friendly-fire hit on hunter {victimId}");
                             return;
                         }
                         continue;
                     }
                     PropHunt.UI.Hud.HudController.ShowHitmarker();
                     _ctl.RequestClaimTag(victimId, t.forward);
-                    Core.LogDebug($"[PropHunt] claim tag on {victimId} via capsule (undisguised)");
+                    Core.LogDebug($"claim tag on {victimId} via capsule (undisguised)");
                     return;
                 }
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] catch tick failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("catch tick failed: " + e.Message); }
         }
 
         // ---- helpers ----

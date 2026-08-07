@@ -440,7 +440,7 @@ namespace PropHunt.Phone
             Button(list, wearing ? "Try another one" : "Become a random prop", Theme.Success, true, 48f, () =>
             {
                 if (!Disguise.PropPreview.Roll())
-                    Core.Log.Msg("[PropHunt] no becomable prop available to try on yet.");
+                    Core.Log.Msg("no becomable prop available to try on yet.");
             });
 
             if (wearing)

@@ -33,7 +33,7 @@ namespace PropHunt.Debug
                 n = PlaceControllers(_ccs, Mat(ref _matCap, new Color(0.4f, 1f, 0.45f, 0.30f)), n);
                 for (int i = n; i < _pool.Count; i++) if (_pool[i] != null) _pool[i].SetActive(false);
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] DebugViz failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("DebugViz failed: " + e.Message); }
         }
 
         private static void RefreshTargets()
@@ -134,7 +134,7 @@ namespace PropHunt.Debug
                 if (m == null) m = OpaqueFallback(c);   // shader bundle absent
                 if (m != null) Object.DontDestroyOnLoad(m);
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] viz material failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("viz material failed: " + e.Message); }
             slot = m;
             return slot;
         }
