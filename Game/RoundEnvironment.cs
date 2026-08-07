@@ -155,14 +155,31 @@ namespace PropHunt.Game
             catch (Exception e) { Core.LogDebug("SuppressPolice failed: " + e.Message); }
         }
 
-        /// <summary>All clients: keep the LOCAL player crime-free so NPCs/police never engage or arrest.</summary>
+        /// <summary>
+        /// All clients: keep the LOCAL player crime-free so NPCs/police never engage or arrest.
+        ///
+        /// Both calls are guarded, because this runs every frame of every round and neither vanilla method checks
+        /// whether it has anything to do. <c>SetPursuitLevel</c> is the expensive one: it is a RELIABLE ServerRpc
+        /// (RunLocally, no ownership check) that fires unconditionally, so calling it for a level that is already None
+        /// sent one reliable RPC per client per frame at the host - about 660 a second in a twelve-player lobby - and
+        /// each one made the host write a Debug.Log line naming the player, on top of a scene-name string compare and
+        /// a crime-HUD refresh per call. That is the lag in a big lobby, and it was there at two players as well, just
+        /// small enough to hide (PlayerCrimeData.cs:278-316, 643-684 in the 0.4.6f11 decompile).
+        ///
+        /// Reading the level first costs one interop call and nothing on the wire. When the host does believe the
+        /// player is wanted it pushes the SyncVar back down and this fires again - which is exactly the intent.
+        /// </summary>
         internal static void ClearLocalCrime()
         {
             try
             {
                 var p = Player.Local;
                 var cd = p != null ? p.CrimeData : null;
-                if (cd != null) { cd.ClearCrimes(); cd.SetPursuitLevel(PlayerCrimeData.EPursuitLevel.None); }
+                if (cd == null) return;
+                var crimes = cd.Crimes;
+                if (crimes != null && crimes.Count > 0) cd.ClearCrimes();
+                if (cd.CurrentPursuitLevel != PlayerCrimeData.EPursuitLevel.None)
+                    cd.SetPursuitLevel(PlayerCrimeData.EPursuitLevel.None);
             }
             catch (Exception e) { Core.LogDebug("ClearLocalCrime failed: " + e.Message); }
         }

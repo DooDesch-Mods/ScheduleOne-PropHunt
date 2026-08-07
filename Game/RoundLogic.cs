@@ -471,11 +471,19 @@ namespace PropHunt.Game
             return true;
         }
 
-        /// <summary>Hider set the manual facing (yaw, degrees) of their current prop ([F]+mouse).</summary>
+        /// <summary>
+        /// Hider set the manual facing (yaw, degrees) of their current prop ([F]+mouse).
+        ///
+        /// Returns false for a facing that is already what it says, because the caller answers true with a full state
+        /// broadcast to the whole lobby. A client holding [F] reports its yaw every 150 ms whether the mouse moved or
+        /// not, so several hiders resting on the rotate key were enough to keep the host publishing continuously.
+        /// A quarter of a degree is far below what anyone can see on a prop.
+        /// </summary>
         internal static bool ApplyRotate(GameState s, ulong sender, float yaw)
         {
             if (!CanDisguise(s.Phase)) return false;
             if (!s.Players.TryGetValue(sender, out var p) || p.Role != PlayerRole.Hider || p.Eliminated || p.PropId < 0) return false;
+            if (System.Math.Abs(p.PropYaw - yaw) < 0.25f) return false;
             p.PropYaw = yaw;
             return true;
         }

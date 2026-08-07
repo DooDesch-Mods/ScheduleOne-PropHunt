@@ -20,6 +20,7 @@ namespace PropHunt.Disguise
         private bool _rotating;
         private float _yaw;
         private float _nextYawSend;
+        private float _sentYaw;   // the last facing the host was told about, so an unmoved prop reports nothing
         private const float RotateSpeed = 5f;   // degrees per mouse-X unit while holding [F]
 #if DEBUG
         private int _lastLoggedId = -2;
@@ -221,10 +222,17 @@ namespace PropHunt.Disguise
             bool holding = KeyBinds.Held(KeyBinds.Rotate) && _ctl.WornPropId >= 0;
             if (holding)
             {
-                if (!_rotating) { _rotating = true; _yaw = _ctl.LocalPropYaw; SetCanLook(false); _nextYawSend = Time.time; }
+                if (!_rotating) { _rotating = true; _yaw = _sentYaw = _ctl.LocalPropYaw; SetCanLook(false); _nextYawSend = Time.time; }
                 float dx = Input.GetAxis("Mouse X");
                 if (Mathf.Abs(dx) > 0.0001f) { _yaw += dx * RotateSpeed; _ctl.SetLocalYaw(_yaw); }
-                if (Time.time >= _nextYawSend) { _nextYawSend = Time.time + 0.15f; _ctl.RequestRotate(_yaw); }
+                // Only when it actually moved: an unchanged facing still cost the host a full state broadcast to the
+                // whole lobby, so resting a finger on [F] published six times a second for nothing.
+                if (Time.time >= _nextYawSend && Mathf.Abs(Mathf.DeltaAngle(_sentYaw, _yaw)) > 0.25f)
+                {
+                    _nextYawSend = Time.time + 0.15f;
+                    _sentYaw = _yaw;
+                    _ctl.RequestRotate(_yaw);
+                }
             }
             else if (_rotating) StopRotating();
         }
@@ -233,7 +241,9 @@ namespace PropHunt.Disguise
         {
             _rotating = false;
             SetCanLook(true);
-            _ctl.RequestRotate(_yaw);   // push the final facing
+            // The final facing always goes out, even a small last nudge - this is the one that has to stick.
+            _sentYaw = _yaw;
+            _ctl.RequestRotate(_yaw);
         }
 
         private static void SetCanLook(bool can)
