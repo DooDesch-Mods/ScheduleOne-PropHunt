@@ -25,6 +25,13 @@ namespace PropHunt.Disguise
         // buildable with all its parts + nested LODGroups) instead of a single mesh or one LODGroup. Set by
         // PropSources for the registry/vehicle curate lists (DEBUG). Default false = unchanged single/LOD behaviour.
         internal bool CloneWholeRoot;
+#if DEBUG
+        // a curation key whose mesh is not in memory at all: reviewable by name only, with NOTHING on screen. Never
+        // the same thing as a prop that has no visuals - this one may be perfectly good and simply lives in an
+        // interior that is not loaded here, so a decision on it is a guess. The curator is the only thing that sets
+        // or reads it, and the curator does not ship.
+        internal bool NotLoaded;
+#endif
     }
 
     /// <summary>
