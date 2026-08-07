@@ -61,7 +61,7 @@ namespace PropHunt.Disguise
                     _lastScanPos = pos;
                 }
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] passthrough tick failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("passthrough tick failed: " + e.Message); }
         }
 
         private void EnsureRefs()
@@ -103,7 +103,7 @@ namespace PropHunt.Disguise
                 _ignored.Add(col);
                 n++;
             }
-            Core.LogDebug($"[PropHunt] passthrough scan: total={total} ignored={n} feetY={feetY:F2} propTop={propTop:F2} nearby(above-feet):{sb}");
+            Core.LogDebug($"passthrough scan: total={total} ignored={n} feetY={feetY:F2} propTop={propTop:F2} nearby(above-feet):{sb}");
         }
 
         private static string TrimName(string n) => string.IsNullOrEmpty(n) ? "?" : (n.Length > 28 ? n.Substring(0, 28) : n);

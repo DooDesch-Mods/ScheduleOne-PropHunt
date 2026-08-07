@@ -55,7 +55,7 @@ namespace PropHunt.Game
             _ctl.AnnounceRotation();
             // Msg, not LogDebug: this yanks a prop out of someone's hands, and Release builds drop LogDebug - so when a
             // player reported the countdown missing there was no way to tell whether rotation had run at all.
-            Core.Log.Msg($"[PropHunt] prop rotation: {rotated} hider(s) reshuffled, next in {interval}s.");
+            Core.Log.Msg($"prop rotation: {rotated} hider(s) reshuffled, next in {interval}s.");
         }
     }
 }

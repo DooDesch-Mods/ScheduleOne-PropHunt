@@ -66,7 +66,7 @@ namespace PropHunt.Phone
                     return null;
                 }
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] phone icon load failed: " + e.Message); return null; }
+            catch (Exception e) { Core.Log.Warning("phone icon load failed: " + e.Message); return null; }
         }
 
         private Text _title;
@@ -86,7 +86,7 @@ namespace PropHunt.Phone
             Instance = this;
             _container = container;
             try { BuildUI(container); }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] phone app build failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("phone app build failed: " + e.Message); }
         }
 
         // Create a panel filling a vertical BAND of its parent (full width, y in [y0,y1]) with its offsets zeroed so it
@@ -162,7 +162,7 @@ namespace PropHunt.Phone
                 if (!_activated)
                 {
                     _activated = true;
-                    if (_container != null) { try { UIFactory.ClearChildren(_container.transform); BuildUI(_container); } catch (Exception e) { Core.Log.Warning("[PropHunt] phone UI rebuild failed: " + e.Message); } }
+                    if (_container != null) { try { UIFactory.ClearChildren(_container.transform); BuildUI(_container); } catch (Exception e) { Core.Log.Warning("phone UI rebuild failed: " + e.Message); } }
                     // The player opened the app -> the "open the PropHunt app" guide quest is fulfilled.
                     try { PropHunt.Quests.GuideQuest.OnAppOpened(); } catch { }
                 }
@@ -235,7 +235,7 @@ namespace PropHunt.Phone
 
             var ctl = GameModeController.Active;
             if (ctl == null) BuildEmptyState(_body.transform);
-            else { try { PhoneScreens.Build(_body.transform, ctl, _tab, ctl.IsHost, _dialogRoot); } catch (Exception e) { Core.Log.Warning("[PropHunt] phone tab build failed: " + e.Message); } }
+            else { try { PhoneScreens.Build(_body.transform, ctl, _tab, ctl.IsHost, _dialogRoot); } catch (Exception e) { Core.Log.Warning("phone tab build failed: " + e.Message); } }
 
             _lastSig = Signature();
             if (prev != null) UnityEngine.Object.Destroy(prev);

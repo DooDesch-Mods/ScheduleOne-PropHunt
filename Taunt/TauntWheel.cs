@@ -64,7 +64,7 @@ namespace PropHunt.Taunt
                     _downAt = -1f;
                 }
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] taunt wheel tick failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("taunt wheel tick failed: " + e.Message); }
         }
 
         private void Open()
@@ -78,7 +78,7 @@ namespace PropHunt.Taunt
             _highlight = Mathf.Max(0, _sounds.IndexOf(_selectedSound));
             _open = true;
             SetCanLook(false);
-            Core.LogDebug($"[PropHunt] taunt wheel open: {_labels.Count} options.");
+            Core.LogDebug($"taunt wheel open: {_labels.Count} options.");
         }
 
         private void Close(bool commit)
@@ -87,7 +87,7 @@ namespace PropHunt.Taunt
             {
                 _selectedSound = _sounds[_highlight];
                 _selectedLabel = _labels[_highlight];
-                Core.LogDebug($"[PropHunt] taunt set: {_selectedLabel}");
+                Core.LogDebug($"taunt set: {_selectedLabel}");
             }
             _open = false;
             SetCanLook(true);

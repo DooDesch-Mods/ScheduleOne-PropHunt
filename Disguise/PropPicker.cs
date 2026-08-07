@@ -47,7 +47,7 @@ namespace PropHunt.Disguise
                     if (KeyBinds.Down(KeyBinds.RandomProp)) PropPreview.Roll();
                     HandleRotate();
                 }
-                catch (System.Exception e) { Core.LogDebug("[PropHunt] lobby prop tick failed: " + e.Message); }
+                catch (System.Exception e) { Core.LogDebug("lobby prop tick failed: " + e.Message); }
                 return;
             }
 
@@ -80,14 +80,14 @@ namespace PropHunt.Disguise
                 {
                     _lastLoggedId = CurrentTargetId;
                     Core.LogDebug(CurrentTargetId >= 0
-                        ? $"[PropHunt] crosshair -> '{CurrentTargetName}' (id {CurrentTargetId})"
-                        : "[PropHunt] crosshair -> <nothing becomable>");
+                        ? $"crosshair -> '{CurrentTargetName}' (id {CurrentTargetId})"
+                        : "crosshair -> <nothing becomable>");
                 }
 #endif
                 if (KeyBinds.Down(KeyBinds.Become) && CurrentTargetId >= 0)
                 {
                     _ctl.RequestSelectProp(CurrentTargetId);
-                    Core.LogDebug($"[PropHunt] selected prop {CurrentTargetId} ({CurrentTargetName}).");
+                    Core.LogDebug($"selected prop {CurrentTargetId} ({CurrentTargetName}).");
                 }
                 // [2] become a random prop (no aiming needed) - only when the host allows it
                 // Mirrors the host's cooldown locally so a held [2] does not fire a request per frame that the host
@@ -97,16 +97,16 @@ namespace PropHunt.Disguise
                 {
                     _lastRandomRoll = UnityEngine.Time.time;
                     _ctl.RequestSelectRandomProp();
-                    Core.LogDebug("[PropHunt] random prop requested ([2]).");
+                    Core.LogDebug("random prop requested ([2]).");
                 }
                 // [Q] drop a decoy of the current prop;  [G] concussion grenade (stun nearby hunters)
-                if (KeyBinds.Down(KeyBinds.Decoy) && _ctl.LocalPropId >= 0) { _ctl.RequestDropDecoy(); Core.LogDebug("[PropHunt] decoy requested ([Q])."); }
-                if (KeyBinds.Down(KeyBinds.Concussion)) { _ctl.RequestConcuss(); Core.LogDebug("[PropHunt] concussion requested ([G])."); }
+                if (KeyBinds.Down(KeyBinds.Decoy) && _ctl.LocalPropId >= 0) { _ctl.RequestDropDecoy(); Core.LogDebug("decoy requested ([Q])."); }
+                if (KeyBinds.Down(KeyBinds.Concussion)) { _ctl.RequestConcuss(); Core.LogDebug("concussion requested ([G])."); }
                 // [F] held + mouse = rotate the prop's facing (camera locked while rotating)
                 HandleRotate();
                 HandleLock();
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] picker tick failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("picker tick failed: " + e.Message); }
         }
 
         /// <summary>
@@ -182,7 +182,7 @@ namespace PropHunt.Disguise
                     return;
                 }
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] grabber probe failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("grabber probe failed: " + e.Message); }
         }
 
         /// <summary>

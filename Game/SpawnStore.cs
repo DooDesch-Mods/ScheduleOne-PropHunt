@@ -70,9 +70,9 @@ namespace PropHunt.Game
                           .Append(sp.Pos.z.ToString("F3", ci)).Append('|')
                           .Append(sp.Yaw.ToString("F1", ci)).Append('\n');
                 File.WriteAllText(path, sb.ToString());
-                Core.Log.Msg($"[PropHunt] spawns saved -> {path}");
+                Core.Log.Msg($"spawns saved -> {path}");
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] SpawnStore.Save failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("SpawnStore.Save failed: " + e.Message); }
         }
 
         internal static void Reload() { _loaded = false; _spawns.Clear(); Load(); }
@@ -89,12 +89,12 @@ namespace PropHunt.Game
                 string[] lines; string source;
                 if (File.Exists(path)) { lines = File.ReadAllLines(path); source = "user"; }
                 else { lines = ReadShipped(); source = "shipped"; }
-                if (lines == null) { Core.LogDebug("[PropHunt] spawns: no file found - InteriorSpawnPoint ring fallback active."); return; }
+                if (lines == null) { Core.LogDebug("spawns: no file found - InteriorSpawnPoint ring fallback active."); return; }
                 Parse(lines);
                 int total = 0; foreach (var l in _spawns.Values) total += l.Count;
-                Core.LogDebug($"[PropHunt] spawns loaded ({source}): {_spawns.Count} properties, {total} points.");
+                Core.LogDebug($"spawns loaded ({source}): {_spawns.Count} properties, {total} points.");
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] SpawnStore.Load failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("SpawnStore.Load failed: " + e.Message); }
         }
 
         private static void Parse(string[] lines)

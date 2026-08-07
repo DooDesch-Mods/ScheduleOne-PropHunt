@@ -75,7 +75,7 @@ namespace PropHunt.Taunt
                 offset += stagger;
                 count++;
             }
-            Core.LogDebug($"[PropHunt] whistle fired: {count} hider(s), stagger={stagger}s, next in {interval}s.");
+            Core.LogDebug($"whistle fired: {count} hider(s), stagger={stagger}s, next in {interval}s.");
         }
 
         private bool IsLiveHider(ulong id) =>

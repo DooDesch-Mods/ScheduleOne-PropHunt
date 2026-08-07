@@ -32,7 +32,7 @@ namespace PropHunt.Disguise
             try
             {
                 var reg = Registry.Instance;
-                if (reg == null) { Core.Log.Warning("[PropHunt] EnumerateBuildables: Registry.Instance null - load a world first."); return list; }
+                if (reg == null) { Core.Log.Warning("EnumerateBuildables: Registry.Instance null - load a world first."); return list; }
                 var items = reg.GetAllItems();
                 if (items == null) return list;
                 var seen = new HashSet<string>();
@@ -50,7 +50,7 @@ namespace PropHunt.Disguise
                     if (entry != null) list.Add(entry);
                 }
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] EnumerateBuildables failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("EnumerateBuildables failed: " + e.Message); }
             list.Sort((a, c) => string.CompareOrdinal(a.Name ?? "", c.Name ?? ""));
             return list;
         }
@@ -62,7 +62,7 @@ namespace PropHunt.Disguise
             try
             {
                 var vm = VehicleManager.Instance;
-                if (vm == null) { Core.Log.Warning("[PropHunt] EnumerateVehicles: VehicleManager.Instance null - load a world first."); return list; }
+                if (vm == null) { Core.Log.Warning("EnumerateVehicles: VehicleManager.Instance null - load a world first."); return list; }
                 var prefabs = vm.VehiclePrefabs;
                 if (prefabs == null) return list;
                 var seen = new HashSet<string>();
@@ -80,7 +80,7 @@ namespace PropHunt.Disguise
                     if (entry != null) list.Add(entry);
                 }
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] EnumerateVehicles failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("EnumerateVehicles failed: " + e.Message); }
             list.Sort((a, c) => string.CompareOrdinal(a.Name ?? "", c.Name ?? ""));
             return list;
         }
@@ -118,7 +118,7 @@ namespace PropHunt.Disguise
             // clean prop, so skip it rather than offer a broken box. Genuine low-poly props have no Combined Mesh.
             if (hasBatched && bestVerts < 40)
             {
-                Core.LogDebug($"[PropHunt] world skip (static-batched, only {bestVerts}-vert proxies): '{name}'");
+                Core.LogDebug($"world skip (static-batched, only {bestVerts}-vert proxies): '{name}'");
                 return null;
             }
             return new PropEntry
@@ -146,7 +146,7 @@ namespace PropHunt.Disguise
                 AddRootsOfType<Il2CppScheduleOne.Interaction.NetworkedInteractableToggleable>(map);
                 AddRootsOfType<Il2CppScheduleOne.Storage.StorageEntity>(map);
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] EnumerateWorldObjects failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("EnumerateWorldObjects failed: " + e.Message); }
             var list = new List<PropEntry>(map.Values);
 
             // Secondary dedup by REPRESENTATIVE MESH NAME (only for specific, non-generic names). Static batching
@@ -359,7 +359,7 @@ namespace PropHunt.Disguise
         /// so we can see WHY something (e.g. the ATM) clones as a proxy box vs the detailed visual - grounds the P1 fix.</summary>
         internal static void DumpObject(string nameQuery)
         {
-            if (string.IsNullOrEmpty(nameQuery)) { Core.Log.Warning("[PropHunt] usage: phdumpobj <name-substring>"); return; }
+            if (string.IsNullOrEmpty(nameQuery)) { Core.Log.Warning("usage: phdumpobj <name-substring>"); return; }
             try
             {
                 GameObject match = null, sub = null;
@@ -376,8 +376,8 @@ namespace PropHunt.Disguise
                         if (sub == null && t.name.IndexOf(nameQuery, System.StringComparison.OrdinalIgnoreCase) >= 0) sub = t.gameObject;
                     }
                 if (match == null) match = sub;
-                if (match == null) { Core.Log.Warning($"[PropHunt] phdumpobj: no scene object matching '{nameQuery}'"); return; }
-                Core.Log.Msg($"[PropHunt] phdumpobj '{match.name}' active={match.activeInHierarchy} markerRoot='{TopMarkerRoot(match).name}':");
+                if (match == null) { Core.Log.Warning($"phdumpobj: no scene object matching '{nameQuery}'"); return; }
+                Core.Log.Msg($"phdumpobj '{match.name}' active={match.activeInHierarchy} markerRoot='{TopMarkerRoot(match).name}':");
                 var mfs = match.GetComponentsInChildren<MeshFilter>(true);
                 int shown = 0;
                 if (mfs != null)
@@ -388,7 +388,7 @@ namespace PropHunt.Disguise
                         var mr = mf.GetComponent<MeshRenderer>();
                         bool junk = mesh != null && PropCatalog.IsJunkMeshName(mesh.name);
                         bool lod = mf.GetComponentInParent<LODGroup>() != null;
-                        Core.Log.Msg($"[PropHunt]   MF go='{mf.gameObject.name}' mesh='{(mesh != null ? mesh.name : "null")}' verts={(mesh != null ? mesh.vertexCount : 0)} " +
+                        Core.Log.Msg($"  MF go='{mf.gameObject.name}' mesh='{(mesh != null ? mesh.name : "null")}' verts={(mesh != null ? mesh.vertexCount : 0)} " +
                                      $"mr={(mr != null)} mrEnabled={(mr != null && mr.enabled)} active={mf.gameObject.activeInHierarchy} lod={lod} junk={junk}");
                         shown++;
                     }
@@ -397,11 +397,11 @@ namespace PropHunt.Disguise
                     for (int i = 0; i < smrs.Length; i++)
                     {
                         var s = smrs[i]; if (s == null) continue;
-                        Core.Log.Msg($"[PropHunt]   SMR go='{s.gameObject.name}' mesh='{(s.sharedMesh != null ? s.sharedMesh.name : "null")}' " +
+                        Core.Log.Msg($"  SMR go='{s.gameObject.name}' mesh='{(s.sharedMesh != null ? s.sharedMesh.name : "null")}' " +
                                      $"verts={(s.sharedMesh != null ? s.sharedMesh.vertexCount : 0)} enabled={s.enabled} active={s.gameObject.activeInHierarchy}");
                     }
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] phdumpobj failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("phdumpobj failed: " + e.Message); }
         }
 
         /// <summary>phfindmesh &lt;nameSubstring&gt;: scan ALL loaded Mesh ASSETS (Resources.FindObjectsOfTypeAll&lt;Mesh&gt;) for
@@ -410,7 +410,7 @@ namespace PropHunt.Disguise
         /// reference to recover the visual of a static-batched object.</summary>
         internal static void FindMeshAssets(string nameQuery)
         {
-            if (string.IsNullOrEmpty(nameQuery)) { Core.Log.Warning("[PropHunt] usage: phfindmesh <name-substring>"); return; }
+            if (string.IsNullOrEmpty(nameQuery)) { Core.Log.Warning("usage: phfindmesh <name-substring>"); return; }
             try
             {
                 var meshes = Resources.FindObjectsOfTypeAll<Mesh>();
@@ -431,13 +431,13 @@ namespace PropHunt.Disguise
                         {
                             var b = m.bounds.size;
                             bool rd = false; try { rd = m.isReadable; } catch { }
-                            Core.Log.Msg($"[PropHunt]   MESH '{mn}' verts={m.vertexCount} bounds={b.x:F1}x{b.y:F1}x{b.z:F1} readable={rd}");
+                            Core.Log.Msg($"  MESH '{mn}' verts={m.vertexCount} bounds={b.x:F1}x{b.y:F1}x{b.z:F1} readable={rd}");
                             shown++;
                         }
                     }
-                Core.Log.Msg($"[PropHunt] phfindmesh '{nameQuery}': {total} candidate un-batched mesh asset(s) resident.");
+                Core.Log.Msg($"phfindmesh '{nameQuery}': {total} candidate un-batched mesh asset(s) resident.");
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] phfindmesh failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("phfindmesh failed: " + e.Message); }
         }
 
         /// <summary>phmeshpool: measure the AVAILABLE clean-prop pool. Scans every MeshFilter (incl. inactive +
@@ -472,10 +472,10 @@ namespace PropHunt.Disguise
                 union.UnionWith(templateKeys);
                 int templateOnly = 0;
                 foreach (var k in templateKeys) if (!sceneKeys.Contains(k)) templateOnly++;
-                Core.Log.Msg($"[PropHunt] phmeshpool: distinct clean props (mesh+material, verts>=40, non-batched) - " +
+                Core.Log.Msg($"phmeshpool: distinct clean props (mesh+material, verts>=40, non-batched) - " +
                              $"SCENE={sceneKeys.Count}  TEMPLATE={templateKeys.Count} (template-ONLY, currently excluded={templateOnly})  UNION={union.Count}  | skipped {batchedSkipped} batched MeshFilters.");
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] phmeshpool failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("phmeshpool failed: " + e.Message); }
         }
 
         /// <summary>phprobesources: log the runtime shape of both databases + answer the open UNCERTAINs
@@ -485,7 +485,7 @@ namespace PropHunt.Disguise
             try
             {
                 var reg = Registry.Instance;
-                Core.Log.Msg($"[PropHunt] probe: Registry.Instance = {(reg != null ? "OK" : "NULL")}");
+                Core.Log.Msg($"probe: Registry.Instance = {(reg != null ? "OK" : "NULL")}");
                 if (reg != null)
                 {
                     var items = reg.GetAllItems();
@@ -505,13 +505,13 @@ namespace PropHunt.Disguise
                             int cull = 0; try { var mc = built.MeshesToCull; cull = mc != null ? mc.Count : 0; } catch { }
                             bool box = false; try { box = built.BoundingCollider != null; } catch { }
                             if (mesh) withMesh++; if (lod) withLod++; if (cull > 0) withCull++; if (box) withBox++;
-                            if (shown++ < 10) Core.Log.Msg($"[PropHunt]   build '{items[i].name}' mesh={mesh} lod={lod} meshesToCull={cull} box={box}");
+                            if (shown++ < 10) Core.Log.Msg($"  build '{items[i].name}' mesh={mesh} lod={lod} meshesToCull={cull} box={box}");
                         }
-                    Core.Log.Msg($"[PropHunt] probe BUILDABLES: {total} items, {build} buildable | withMesh={withMesh} withLOD={withLod} withMeshesToCull={withCull} withBoundingBox={withBox}");
+                    Core.Log.Msg($"probe BUILDABLES: {total} items, {build} buildable | withMesh={withMesh} withLOD={withLod} withMeshesToCull={withCull} withBoundingBox={withBox}");
                 }
 
                 var vm = VehicleManager.Instance;
-                Core.Log.Msg($"[PropHunt] probe: VehicleManager.Instance = {(vm != null ? "OK" : "NULL")}");
+                Core.Log.Msg($"probe: VehicleManager.Instance = {(vm != null ? "OK" : "NULL")}");
                 if (vm != null)
                 {
                     var p = vm.VehiclePrefabs;
@@ -526,17 +526,17 @@ namespace PropHunt.Disguise
                             bool box = false; try { box = v.boundingBox != null; } catch { }
                             if (box) vbox++;
                             string code = null; try { code = v.VehicleCode; } catch { }
-                            Core.Log.Msg($"[PropHunt]   veh '{(string.IsNullOrEmpty(code) ? v.gameObject.name : code)}' lod={lod} box={box}");
+                            Core.Log.Msg($"  veh '{(string.IsNullOrEmpty(code) ? v.gameObject.name : code)}' lod={lod} box={box}");
                         }
-                    Core.Log.Msg($"[PropHunt] probe VEHICLES: {n} prefabs | withLOD={vlod} withBoundingBox={vbox}");
+                    Core.Log.Msg($"probe VEHICLES: {n} prefabs | withLOD={vlod} withBoundingBox={vbox}");
                 }
 
                 var world = EnumerateWorldObjects();
-                Core.Log.Msg($"[PropHunt] probe WORLD OBJECTS: {world.Count} distinct interactive/functional objects (deduped by content).");
+                Core.Log.Msg($"probe WORLD OBJECTS: {world.Count} distinct interactive/functional objects (deduped by content).");
                 for (int i = 0; i < world.Count && i < 20; i++)
-                    Core.Log.Msg($"[PropHunt]   world '{world[i].Name}' ({world[i].Key})");
+                    Core.Log.Msg($"  world '{world[i].Name}' ({world[i].Key})");
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] probe failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("probe failed: " + e.Message); }
         }
 #endif
     }

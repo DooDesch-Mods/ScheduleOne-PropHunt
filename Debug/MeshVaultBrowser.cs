@@ -50,17 +50,17 @@ namespace PropHunt.Debug
 
             if (!ResolveApi())
             {
-                Core.Log.Warning("[PropHunt] phmesh: MeshVault not found. Install the REAL MeshVault.Il2Cpp.dll " +
+                Core.Log.Warning("phmesh: MeshVault not found. Install the REAL MeshVault.Il2Cpp.dll " +
                                  "(github.com/hdlmrell/S1-MeshVault releases) into Mods - the file currently there is an XML config, not the DLL.");
                 return;
             }
-            if (!LoadIds() || _ids.Count == 0) { Core.Log.Warning("[PropHunt] phmesh: MeshVault returned no mesh ids (DB not built? load a save first)."); return; }
+            if (!LoadIds() || _ids.Count == 0) { Core.Log.Warning("phmesh: MeshVault returned no mesh ids (DB not built? load a save first)."); return; }
 
             _index = 0;
             _active = true;
             BuildAnchor();
             SpawnCurrent();
-            Core.Log.Msg($"[PropHunt] MeshVault browser ON: {_ids.Count} meshes.  [<- / ->] prev/next  [PgUp/PgDn] +-10  (phmesh = exit)");
+            Core.Log.Msg($"MeshVault browser ON: {_ids.Count} meshes.  [<- / ->] prev/next  [PgUp/PgDn] +-10  (phmesh = exit)");
         }
 
         private static void Exit()
@@ -87,11 +87,11 @@ namespace PropHunt.Debug
                     _apiType = t;
                     _spawn = spawn;
                     _listMeshes = FindMethod(t, "ListMeshes");
-                    Core.LogDebug($"[PropHunt] phmesh: resolved {t.FullName} in {nm}");
+                    Core.LogDebug($"phmesh: resolved {t.FullName} in {nm}");
                     return true;
                 }
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] phmesh resolve failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("phmesh resolve failed: " + e.Message); }
             return false;
         }
 
@@ -125,7 +125,7 @@ namespace PropHunt.Debug
                 _ids.Sort(StringComparer.OrdinalIgnoreCase);
                 return _ids.Count > 0;
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] phmesh ListMeshes failed: " + e.Message); return false; }
+            catch (Exception e) { Core.Log.Warning("phmesh ListMeshes failed: " + e.Message); return false; }
         }
 
         // ---- preview ----
@@ -153,7 +153,7 @@ namespace PropHunt.Debug
                 for (int k = 3; k < ps.Length; k++) args[k] = ps[k].HasDefaultValue ? ps[k].DefaultValue : null;
 
                 var go = _spawn.Invoke(null, args) as GameObject;
-                if (go == null) { Core.LogDebug($"[PropHunt] phmesh: Spawn returned null for '{id}'"); return; }
+                if (go == null) { Core.LogDebug($"phmesh: Spawn returned null for '{id}'"); return; }
 
                 // strip colliders/rigidbodies so the preview is inert
                 try { foreach (var c in go.GetComponentsInChildren<Collider>(true)) if (c != null) Object.Destroy(c); } catch { }
@@ -178,7 +178,7 @@ namespace PropHunt.Debug
                     go.transform.position += _anchor.transform.position - b2.center;
                 _current = go;
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] phmesh spawn failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("phmesh spawn failed: " + e.Message); }
         }
 
         private static bool TryBounds(GameObject go, out Bounds b)
@@ -215,7 +215,7 @@ namespace PropHunt.Debug
                 else if (Input.GetKeyDown(KeyCode.PageUp)) Move(-10);
                 UpdateAnchor();
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] phmesh tick failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("phmesh tick failed: " + e.Message); }
         }
 
         private static void UpdateAnchor()

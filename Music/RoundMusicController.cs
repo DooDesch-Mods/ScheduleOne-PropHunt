@@ -52,7 +52,7 @@ namespace PropHunt.Music
                 }
                 LogState("after Play " + trackName);
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] music play failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("music play failed: " + e.Message); }
         }
 
         /// <summary>Hunt begins: smoothly FADE the Music volume bus to 0 (whistles are on the FX bus, unaffected)
@@ -145,7 +145,7 @@ namespace PropHunt.Music
                 if (tracks != null)
                     foreach (var t in tracks)
                         try { if (t != null && (t.Enabled || t.IsPlaying)) sb.Append($"  [{t.TrackName} prio={t.Priority} en={(t.Enabled ? 1 : 0)} play={(t.IsPlaying ? 1 : 0)}]"); } catch { }
-                Core.Log.Msg($"[PropHunt] music state ({ctx}): active='{_active}' muted={_muted} fading={_fading} user={_userVolume:F2} target={_target:F2} musicVol={mv:F2}{(sb.Length > 0 ? sb.ToString() : "  (none enabled/playing)")}");
+                Core.Log.Msg($"music state ({ctx}): active='{_active}' muted={_muted} fading={_fading} user={_userVolume:F2} target={_target:F2} musicVol={mv:F2}{(sb.Length > 0 ? sb.ToString() : "  (none enabled/playing)")}");
             }
             catch { }
         }
@@ -159,12 +159,12 @@ namespace PropHunt.Music
             {
                 var tracks = UnityEngine.Resources.FindObjectsOfTypeAll<MusicTrack>();
                 int n = tracks != null ? tracks.Length : 0;
-                Core.Log.Msg($"[PropHunt] phmusic: {n} MusicTrack(s) loaded:");
+                Core.Log.Msg($"phmusic: {n} MusicTrack(s) loaded:");
                 if (tracks != null)
                     for (int i = 0; i < tracks.Length; i++)
-                    { try { Core.Log.Msg($"[PropHunt]   '{tracks[i].TrackName}'  (playing={tracks[i].IsPlaying}, prio={tracks[i].Priority})"); } catch { } }
+                    { try { Core.Log.Msg($"  '{tracks[i].TrackName}'  (playing={tracks[i].IsPlaying}, prio={tracks[i].Priority})"); } catch { } }
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] phmusic failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("phmusic failed: " + e.Message); }
         }
 #endif
     }

@@ -39,7 +39,7 @@ namespace PropHunt.Quests
             {
                 if (desired.Count == 0) return;   // nothing to show yet
                 try { _quest = QuestManager.CreateQuest<PropHuntGuideQuest>() as PropHuntGuideQuest; }
-                catch (Exception e) { Core.Log.Warning("[PropHunt] guide quest create failed: " + e.Message); return; }
+                catch (Exception e) { Core.Log.Warning("guide quest create failed: " + e.Message); return; }
                 if (_quest == null) return;
             }
 
@@ -68,7 +68,7 @@ namespace PropHunt.Quests
                 if (!_active.ContainsKey(kv.Key))
                 {
                     try { _active[kv.Key] = _quest.AddObjective(kv.Value); _titles[kv.Key] = kv.Value; }
-                    catch (Exception e) { Core.Log.Warning("[PropHunt] guide quest add failed: " + e.Message); }
+                    catch (Exception e) { Core.Log.Warning("guide quest add failed: " + e.Message); }
                 }
                 else if (_titles.TryGetValue(kv.Key, out var t) && t != kv.Value)
                 {

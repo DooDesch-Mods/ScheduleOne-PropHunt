@@ -21,11 +21,11 @@ namespace PropHunt.Debug
             try
             {
                 var ctl = GameModeController.Active;
-                if (ctl == null) { log.Msg("[PropHunt] phscale: no active session."); return; }
+                if (ctl == null) { log.Msg("phscale: no active session."); return; }
 
                 int propId = ctl.LocalPropId;
                 var player = Player.Local;
-                log.Msg("[PropHunt] ---- phscale ----");
+                log.Msg("---- phscale ----");
                 log.Msg($"  role={ctl.LocalRole} phase={ctl.State?.Phase} propId={propId} ({ctl.LocalPropName ?? "none"})");
                 log.Msg($"  setting PropSizeCollision={(ctl.Settings == null ? "(no settings)" : ctl.Settings.PropSizeCollision.ToString())}");
 
@@ -77,7 +77,7 @@ namespace PropHunt.Debug
                 }
                 else log.Msg("  no ph_prop_ hitbox on the local player (not disguised, or the hitbox failed to build).");
             }
-            catch (System.Exception ex) { log.Warning("[PropHunt] phscale failed: " + ex); }
+            catch (System.Exception ex) { log.Warning("phscale failed: " + ex); }
         }
 
         /// <summary>The disguise's shootable box (the cyan one in the F3 overlay), in world metres. It hangs under the
