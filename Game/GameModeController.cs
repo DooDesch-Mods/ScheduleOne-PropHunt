@@ -38,6 +38,25 @@ namespace PropHunt.Game
         private float _lastSettingsPush;
         private GameState _state = new GameState();
         private HostSyncVar<string> _stateVar;
+
+        /// <summary>
+        /// Shortest gap between two full-state writes, which grows with the lobby because the payload does: one push is
+        /// some 630 bytes at 2 players and 4.4 KB at 12 with the default decoy allowance. A fixed gap would let a big
+        /// lobby push ten times the bytes of a small one, so the rate comes down as the size goes up - and a two-player
+        /// session keeps the snappiness it always had. See <see cref="PushState"/>.
+        /// </summary>
+        private float StatePushIntervalSeconds =>
+            Mathf.Clamp(0.08f + 0.02f * _state.Players.Count, 0.12f, 0.5f);
+        private bool _statePushPending;
+        private float _lastStatePushAt;
+        private bool _stateSizeWarned;
+
+        /// <summary>How long a lobby member list stays good. See <see cref="GetMemberIds"/>.</summary>
+        private const float MemberIdCacheSeconds = 0.5f;
+        private readonly List<ulong> _memberIds = new List<ulong>();
+        private float _memberIdsAt = -99f;
+        private int _memberIdsVersion;        // bumped on every real re-read of the lobby
+        private int _rosterSyncedVersion = -1;   // the version the roster was last compared against
         private DisguiseController _disguise;
         private DecoyController _decoy;
         private PropPicker _picker;
@@ -869,7 +888,17 @@ namespace PropHunt.Game
             {
                 // Keep the roster live even BEFORE the match starts (in the pre-match Lobby) so the Stats/Players tabs
                 // show every joiner, not just the host. The round machine (TickHost) still only runs once started.
-                bool changed = RoundLogic.SyncRoster(_state, GetMemberIds());
+                //
+                // Compared only when the member list was actually re-read, not every frame: SyncRoster allocates a
+                // HashSet and a LINQ list per call, and comparing the same list against the same roster sixty times a
+                // second cannot find anything the first comparison missed.
+                bool changed = false;
+                var members = GetMemberIds();
+                if (_rosterSyncedVersion != _memberIdsVersion)
+                {
+                    _rosterSyncedVersion = _memberIdsVersion;
+                    changed = RoundLogic.SyncRoster(_state, members);
+                }
                 // A joiner has no pool until we send it one, and the send is a no-op unless the roster or our own
                 // catalog actually moved - so this costs a hash compare on an ordinary tick.
                 if (changed) BroadcastPropPool(force: true);
@@ -1011,6 +1040,10 @@ namespace PropHunt.Game
             // opens the PropHunt app. Points the player at the app as the control/tracking surface.
             Quests.GuideQuest.Tick();
 
+            // Everything this frame asked to publish goes out as ONE write, at the end, rate-limited. Player actions
+            // arrive on network callbacks between frames, so several of them collapse into a single push here.
+            FlushState();
+
             if (_state.Phase == RoundPhase.MatchEnd) RequestReturnToHub();
         }
 
@@ -1122,11 +1155,47 @@ namespace PropHunt.Game
             Core.LogDebug("client recv state: effects applied.");
         }
 
+        /// <summary>
+        /// Ask for the game state to reach the clients. Marks it dirty; the actual write happens at most every
+        /// <see cref="StatePushIntervalSeconds"/> from <see cref="FlushState"/> at the end of the host's tick.
+        ///
+        /// Why it has to be coalesced: the state travels as ONE string in Steam lobby data, so every push serialises
+        /// every player and every decoy and fans that out to every member. Each of the ~20 callers is a player action -
+        /// pick a prop, turn it, drop a decoy, land a hit, step out of the area. So the number of pushes per second
+        /// grows with the player count AND so does the size of each one: the traffic grows with the SQUARE of the
+        /// lobby. Two players never noticed. Twelve players, with Steam rate-limiting lobby data on top, is the lag.
+        /// Nothing in the state needs sub-frame timing - phases carry an end timestamp, positions are the game's own
+        /// netcode - so the gap in <see cref="StatePushIntervalSeconds"/> costs nothing that anyone can see.
+        /// </summary>
         private void PushState()
         {
             if (!_isHost || _stateVar == null) return;
+            _statePushPending = true;
+        }
+
+        /// <summary>Write the state now if one was asked for and the rate allows it. Host-only, called once per tick.</summary>
+        private void FlushState()
+        {
+            if (!_statePushPending || !_isHost || _stateVar == null) return;
+            if (Time.unscaledTime - _lastStatePushAt < StatePushIntervalSeconds) return;
+            _statePushPending = false;
+            _lastStatePushAt = Time.unscaledTime;
             _state.HostNowUnix = RawNowUnix();   // clients derive their clock offset from this
-            try { _stateVar.Value = _state.Serialize(); } catch (Exception e) { Core.Log.Warning("PushState failed: " + e.Message); }
+            try
+            {
+                string blob = _state.Serialize();
+                // Steam refuses a lobby data value over 8 KB, and the write would fail silently from a player's point
+                // of view: the state simply stops arriving. Say it once, loudly, while there is still headroom.
+                if (blob.Length > 7000 && !_stateSizeWarned)
+                {
+                    _stateSizeWarned = true;
+                    Core.Log.Warning($"the game state is {blob.Length} bytes with {_state.Players.Count} players and " +
+                                     $"{_state.Decoys.Count} decoys - Steam drops a lobby value over 8192. Clients will " +
+                                     "stop seeing updates if it grows further.");
+                }
+                _stateVar.Value = blob;
+            }
+            catch (Exception e) { Core.Log.Warning("PushState failed: " + e.Message); }
         }
 
         private static void EnsureHandlers()
@@ -1997,7 +2066,17 @@ namespace PropHunt.Game
 
         private List<ulong> GetMemberIds()
         {
-            var list = new List<ulong>();
+            // Cached, because this is asked for EVERY FRAME (the host's roster sync, and the phone app's signature)
+            // while the answer only changes when somebody joins or leaves. One call walks the Steam lobby and, per
+            // member, fetches the persona name and allocates a MemberInfo, a List and a copy of that List - so at
+            // twelve players an uncached read costs some 700 Steam name lookups and 2000 allocations per second on
+            // the host alone. Half a second late on a joiner is invisible: the roster comparison runs on this
+            // refresh, and a joiner has nothing to do until they are in it.
+            if (Time.unscaledTime - _memberIdsAt < MemberIdCacheSeconds) return _memberIds;
+            _memberIdsAt = Time.unscaledTime;
+            _memberIdsVersion++;
+            var list = _memberIds;
+            list.Clear();
             try
             {
                 var ms = PropHuntNet.Client?.GetLobbyMembers();

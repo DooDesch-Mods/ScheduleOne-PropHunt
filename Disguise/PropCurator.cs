@@ -40,6 +40,9 @@ namespace PropHunt.Disguise
         private static string _infoObj = "";
         private static string _infoStats = "";
         private static string _infoFlags = "";
+
+        /// <summary>Set by phcuratekeep: whether allowlist keys with no mesh in memory are offered for review at all.</summary>
+        private static bool _keptIncludeNotLoaded;
         private static bool _infoFlagsBad;
 
         private const float PreviewDistance = 2.2f;
@@ -57,11 +60,19 @@ namespace PropHunt.Disguise
         /// finish off newly-appeared props without scrolling past the hundreds already decided.</summary>
         internal static void ToggleUnreviewed() => Enter(CurateFilter.Unreviewed);
 
-        /// <summary>phcuratekeep: review the ENTIRE become-able allowlist - every key currently marked keep=1 - so
-        /// nothing become-able can hide from review. Built from the curation file itself (not a world re-scan), so it
-        /// is independent of LOD folding or what is loaded where you stand; loaded props show a live preview, the rest
-        /// show by name. Press [N] on a bad one to drop it from the pool.</summary>
-        internal static void ToggleKept() => Enter(CurateFilter.Kept);
+        /// <summary>phcuratekeep: review the become-able allowlist - the keys currently marked keep=1 - built from the
+        /// curation file itself rather than a world re-scan, so LOD folding cannot hide a prop from review. Press [N] on
+        /// a bad one to drop it from the pool.
+        ///
+        /// Only keys whose mesh is actually in memory are offered, because the decision is made by LOOKING at the prop:
+        /// roughly a third of the allowlist lives in interiors that are not loaded where you stand, and those showed an
+        /// empty screen that reads exactly like a broken prop. Their names are logged instead, and "phcuratekeep all"
+        /// puts them back in the list for anyone who wants to prune by name.</summary>
+        internal static void ToggleKept(bool includeNotLoaded = false)
+        {
+            _keptIncludeNotLoaded = includeNotLoaded;
+            Enter(CurateFilter.Kept);
+        }
 
         /// <summary>phcurateskip: review the currently-SKIPPED scene props so you can RESCUE good-looking ones the
         /// heuristic seed threw out (too big/small/oddly-named). [Y] moves a skip back into the becomable pool. This is
@@ -82,10 +93,21 @@ namespace PropHunt.Disguise
         internal static void ToggleWorld() => EnterList(PropSources.EnumerateWorldObjects, "WORLD OBJECTS");
 
         /// <summary>phcuratepool: review the EXACT becomable pool - the ACTUAL runtime catalog (PropCatalog.Build) that
-        /// [2]-random draws from and [E]-look-at resolves to, NOT the allowlist keys. Un-culls first so every approvable
-        /// prop is active and catalogued (the full pool). Whatever appears here is precisely what a player can become;
-        /// [N] prunes a prop straight out of that pool. The definitive "what can players actually get" verification.</summary>
-        internal static void ToggleCatalog() => EnterList(() => { UncullAllProperties(); return PropCatalog.CatalogSnapshot(); }, "BECOMABLE POOL (exact)");
+        /// [2]-random draws from and [E]-look-at resolves to, NOT the allowlist keys. Whatever appears here is precisely
+        /// what a player can become; [N] prunes a prop straight out of that pool. The definitive "what can players
+        /// actually get" verification.</summary>
+        internal static void ToggleCatalog() => EnterList(() =>
+        {
+            // The catalog scan only sees an interior's props while that interior is active, so everything is un-culled
+            // for the ENUMERATION and handed straight back afterwards. Leaving thirteen interiors active is a
+            // slideshow at about 1 FPS; stepping then wakes one interior at a time through UncullFor.
+            UncullAllProperties();
+            List<PropEntry> snapshot;
+            try { snapshot = PropCatalog.CatalogSnapshot(); }
+            finally { RestorePropertyCulling(); }
+            _uncullOnDemand = true;
+            return snapshot;
+        }, "BECOMABLE POOL (exact)");
 
         /// <summary>Enter the curator over an explicit whole-object candidate list (a registry/vehicle source) instead
         /// of the scene scan. No property un-cull (these come from prefab databases, not the live scene). Decisions
@@ -127,11 +149,11 @@ namespace PropHunt.Disguise
             if (_active) { Exit(); return; }
             try
             {
-                // Un-culling every property interior is heavy (it activates thousands of renderers) and is ONLY
-                // useful for the discovery filters, where you want interior props active to spot them. The Kept
-                // review resolves its previews from the key index, which sees inactive meshes too (FindObjectsOfTypeAll),
-                // so un-culling there is pure lag with zero benefit - skip it.
-                if (filter == CurateFilter.All || filter == CurateFilter.Unreviewed) UncullAllProperties();
+                // Only the discovery filters need interior props active, to spot them at all. They get one interior at
+                // a time as you step (UncullFor): thirteen active together is a slideshow, since every renderer and
+                // light in them draws every frame, and only one candidate is ever on screen. The Kept review needs
+                // none of it - it resolves previews from the key index, which sees inactive meshes as well.
+                _uncullOnDemand = filter == CurateFilter.All || filter == CurateFilter.Unreviewed;
                 PropCatalog.LoadCuration();
                 if (filter == CurateFilter.Kept)
                 {
@@ -222,6 +244,7 @@ namespace PropHunt.Disguise
             var seenGroup = new HashSet<LODGroup>();
             var covered = new HashSet<string>();
             int preview = 0, byName = 0;
+            var notLoadedNames = new List<string>();
             for (int i = 0; i < keys.Count; i++)
             {
                 string key = keys[i];
@@ -240,17 +263,28 @@ namespace PropHunt.Disguise
                 }
                 else
                 {
-                    // kept key with no loaded world mesh: review by name (still skippable to drop it from the allowlist)
-                    list.Add(new PropEntry { Key = key, Name = NameFromKey(key) });
+                    // A kept key whose mesh is nowhere in memory. It is very probably a perfectly good prop that lives
+                    // in an interior this position does not load, so there is nothing on screen to judge it by. Offered
+                    // only when explicitly asked for; otherwise it is named in the log and left alone.
                     byName++;
+                    notLoadedNames.Add(NameFromKey(key));
+                    if (!_keptIncludeNotLoaded) continue;
+                    list.Add(new PropEntry { Key = key, Name = NameFromKey(key), NotLoaded = true });
                 }
             }
             list.Sort((a, c) => string.CompareOrdinal(a.Name ?? "", c.Name ?? ""));
-            // Coverage proof: EVERY keep=1 key is represented. entries < keys means LOD props folded into one entry;
-            // by-name entries are kept props whose mesh isn't loaded here (still skippable). If this log is absent or
-            // the numbers don't add up, an OLD build is running (the old world-scan curator never logged this).
-            Core.Log.Msg($"phcuratekeep allowlist: {list.Count} entries covering ALL {keys.Count} keep keys " +
-                         $"({preview} with live preview, {byName} by-name/not-loaded, {keys.Count - list.Count} folded into LOD groups).");
+            // Where every keep=1 key went: reviewable here, not loaded here, or folded into an LOD prop that is already
+            // in the list once. If this log is missing, an OLD build is running.
+            Core.Log.Msg($"phcuratekeep allowlist: {list.Count} entries to review of {keys.Count} keep keys " +
+                         $"({preview} with a live preview, {byName} not loaded here, " +
+                         $"{keys.Count - preview - byName} folded into LOD groups).");
+            if (byName > 0 && !_keptIncludeNotLoaded)
+            {
+                notLoadedNames.Sort(string.CompareOrdinal);
+                Core.Log.Msg($"phcuratekeep: {byName} kept prop(s) are NOT loaded here, so they are left out - judging " +
+                             "one from an empty screen is how a good prop gets dropped. Curate them where they exist, " +
+                             "or use 'phcuratekeep all' to prune them by name: " + string.Join(", ", notLoadedNames));
+            }
             return list;
         }
 
@@ -269,6 +303,7 @@ namespace PropHunt.Disguise
             try { CuratePreview.Clear(); } catch { }   // stop the on-player preview on all clients
             try { PropCatalog.SaveCuration(); } catch { }
             try { PropCatalog.ClearKeyIndex(); } catch { }   // drop the cached world index (rebuilt fresh next Enter)
+            try { ReleaseHeldInterior(); } catch { }      // the one interior a discovery filter was holding open
             try { RestorePropertyCulling(); } catch { }   // resume normal distance culling of interiors
             try { Game.RoundEnvironment.RestoreTimeProgression(); } catch { }
             if (_meshGo != null) { try { Object.Destroy(_meshGo); } catch { } }
@@ -290,6 +325,62 @@ namespace PropHunt.Disguise
         /// interior props become active + renderer-enabled and thus reviewable/previewable from one spot. The
         /// previous per-property state is captured for <see cref="RestorePropertyCulling"/>. Local-only (SetActive /
         /// MeshRenderer.enabled - the same op the game runs when you walk up to a property), so MP-safe per client.</summary>
+        /// <summary>True while a discovery filter is running: interiors are un-culled per candidate.</summary>
+        private static bool _uncullOnDemand;
+
+        /// <summary>The property currently forced active, so stepping away can put it back.</summary>
+        private static Il2CppScheduleOne.Property.Property _uncullHeld;
+        private static bool _heldWasEnabled, _heldWasCulled;
+
+        /// <summary>
+        /// Force the interior the CURRENT candidate lives in to be active, and let the previous one go back to normal
+        /// culling. One interior instead of all of them: the preview only ever shows one prop, and holding the rest
+        /// active cost most of the frame rate.
+        /// </summary>
+        private static void UncullFor(PropEntry e)
+        {
+            if (!_uncullOnDemand) return;
+            Il2CppScheduleOne.Property.Property want = null;
+            try
+            {
+                var src = e?.Source != null ? e.Source.gameObject
+                        : e?.SourceRoot != null ? e.SourceRoot : null;
+                if (src != null) want = src.GetComponentInParent<Il2CppScheduleOne.Property.Property>();
+            }
+            catch { want = null; }
+
+            if (want == _uncullHeld) return;   // same interior (or both none) - nothing to swap
+
+            // let the previous one resume culling itself
+            if (_uncullHeld != null)
+            {
+                try { _uncullHeld.ContentCullingEnabled = _heldWasEnabled; _uncullHeld.SetContentCulled(_heldWasCulled); }
+                catch (System.Exception ex) { Core.LogDebug("phcurate: could not re-cull an interior: " + ex.Message); }
+            }
+            _uncullHeld = null;
+
+            if (want == null) return;   // an outdoor prop needs nothing
+            try
+            {
+                _heldWasEnabled = want.ContentCullingEnabled;
+                _heldWasCulled = want.IsContentCulled;
+                want.ContentCullingEnabled = false;
+                want.SetContentCulled(false);
+                _uncullHeld = want;
+            }
+            catch (System.Exception ex) { Core.LogDebug("phcurate: could not un-cull an interior: " + ex.Message); }
+        }
+
+        /// <summary>Give the one held interior back to the game. Paired with <see cref="UncullFor"/>.</summary>
+        private static void ReleaseHeldInterior()
+        {
+            if (_uncullHeld == null) { _uncullOnDemand = false; return; }
+            try { _uncullHeld.ContentCullingEnabled = _heldWasEnabled; _uncullHeld.SetContentCulled(_heldWasCulled); }
+            catch (System.Exception ex) { Core.LogDebug("phcurate: could not re-cull an interior: " + ex.Message); }
+            _uncullHeld = null;
+            _uncullOnDemand = false;
+        }
+
         private static void UncullAllProperties()
         {
             _cullState.Clear();
@@ -446,6 +537,16 @@ namespace PropHunt.Disguise
         {
             _infoObj = _infoStats = _infoFlags = ""; _infoFlagsBad = false;
             var e = Current; if (e == null) return;
+            if (e.NotLoaded)
+            {
+                // Not in memory HERE. Says nothing about the prop: it is most likely fine and simply lives in an
+                // interior this position does not load. The empty screen is the absence of data, not a verdict.
+                _infoObj = $"mesh '{e.Name}'    -    NOT LOADED in this world";
+                _infoStats = $"key  {e.Key}";
+                _infoFlags = "nothing on screen to judge - this prop is probably fine. Skip it unless you know it is bad";
+                _infoFlagsBad = true;
+                return;
+            }
             if (e.Source == null)
             {
                 // residual allowlist key with no renderable mesh+material anywhere in memory (e.g. a non-visual /
@@ -526,6 +627,7 @@ namespace PropHunt.Disguise
         private static void ShowCurrent()
         {
             var e = Current; if (e == null) return;
+            UncullFor(e);   // wake THIS candidate's interior, let the previous one go back to sleep
             Core.LogDebug($"curate [{_index + 1}/{_candidates.Count}] '{e.Name}' ({e.Key}) -> {DecisionTextFor(e)}  ({_infoFlags})");
             try { CuratePreview.Set(e.Key); } catch { }   // live on-player preview on the OTHER clients
         }

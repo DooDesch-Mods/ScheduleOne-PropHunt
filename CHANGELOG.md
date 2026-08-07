@@ -4,6 +4,25 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.8] - 2026-08-07
+
+### Added
+
+- 40 more props to hide as. The allowlist went from 347 to 387 entries.
+
+### Fixed
+
+- A full lobby runs at a normal frame rate. Every player was telling the game to clear their wanted level once per
+  frame, and the game answers each of those with a network message to the host: about 660 a second with 12 players in
+  the round, every one of them also written to the host's log. It now only asks when there is a wanted level to clear.
+- The host no longer republishes the whole match to everyone every time anyone does anything. Picking a prop, turning it,
+  dropping a decoy, landing a hit and stepping out of the zone all sent the complete state of every player, which is
+  4.4 KB with 12 of them. Updates are bundled now, and the bigger the lobby the fewer go out.
+- Holding the rotate key sends nothing while the prop is not turning. Resting a finger on it published the whole
+  lobby state six times a second.
+- The host stopped asking Steam for the full member list, persona names and all, on every frame. Once every half a
+  second is enough to notice somebody joining.
+
 ## [1.3.7] - 2026-08-07
 
 ### Fixed

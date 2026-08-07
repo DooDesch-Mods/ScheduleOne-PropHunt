@@ -65,8 +65,9 @@ namespace PropHunt.Patches
                     case "phcurateu":  // toggle curation over ONLY the still-unreviewed candidates
                         Disguise.PropCurator.ToggleUnreviewed();
                         return false;
-                    case "phcuratekeep":  // re-review ONLY the currently-kept candidates (prune auto-seeded keeps)
-                        Disguise.PropCurator.ToggleKept();
+                    case "phcuratekeep":  // re-review the kept candidates you can SEE here ("all" also lists the not-loaded ones)
+                        Disguise.PropCurator.ToggleKept(args.Count > 1 &&
+                            string.Equals(args[1], "all", StringComparison.OrdinalIgnoreCase));
                         return false;
                     case "phcurateskip":  // review the SKIPPED scene props to RESCUE good ones the seed rejected
                         Disguise.PropCurator.ToggleSkipped();
