@@ -87,6 +87,16 @@ namespace PropHunt.Patches
                 var ctl = GameModeController.Active;
                 if (ctl == null) return true;
                 if (ctl.LocalRole == PlayerRole.Hunter) return true;   // hunters crouch freely
+                // STANDING UP is never blocked. TryToggleCrouch is the only road to SetCrouched(false), and the world
+                // crouches you without asking: ScheduleOne.Tools.ForcePlayerCrouch calls SetCrouched(true) on entering
+                // its trigger and has no exit handler at all - it expects you to stand up yourself. Refusing the toggle
+                // in both directions therefore left a prop stuck crouched for the rest of the round.
+                try
+                {
+                    var pm = PlayerSingleton<PlayerMovement>.Instance;
+                    if (pm != null && pm.IsCrouched) return true;
+                }
+                catch { return true; }
                 // WornPropId, not LocalPropId: the round's roster field reads -1 in the lobby, so trying props on there
                 // left crouching enabled - and a crouching crate is the same giveaway in a dressing room as in a round.
                 // Nor is the role test enough on its own: in the lobby nobody has one yet.

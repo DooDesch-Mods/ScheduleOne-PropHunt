@@ -68,10 +68,10 @@ namespace PropHunt.Config
                 string cache = sb.ToString();
                 if (string.IsNullOrEmpty(cache) || cache == PropHuntPreferences.WeaponCache) return false;
                 PropHuntPreferences.SaveWeaponCache(cache);
-                Core.Log.Msg($"[PropHunt] hunter-weapon catalog cached ({seen.Count} weapons): {cache.Replace('\n', ' ')}");
+                Core.Log.Msg($"hunter-weapon catalog cached ({seen.Count} weapons): {cache.Replace('\n', ' ')}");
                 return true;
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] weapon enumeration failed: " + e.Message); return false; }
+            catch (Exception e) { Core.Log.Warning("weapon enumeration failed: " + e.Message); return false; }
         }
     }
 }

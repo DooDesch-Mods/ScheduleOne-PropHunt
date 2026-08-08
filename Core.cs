@@ -117,16 +117,25 @@ namespace PropHunt
                     }
                 };
                 SideHustle.API.Register(_descriptor);
-                Log.Msg("[PropHunt] registered with Side Hustle.");
+                Log.Msg("registered with Side Hustle.");
             }
             catch (Exception e)
             {
-                Log.Warning("[PropHunt] Side Hustle not available; cannot register as a gamemode: " + e.Message);
+                Log.Warning("Side Hustle not available; cannot register as a gamemode: " + e.Message);
             }
         }
 
         private static SideHustle.LaunchContext _session;
         private static SideHustle.GamemodeDescriptor _descriptor;   // our registered descriptor (its Presets are refreshed after a host)
+
+        /// <summary>Rebuild the preset list the host form offers, so the "your last settings" entry reflects what was
+        /// just saved. The list is a snapshot on the descriptor: without this, settings changed in the lobby were
+        /// written to disk and the form still opened on the values from before them.</summary>
+        internal static void RefreshPresets()
+        {
+            try { if (_descriptor != null) _descriptor.Presets = Config.RoundPresets.Build(); }
+            catch (Exception e) { Log.Warning("could not refresh the preset list: " + e.Message); }
+        }
         private static Game.GameModeController _controller;
         private static bool _patched;              // gameplay Harmony patches applied (lazily, on the first gameplay scene)
 
@@ -136,7 +145,7 @@ namespace PropHunt
         private static void OnHostMultiplayer(SideHustle.LaunchContext ctx)
         {
             _session = ctx;
-            Log.Msg($"[PropHunt] hosting via Side Hustle (lobby {ctx.LobbyId}, {ctx.PlayerCount} player(s)).");
+            Log.Msg($"hosting via Side Hustle (lobby {ctx.LobbyId}, {ctx.PlayerCount} player(s)).");
             // If the host tweaked a preset (mode == "Custom - <base>"), persist these settings as the Custom preset
             // so the form pre-selects them next time + refresh our preset list for any re-host this session.
             try
@@ -148,7 +157,7 @@ namespace PropHunt
                     if (_descriptor != null) _descriptor.Presets = Config.RoundPresets.Build();
                 }
             }
-            catch (Exception e) { Log.Warning("[PropHunt] save custom preset failed: " + e.Message); }
+            catch (Exception e) { Log.Warning("save custom preset failed: " + e.Message); }
             // SteamNetworkLib auto-attaches to the game's Steam lobby (idempotent).
             Net.PropHuntNet.Initialize();
             _controller?.Dispose();
@@ -159,7 +168,7 @@ namespace PropHunt
         private static void OnJoinMultiplayer(SideHustle.LaunchContext ctx)
         {
             _session = ctx;
-            Log.Msg($"[PropHunt] joined via Side Hustle (lobby {ctx.LobbyId}, host {ctx.HostName ?? "?"}).");
+            Log.Msg($"joined via Side Hustle (lobby {ctx.LobbyId}, host {ctx.HostName ?? "?"}).");
             Net.PropHuntNet.Initialize();
             _controller?.Dispose();
             _controller = new Game.GameModeController(ctx, isHost: false);
@@ -168,7 +177,7 @@ namespace PropHunt
 
         private static void OnExitToHub(SideHustle.LaunchContext ctx)
         {
-            Log.Msg("[PropHunt] session ended; tearing down.");
+            Log.Msg("session ended; tearing down.");
             UI.Hud.HudController.Teardown();   // destroy the uGUI HUD canvas with the session
             Phone.PhoneImages.Reset();         // the next session has a different roster and a different prop catalog
             Phone.GameHost.ForgetPreset();     // and its rules start from whatever the next host picks
@@ -246,15 +255,15 @@ namespace PropHunt
                 try { foreach (var _ in HarmonyInstance.GetPatchedMethods()) { already = true; break; } } catch { }
                 try
                 {
-                    if (already) Log.Msg("[PropHunt] gameplay patches already applied; skipping PatchAll.");
-                    else { HarmonyInstance.PatchAll(); Log.Msg("[PropHunt] PatchAll completed."); }
+                    if (already) Log.Msg("gameplay patches already applied; skipping PatchAll.");
+                    else { HarmonyInstance.PatchAll(); Log.Msg("PatchAll completed."); }
                 }
-                catch (Exception e) { Log.Error("[PropHunt] PatchAll FAILED (later patches skipped): " + e); }
+                catch (Exception e) { Log.Error("PatchAll FAILED (later patches skipped): " + e); }
                 try
                 {
                     int n = 0;
-                    foreach (var m in HarmonyInstance.GetPatchedMethods()) { n++; LogDebug($"[PropHunt] patched: {m.DeclaringType?.Name}.{m.Name}"); }
-                    Log.Msg($"[PropHunt] patched method count: {n}");
+                    foreach (var m in HarmonyInstance.GetPatchedMethods()) { n++; LogDebug($"patched: {m.DeclaringType?.Name}.{m.Name}"); }
+                    Log.Msg($"patched method count: {n}");
                 }
                 catch { }
             }
@@ -274,7 +283,7 @@ namespace PropHunt
 
             // Gameplay scene loaded. The session controller, role assignment, and prop catalog are wired up
             // when a PropHunt session starts.
-            LogDebug("[PropHunt] Main scene loaded.");
+            LogDebug("Main scene loaded.");
 
             // The item registry is only populated in a gameplay scene (not at the menu where the host form is built),
             // so discover the available weapons here + cache them for the host-form weapon dropdown. Rebuild the
@@ -284,7 +293,7 @@ namespace PropHunt
                 if (Config.WeaponCatalog.RefreshFromRegistry() && _descriptor != null)
                     _descriptor.HostSettings = Config.PropHuntSettingsSpec.Build();
             }
-            catch (Exception e) { Log.Warning("[PropHunt] weapon catalog refresh failed: " + e.Message); }
+            catch (Exception e) { Log.Warning("weapon catalog refresh failed: " + e.Message); }
         }
 
         /// <summary>
@@ -299,7 +308,7 @@ namespace PropHunt
             try { UI.Hud.HudController.Teardown(); } catch { }
             if (_controller != null)
             {
-                Log.Msg("[PropHunt] left the gameplay scene; tearing down the session.");
+                Log.Msg("left the gameplay scene; tearing down the session.");
                 try { _controller.Dispose(); } catch { }
                 _controller = null;
                 _session = null;
@@ -367,16 +376,16 @@ namespace PropHunt
                 _controller?.Dispose();
                 _controller = new Game.GameModeController(null, isHost);
                 if (isHost) _controller.StartAsHost(); else _controller.StartAsClient();
-                Log.Msg($"[PropHunt] DEBUG session started (isHost={isHost}).");
+                Log.Msg($"DEBUG session started (isHost={isHost}).");
             }
-            catch (Exception e) { Log.Warning("[PropHunt] DebugStartSession failed: " + e.Message); }
+            catch (Exception e) { Log.Warning("DebugStartSession failed: " + e.Message); }
         }
 
         internal static void DebugStopSession()
         {
             _controller?.Dispose();
             _controller = null;
-            Log.Msg("[PropHunt] DEBUG session stopped.");
+            Log.Msg("DEBUG session stopped.");
         }
 #endif
 

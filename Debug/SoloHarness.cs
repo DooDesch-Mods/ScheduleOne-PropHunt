@@ -22,9 +22,9 @@ namespace PropHunt.Game
         internal static void StartSolo()
         {
             var s = Core.Session;
-            if (s == null) { Core.Log.Warning("[PropHunt] phsolo: no active session - run phhost first."); return; }
+            if (s == null) { Core.Log.Warning("phsolo: no active session - run phhost first."); return; }
             GameModeController.DebugSoloMode = true;
-            Core.Log.Msg("[PropHunt] phsolo: solo mode on (a stand-in member fills the hunter slot). Beginning match...");
+            Core.Log.Msg("phsolo: solo mode on (a stand-in member fills the hunter slot). Beginning match...");
             s.BeginMatch();
         }
 
@@ -34,7 +34,7 @@ namespace PropHunt.Game
         internal static void Become(string filter)
         {
             var s = Core.Session;
-            if (s == null) { Core.Log.Warning("[PropHunt] phbecome: no active session."); return; }
+            if (s == null) { Core.Log.Warning("phbecome: no active session."); return; }
 
             int id = -1;
             string label = filter;
@@ -54,8 +54,8 @@ namespace PropHunt.Game
                 }
             }
 
-            if (id < 0) { Core.Log.Warning($"[PropHunt] phbecome: nothing matches \"{filter}\"."); return; }
-            Core.Log.Msg($"[PropHunt] phbecome: requesting prop {id} ({label}), size {PropCatalog.SizeOf(id):F2}m.");
+            if (id < 0) { Core.Log.Warning($"phbecome: nothing matches \"{filter}\"."); return; }
+            Core.Log.Msg($"phbecome: requesting prop {id} ({label}), size {PropCatalog.SizeOf(id):F2}m.");
             s.RequestSelectProp(id);
         }
 
@@ -84,8 +84,8 @@ namespace PropHunt.Game
                 finally { if (go != null) { try { UnityEngine.Object.DestroyImmediate(go); } catch { } } }
             }
 
-            Core.Log.Msg($"[PropHunt] phbecomeall: {ok} built, {failed} failed, {empty} with nothing to show (of {entries.Count}).");
-            foreach (var b in broken) Core.Log.Warning("[PropHunt] phbecomeall   " + b);
+            Core.Log.Msg($"phbecomeall: {ok} built, {failed} failed, {empty} with nothing to show (of {entries.Count}).");
+            foreach (var b in broken) Core.Log.Warning("phbecomeall   " + b);
         }
 
         /// <summary>
@@ -99,14 +99,14 @@ namespace PropHunt.Game
         internal static void PhoneSelfTest()
         {
             var ctl = Core.Session;
-            if (ctl == null) { Core.Log.Warning("[PropHunt] phphone: no active session."); return; }
+            if (ctl == null) { Core.Log.Warning("phphone: no active session."); return; }
 
             try
             {
                 string json = PropHunt.Phone.PhoneBackend.Snapshot();
                 if (string.IsNullOrEmpty(json) || json.Length < 16)
                 {
-                    Core.Log.Error("[PropHunt] phphone: the snapshot came back empty.");
+                    Core.Log.Error("phphone: the snapshot came back empty.");
                     return;
                 }
 
@@ -118,16 +118,16 @@ namespace PropHunt.Game
                 {
                     if (p.Self || p.Eliminated || p.PropId < 0) continue;
                     leaks++;
-                    Core.Log.Error($"[PropHunt] phphone: LEAK - living hider {p.Name} exposes prop {p.PropId} ({p.PropName}).");
+                    Core.Log.Error($"phphone: LEAK - living hider {p.Name} exposes prop {p.PropId} ({p.PropName}).");
                 }
 
-                Core.Log.Msg($"[PropHunt] phphone: snapshot ok ({json.Length} chars), phase {host.Phase}, " +
+                Core.Log.Msg($"phphone: snapshot ok ({json.Length} chars), phase {host.Phase}, " +
                              $"{roster.Count} player(s), {host.Settings.Count} rule(s), {host.Presets.Count} preset(s), " +
                              $"{host.Awards.Count} award(s), {leaks} leak(s).");
             }
             catch (Exception e)
             {
-                Core.Log.Error("[PropHunt] phphone: THREW - " + e);
+                Core.Log.Error("phphone: THREW - " + e);
             }
         }
 
@@ -136,20 +136,20 @@ namespace PropHunt.Game
         internal static void MapRingReport()
         {
             var ctl = Core.Session;
-            if (ctl == null) { Core.Log.Warning("[PropHunt] phmapring: no active session."); return; }
+            if (ctl == null) { Core.Log.Warning("phmapring: no active session."); return; }
             try
             {
                 var map = PlayerSingleton<Il2CppScheduleOne.UI.Phone.Map.MapApp>.Instance;
-                if (map == null) { Core.Log.Warning("[PropHunt] phmapring: MapApp not built yet."); return; }
-                Core.Log.Msg($"[PropHunt] phmapring: MapApp ok, PoIContainer={(map.PoIContainer == null ? "NULL" : "ok")}.");
+                if (map == null) { Core.Log.Warning("phmapring: MapApp not built yet."); return; }
+                Core.Log.Msg($"phmapring: MapApp ok, PoIContainer={(map.PoIContainer == null ? "NULL" : "ok")}.");
 
                 var mpu = Singleton<Il2CppScheduleOne.Map.MapPositionUtility>.Instance;
-                if (mpu == null) { Core.Log.Warning("[PropHunt] phmapring: MapPositionUtility missing."); return; }
+                if (mpu == null) { Core.Log.Warning("phmapring: MapPositionUtility missing."); return; }
 
                 var st = ctl.State;
                 Vector2 c = mpu.GetMapPosition(new Vector3(st.AreaX, 0f, st.AreaZ));
                 Vector2 edge = mpu.GetMapPosition(new Vector3(st.AreaX + Mathf.Max(1f, st.AreaRadius), 0f, st.AreaZ));
-                Core.Log.Msg($"[PropHunt] phmapring: area=({st.AreaX:F0},{st.AreaZ:F0}) r={st.AreaRadius:F0}m -> " +
+                Core.Log.Msg($"phmapring: area=({st.AreaX:F0},{st.AreaZ:F0}) r={st.AreaRadius:F0}m -> " +
                              $"map centre=({c.x:F1},{c.y:F1}) radius={(edge - c).magnitude:F1} map units.");
 
                 // Walk the container's children instead of GameObject.Find: the phone's map app is closed unless
@@ -163,13 +163,13 @@ namespace PropHunt.Game
                 }
                 if (ring == null)
                 {
-                    Core.Log.Msg($"[PropHunt] phmapring: no ring among the {map.PoIContainer.childCount} POI-container child(ren) " +
+                    Core.Log.Msg($"phmapring: no ring among the {map.PoIContainer.childCount} POI-container child(ren) " +
                                  "- it is created on the first round tick after the map app exists.");
                     return;
                 }
                 var rt = ring.GetComponent<RectTransform>();
                 var img = ring.GetComponent<UnityEngine.UI.Image>();
-                Core.Log.Msg($"[PropHunt] phmapring: ring activeSelf={ring.gameObject.activeSelf} " +
+                Core.Log.Msg($"phmapring: ring activeSelf={ring.gameObject.activeSelf} " +
                              $"pos=({rt.anchoredPosition.x:F1},{rt.anchoredPosition.y:F1}) " +
                              $"size=({rt.sizeDelta.x:F1}x{rt.sizeDelta.y:F1}) " +
                              $"sprite={(img == null || img.sprite == null ? "MISSING" : "ok")} " +
@@ -190,22 +190,22 @@ namespace PropHunt.Game
                     {
                         int n = tex.width, mid = n / 2;
                         int bandX = (int)((n - 1) * 0.5f * 0.965f) + mid;   // inside the band
-                        Core.Log.Msg($"[PropHunt] phmapring: sprite {n}x{n} alpha centre={tex.GetPixel(mid, mid).a:F2} " +
+                        Core.Log.Msg($"phmapring: sprite {n}x{n} alpha centre={tex.GetPixel(mid, mid).a:F2} " +
                                      $"band={tex.GetPixel(Mathf.Min(bandX, n - 1), mid).a:F2} " +
                                      $"outside={tex.GetPixel(n - 1, n - 1).a:F2} (band must be ~1, outside 0)");
                     }
                 }
-                catch (Exception te) { Core.Log.Msg("[PropHunt] phmapring: sprite not sampleable - " + te.Message); }
+                catch (Exception te) { Core.Log.Msg("phmapring: sprite not sampleable - " + te.Message); }
 
                 // sizeDelta is what the ring is sized through, but it only equals the drawn size while the anchors
                 // coincide. Reporting the RESOLVED rect alongside it is what catches an inherited stretch, which
                 // silently multiplies the ring by the container's size.
-                Core.Log.Msg($"[PropHunt] phmapring: resolved rect=({rt.rect.width:F0}x{rt.rect.height:F0}) " +
+                Core.Log.Msg($"phmapring: resolved rect=({rt.rect.width:F0}x{rt.rect.height:F0}) " +
                              $"vs sizeDelta=({rt.sizeDelta.x:F0}x{rt.sizeDelta.y:F0}) " +
                              $"anchors {rt.anchorMin}/{rt.anchorMax} -> " +
                              $"{(Mathf.Abs(rt.rect.width - rt.sizeDelta.x) < 1f ? "sizeDelta is the size" : "STRETCHED - the ring is parent-sized, not prop-sized")}");
 
-                Core.Log.Msg($"[PropHunt] phmapring: image enabled={(img == null ? "?" : img.enabled.ToString())} " +
+                Core.Log.Msg($"phmapring: image enabled={(img == null ? "?" : img.enabled.ToString())} " +
                              $"colour={(img == null ? "?" : $"rgba({img.color.r:F2},{img.color.g:F2},{img.color.b:F2},{img.color.a:F2})")} " +
                              $"raycast={(img == null ? "?" : img.raycastTarget.ToString())} " +
                              $"localScale=({rt.localScale.x:F2},{rt.localScale.y:F2}).");
@@ -216,18 +216,18 @@ namespace PropHunt.Game
                 try
                 {
                     var bg = map.BackgroundImage;
-                    if (bg == null) Core.Log.Msg("[PropHunt] phmapring: MapApp.BackgroundImage is null.");
+                    if (bg == null) Core.Log.Msg("phmapring: MapApp.BackgroundImage is null.");
                     else
                     {
                         bool sibling = bg.rectTransform != null && bg.rectTransform.parent == ring.parent;
                         int bgIdx = sibling ? bg.rectTransform.GetSiblingIndex() : -1;
                         int myIdx = ring.GetSiblingIndex();
-                        Core.Log.Msg($"[PropHunt] phmapring: background '{bg.name}' sameParent={sibling} " +
+                        Core.Log.Msg($"phmapring: background '{bg.name}' sameParent={sibling} " +
                                      $"bgSibling={bgIdx} ringSibling={myIdx} bgColour={bg.color} bgEnabled={bg.enabled} " +
                                      $"-> {(sibling && myIdx < bgIdx ? "RING IS BEHIND THE MAP - it cannot be seen" : "ring draws after the map")}");
                     }
                 }
-                catch (Exception be) { Core.Log.Msg("[PropHunt] phmapring: background check failed - " + be.Message); }
+                catch (Exception be) { Core.Log.Msg("phmapring: background check failed - " + be.Message); }
 
                 // The out-of-bounds wash: a separate layer that must span the whole map and carry a hole where the play
                 // area is. If it is missing, the boundary is a hairline again - and a hairline circle wider than the map
@@ -238,7 +238,7 @@ namespace PropHunt.Game
                     var ch = map.PoIContainer.GetChild(i);
                     if (ch != null && ch.name == "ph_area_outside") { wash = ch; break; }
                 }
-                if (wash == null) Core.Log.Msg("[PropHunt] phmapring: no out-of-bounds wash (ph_area_outside) - boundary only.");
+                if (wash == null) Core.Log.Msg("phmapring: no out-of-bounds wash (ph_area_outside) - boundary only.");
                 else
                 {
                     var wrt = wash.GetComponent<RectTransform>();
@@ -264,13 +264,13 @@ namespace PropHunt.Game
                             }
                         holes = $"min={lo:F2} max={hi:F2} clear={clearCount}/{total}";
                     }
-                    Core.Log.Msg($"[PropHunt] phmapring: wash active={wash.gameObject.activeSelf} " +
+                    Core.Log.Msg($"phmapring: wash active={wash.gameObject.activeSelf} " +
                                  $"rect=({wrt.rect.width:F0}x{wrt.rect.height:F0}) sibling={wash.GetSiblingIndex()} " +
                                  $"alpha {holes} (a hole needs min LOW and max HIGH)");
                 }
 
                 var poi = map.PoIContainer;
-                Core.Log.Msg($"[PropHunt] phmapring: container rect=({poi.rect.width:F0}x{poi.rect.height:F0}) " +
+                Core.Log.Msg($"phmapring: container rect=({poi.rect.width:F0}x{poi.rect.height:F0}) " +
                              $"scale=({poi.localScale.x:F2},{poi.localScale.y:F2}) " +
                              $"anchoredPos=({poi.anchoredPosition.x:F1},{poi.anchoredPosition.y:F1}).");
 
@@ -300,15 +300,15 @@ namespace PropHunt.Game
                     float furthest = Mathf.Sqrt(dxMax * dxMax + dyMax * dyMax);
                     bool bandReachable = furthest >= rInner && overlaps;
 
-                    Core.Log.Msg($"[PropHunt] phmapring: window '{p.name}' ({(mask2d != null ? "RectMask2D" : "Mask")}) " +
+                    Core.Log.Msg($"phmapring: window '{p.name}' ({(mask2d != null ? "RectMask2D" : "Mask")}) " +
                                  $"rect=({clip.width:F0}x{clip.height:F0}) x=[{clip.xMin:F0},{clip.xMax:F0}] y=[{clip.yMin:F0},{clip.yMax:F0}]");
-                    Core.Log.Msg($"[PropHunt] phmapring: ring in that space x=[{mine.xMin:F0},{mine.xMax:F0}] " +
+                    Core.Log.Msg($"phmapring: ring in that space x=[{mine.xMin:F0},{mine.xMax:F0}] " +
                                  $"y=[{mine.yMin:F0},{mine.yMax:F0}] bandRadius={rInner:F0}..{rOuter:F0} " +
                                  $"furthestCorner={furthest:F0} -> {(bandReachable ? "BAND IS REACHABLE" : overlaps ? "window sits INSIDE the ring - nothing to see" : "ring is FULLY OUTSIDE the window")}.");
                     p = p.parent;
                 }
             }
-            catch (Exception e) { Core.Log.Error("[PropHunt] phmapring THREW - " + e); }
+            catch (Exception e) { Core.Log.Error("phmapring THREW - " + e); }
         }
 
         /// <summary>

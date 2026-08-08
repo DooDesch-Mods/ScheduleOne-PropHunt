@@ -74,7 +74,7 @@ namespace PropHunt.Quests
                 // auto-ends as objectives are checked off. Never begun, never completed.
                 AddEntry("PropHunt session");
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] guide quest OnCreated failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("guide quest OnCreated failed: " + e.Message); }
         }
 
         /// <summary>Add a new objective entry, put it ACTIVE (so its row shows and a later Complete() animates the ✓),

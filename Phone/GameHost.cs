@@ -215,7 +215,7 @@ namespace PropHunt.Phone
                 friend = Il2CppSteamworks.SteamFriends.GetFriendRelationship(new Il2CppSteamworks.CSteamID(steamId))
                          == Il2CppSteamworks.EFriendRelationship.k_EFriendRelationshipFriend;
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] could not read the Steam friend relationship: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("could not read the Steam friend relationship: " + e.Message); }
             _friendCache[steamId] = friend;
             return friend;
         }
@@ -491,7 +491,7 @@ namespace PropHunt.Phone
                     return "ok";
                 }
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] preset failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("preset failed: " + e.Message); }
 
             return "error";
         }
@@ -502,7 +502,7 @@ namespace PropHunt.Phone
             if (c == null) return "error";
 
             try { action(c); return "ok"; }
-            catch (Exception e) { Core.LogDebug("[PropHunt] phone command failed: " + e.Message); return "error"; }
+            catch (Exception e) { Core.LogDebug("phone command failed: " + e.Message); return "error"; }
         }
 
         // ---- naming ----

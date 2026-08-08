@@ -124,7 +124,7 @@ namespace PropHunt.Phone
                 if (key.StartsWith("face/", StringComparison.Ordinal))
                     return ulong.TryParse(key.Substring(5), out ulong id) ? SteamAvatar.Png(id) : null;
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] image '" + key + "' failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("image '" + key + "' failed: " + e.Message); }
 
             return null;
         }

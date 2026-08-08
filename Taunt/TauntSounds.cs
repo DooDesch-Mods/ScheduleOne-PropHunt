@@ -44,7 +44,7 @@ namespace PropHunt.Taunt
                         if (c != null && !string.IsNullOrEmpty(c.name) && !_cache.ContainsKey(c.name)) _cache[c.name] = c;
                     }
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] taunt cache failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("taunt cache failed: " + e.Message); }
             _cacheBuiltAt = Time.time;
         }
 
@@ -72,7 +72,7 @@ namespace PropHunt.Taunt
         private static void PlayInternal(string clipName, Vector3 pos, bool WhistleVolume)
         {
             var clip = GetClip(clipName);
-            if (clip == null) { Core.LogDebug($"[PropHunt] taunt clip not found: '{clipName}'"); return; }
+            if (clip == null) { Core.LogDebug($"taunt clip not found: '{clipName}'"); return; }
             PlayClip(clip, pos, WhistleVolume ? WhistleVolumeScale : ManualVolumeScale);
         }
 
@@ -83,7 +83,7 @@ namespace PropHunt.Taunt
         internal static void PlayFx(string[] candidates, Vector3 pos, float volumeScale = 0.7f)
         {
             var clip = ResolveAny(candidates);
-            if (clip == null) { Core.LogDebug("[PropHunt] fx clip not found: " + string.Join("/", candidates ?? Array.Empty<string>())); return; }
+            if (clip == null) { Core.LogDebug("fx clip not found: " + string.Join("/", candidates ?? Array.Empty<string>())); return; }
             PlayClip(clip, pos, volumeScale);
         }
 
@@ -132,7 +132,7 @@ namespace PropHunt.Taunt
                 src.Play();
                 UnityEngine.Object.Destroy(go, clip.length + 0.2f);
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] taunt play failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("taunt play failed: " + e.Message); }
         }
 
         // ---- default auto pool ----
@@ -187,7 +187,7 @@ namespace PropHunt.Taunt
                         if (s.Length > 0 && !s.StartsWith("#") && !list.Contains(s)) list.Add(s);
                     }
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] taunt favourites read failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("taunt favourites read failed: " + e.Message); }
             return list;
         }
 
@@ -202,7 +202,7 @@ namespace PropHunt.Taunt
                 Directory.CreateDirectory(Path.GetDirectoryName(FavPath));
                 File.AppendAllText(FavPath, name + "\n");
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] taunt favourite write failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("taunt favourite write failed: " + e.Message); }
         }
     }
 }

@@ -19,6 +19,42 @@ namespace PropHunt.Disguise
     /// </summary>
     internal static class PropClone
     {
+        /// <summary>
+        /// Give a cloned car a colour.
+        ///
+        /// Vehicles enter the catalog as VehicleManager.VehiclePrefabs, and a prefab's VehicleColor.Start() has never
+        /// run - so its body material is the untouched asset and every car anyone became came out white, while the
+        /// real ones on the street are painted.
+        ///
+        /// Vanilla's own ApplyColor does the work (it swaps in a tinted copy of the body material), called on the CLONE
+        /// while it is still inactive and before Strip removes the component. The pick is derived from the prop id, not
+        /// random: every machine builds this disguise for itself, and a per-machine roll would show the same hider in a
+        /// different colour to each hunter.
+        /// </summary>
+        private static void PaintVehicle(GameObject clone, PropEntry e)
+        {
+            if (clone == null || e == null) return;
+            try
+            {
+                var vc = clone.GetComponentInChildren<Il2CppScheduleOne.Vehicles.VehicleColor>(true);
+                if (vc == null) return;   // not a car
+                var colors = Il2CppScheduleOne.DevUtilities.Singleton<Il2CppScheduleOne.Vehicles.Modification.VehicleColors>.Instance;
+                var lib = colors != null ? colors.colorLibrary : null;
+                if (lib == null || lib.Count == 0) return;
+
+                // Custom is a placeholder for a player-picked colour and ApplyColor returns early on it, so it is not
+                // one of the choices here.
+                var pick = new System.Collections.Generic.List<Il2CppScheduleOne.Vehicles.Modification.EVehicleColor>();
+                for (int i = 0; i < lib.Count; i++)
+                    if (lib[i] != null && lib[i].color != Il2CppScheduleOne.Vehicles.Modification.EVehicleColor.Custom)
+                        pick.Add(lib[i].color);
+                if (pick.Count == 0) return;
+
+                vc.ApplyColor(pick[Mathf.Abs(e.Id) % pick.Count]);
+            }
+            catch (System.Exception ex) { Core.LogDebug("vehicle paint failed: " + ex.Message); }
+        }
+
         internal static GameObject Build(PropEntry e, string name)
         {
             if (e == null) return null;
@@ -27,7 +63,7 @@ namespace PropHunt.Disguise
                 if (e.CloneWholeRoot && e.SourceRoot != null) return BuildSubtree(e, name);
                 return e.SourceLodGroup != null ? BuildLod(e, name) : BuildSingle(e, name);
             }
-            catch (System.Exception ex) { Core.LogDebug("[PropHunt] PropClone.Build failed: " + ex.Message); return null; }
+            catch (System.Exception ex) { Core.LogDebug("PropClone.Build failed: " + ex.Message); return null; }
         }
 
         /// <summary>Clone an ENTIRE composite prefab subtree (a whole vehicle / buildable with all its parts + any
@@ -46,6 +82,7 @@ namespace PropHunt.Disguise
                 holder.SetActive(false);                          // clone stays inactive -> no Awake on the copied scripts
                 var go = Object.Instantiate(src, holder.transform);
                 go.name = name;
+                PaintVehicle(go, e);                              // before Strip - it needs the copied VehicleColor
                 Strip(go);                                        // remove scripts/colliders/Rigidbody/FishNet BEFORE activation
                 go.transform.SetParent(null, false);
                 go.SetActive(true);
@@ -54,7 +91,7 @@ namespace PropHunt.Disguise
             }
             catch (System.Exception ex)
             {
-                Core.LogDebug("[PropHunt] BuildSubtree failed: " + ex.Message);
+                Core.LogDebug("BuildSubtree failed: " + ex.Message);
                 return e.SourceLodGroup != null ? BuildLod(e, name) : BuildSingle(e, name);
             }
             finally
@@ -134,13 +171,48 @@ namespace PropHunt.Disguise
                 var bc = go.AddComponent<BoxCollider>();
                 bc.isTrigger = true;
                 bc.center = lb.center;   // already in the clone root's local space
-                bc.size = lb.size;
+                bc.size = MinimumHitboxSize(lb.size, go.transform.lossyScale);
                 return bc;
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] AddTriggerHitbox failed: " + e.Message); return null; }
+            catch (System.Exception e) { Core.LogDebug("AddTriggerHitbox failed: " + e.Message); return null; }
         }
 
-        /// <summary>Bounds of the clone's meshes expressed in the ROOT's local space (every mesh corner taken to
+        /// <summary>
+        /// Floor for a hitbox axis, so a genuinely tiny prop is still shootable.
+        ///
+        /// A cigarette packet's own bounds are a couple of centimetres. Even the 0.35m catch sweep then depends on the
+        /// packet being the NEAREST hit, and lying on the ground it never is - the floor answers first, and the
+        /// line-of-sight test measures against a point inside that floor. The result was a decoy that could not be
+        /// destroyed at all.
+        ///
+        /// This widens only what a shot has to touch, never the prop's HP (ComputeMaxHits keeps reading the real size),
+        /// so a small prop is still a small target - just not an impossible one.
+        /// </summary>
+        private const float MinHitboxExtent = 0.30f;
+
+        /// <summary>
+        /// The floor is 0.30 metres in the WORLD, so it has to be divided by the root's scale before it goes into a
+        /// BoxCollider - collider size is local. The clone root is given the source prop's lossyScale
+        /// (DisguiseController/DecoyController), so a local 0.30 would mean 0.30 x scale in the world: still
+        /// unshootable under a small scale, and an invisible oversized target above one.
+        /// </summary>
+        private static UnityEngine.Vector3 MinimumHitboxSize(UnityEngine.Vector3 size, UnityEngine.Vector3 scale)
+        {
+            return new UnityEngine.Vector3(
+                UnityEngine.Mathf.Max(size.x, LocalFloor(scale.x)),
+                UnityEngine.Mathf.Max(size.y, LocalFloor(scale.y)),
+                UnityEngine.Mathf.Max(size.z, LocalFloor(scale.z)));
+        }
+
+        /// <summary>The world-space floor expressed in this axis' local units. A degenerate scale would divide by ~0
+        /// and produce an absurd box, so it falls back to the world figure.</summary>
+        private static float LocalFloor(float scale)
+        {
+            float s = UnityEngine.Mathf.Abs(scale);
+            return s > 0.0001f ? MinHitboxExtent / s : MinHitboxExtent;
+        }
+
+        /// <summary>Bounds of the clone's meshes expressed in the ROOT's local space        /// <summary>Bounds of the clone's meshes expressed in the ROOT's local space (every mesh corner taken to
         /// world, then back into root-local). A BoxCollider built from this is oriented along the prop's own axes,
         /// so a rotated or flat prop gets a matching box instead of a twisted world-AABB one.</summary>
         internal static bool TryGetLocalBounds(GameObject root, out Bounds local)
@@ -303,7 +375,7 @@ namespace PropHunt.Disguise
                     }
                 if (any) return true;
             }
-            catch (System.Exception ex) { Core.LogDebug("[PropHunt] prop bounds (source) failed: " + ex.Message); }
+            catch (System.Exception ex) { Core.LogDebug("prop bounds (source) failed: " + ex.Message); }
             return TryGetSourceLocalBounds(e, out local);
         }
 
@@ -375,7 +447,7 @@ namespace PropHunt.Disguise
                 }
                 return any;
             }
-            catch (System.Exception ex) { Core.LogDebug("[PropHunt] whole-root bounds failed: " + ex.Message); return false; }
+            catch (System.Exception ex) { Core.LogDebug("whole-root bounds failed: " + ex.Message); return false; }
         }
 
         /// <summary>True if a source MeshFilter belongs to a placement-only visualization (the grid FootprintTile/
@@ -405,10 +477,10 @@ namespace PropHunt.Disguise
                 var bc = go.AddComponent<BoxCollider>();
                 bc.isTrigger = true;
                 bc.center = localBounds.center;
-                bc.size = localBounds.size;
+                bc.size = MinimumHitboxSize(localBounds.size, go.transform.lossyScale);
                 return bc;
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] AddTriggerHitbox(bounds) failed: " + e.Message); return null; }
+            catch (System.Exception e) { Core.LogDebug("AddTriggerHitbox(bounds) failed: " + e.Message); return null; }
         }
 
         private static void EncapsulateMeshLocal(MeshFilter mf, Transform rt, ref Bounds local, ref bool any)
@@ -443,6 +515,7 @@ namespace PropHunt.Disguise
                 holder.SetActive(false);                          // clone instantiated under this stays inactive -> no Awake
                 var go = Object.Instantiate(src, holder.transform);
                 go.name = name;
+                PaintVehicle(go, e);                              // before Strip - it needs the copied VehicleColor
                 Strip(go);                                        // DestroyImmediate scripts/colliders BEFORE activation
                 go.transform.SetParent(null, false);              // detach into the world (the caller re-parents to the player)
                 go.SetActive(true);
@@ -451,7 +524,7 @@ namespace PropHunt.Disguise
             }
             catch (System.Exception ex)
             {
-                Core.LogDebug("[PropHunt] BuildLod failed: " + ex.Message);
+                Core.LogDebug("BuildLod failed: " + ex.Message);
                 return BuildSingle(e, name);
             }
             finally

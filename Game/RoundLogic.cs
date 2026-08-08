@@ -30,6 +30,10 @@ namespace PropHunt.Game
                     present.Add(id);
                     if (!s.Players.ContainsKey(id)) { s.GetOrAdd(id).Role = PlayerRole.Spectator; changed = true; }
                 }
+            // An EMPTY list means the lobby did not answer, NOT that nobody is here. Pruning on it removed every
+            // player and took their session score with them, which is exactly why the leaderboard only ever showed
+            // the last round - and mid-round it re-added everyone as a Spectator, ending the round with no hiders.
+            if (present.Count == 0) return changed;
             var gone = s.Players.Keys.Where(k => !present.Contains(k)).ToList();
             foreach (var k in gone) { s.Players.Remove(k); changed = true; }
             return changed;
@@ -64,8 +68,9 @@ namespace PropHunt.Game
             {
                 var p = s.GetOrAdd(id);
                 p.Role = hunterSet.Contains(id) ? PlayerRole.Hunter : PlayerRole.Hider;
+                p.WasHider = p.Role == PlayerRole.Hider;   // survives an Infection flip, so the scoreboard can still tell them apart
                 p.PropId = -1; p.Locked = false; p.Eliminated = false; p.Hits = 0; p.MaxHits = 1; p.Changes = 0;
-                p.PropYaw = 0f; p.DecoysUsed = 0; p.ConcussUsed = 0;
+                p.PropYaw = 0f; p.DecoysUsed = 0; p.ConcussUsed = 0; p.DecoysTotal = 0; p.LastChangeUnix = 0;
                 p.CatchesMade = 0; p.HitsDealt = 0; p.DecoyBaits = 0; p.StunsLanded = 0; p.SurvivedSeconds = 0;   // per-round stats (SessScore persists)
                 p.DecoysSmashed = 0; p.Taunts = 0;
                 p.HunterHits = 0; p.HunterMaxHits = Math.Max(1, set.HunterHitsToDown); p.Downed = false; p.DownedUntilUnix = 0; p.KnockX = 0f; p.KnockZ = 0f;   // hunter friendly-fire HP + knockdown
@@ -75,7 +80,7 @@ namespace PropHunt.Game
         internal static void EnterHiding(GameState s, RoundSettings set, long now)
         {
             foreach (var p in s.Players.Values)
-                if (p.Role == PlayerRole.Hider) { p.PropId = -1; p.Locked = false; p.Eliminated = false; p.Hits = 0; p.MaxHits = 1; p.Changes = 0; p.PropYaw = 0f; p.DecoysUsed = 0; p.ConcussUsed = 0; }
+                if (p.Role == PlayerRole.Hider) { p.PropId = -1; p.Locked = false; p.Eliminated = false; p.Hits = 0; p.MaxHits = 1; p.Changes = 0; p.PropYaw = 0f; p.DecoysUsed = 0; p.ConcussUsed = 0; p.DecoysTotal = 0; p.LastChangeUnix = 0; }
             if (set.RemoveDecoysBetweenRounds) s.Decoys.Clear();   // host setting (default on); false = decoys carry over
             // The dressing room closes when the round opens. Leaving these set would have hunters wearing whatever they
             // were trying on, since nothing in the round path reads this field.
@@ -114,8 +119,15 @@ namespace PropHunt.Game
             int s = p.CatchesMade * 10 + p.HitsDealt + p.DecoyBaits * 5 + p.StunsLanded * 5 + p.SurvivedSeconds / 5
                     + p.DecoysSmashed * 3   // hunter: destroying a hider's decoy
                     + p.Taunts * 2;         // hider: scored taunts (host rate-limits to 1/15s)
-            bool onWinningSide = huntersWon ? p.Role == PlayerRole.Hunter : p.Role == PlayerRole.Hider;
-            if (onWinningSide && !p.Eliminated) s += 15;
+            // WasHider, not Role: Infection turns a caught hider INTO a hunter and clears Eliminated, so a plain Role
+            // test paid the winning-hunter bonus to the very players who had just been caught - while the scoreboard
+            // labelled them "Caught". The bonus goes to players who ENDED the round on the side they started on.
+            // Only the HUNTER side needs WasHider: a player whose role is still Hider was never converted, so that
+            // branch stays as it was.
+            bool onWinningSide = huntersWon
+                ? (p.Role == PlayerRole.Hunter && !p.WasHider)
+                : (p.Role == PlayerRole.Hider && !p.Eliminated);
+            if (onWinningSide) s += 15;
             return s;
         }
 
@@ -399,10 +411,17 @@ namespace PropHunt.Game
         /// <summary>Hider chose/changed a prop. <paramref name="maxHits"/> is the prop's size-based HP (host computes
         /// it from the catalog). Each change RESETS HP and counts against <paramref name="maxChanges"/> (0 = unlimited).
         /// Returns true if applied (false if out of changes or wrong role/phase).</summary>
-        internal static bool ApplySelectProp(GameState s, ulong sender, int propId, int maxHits, int maxChanges, bool freeChange = false)
+        /// <param name="now">Host time, for the change cooldown. 0 skips the cooldown - that is what the forced prop
+        /// rotation passes, since a rotation is not the player's doing and must never be refused.</param>
+        /// <param name="cooldownSeconds">Smallest gap between two player-initiated changes. Spamming [2] was free
+        /// otherwise: a reroll costs one change, and with changes to spare a hider could flicker through props faster
+        /// than a hunter can register what they are looking at.</param>
+        internal static bool ApplySelectProp(GameState s, ulong sender, int propId, int maxHits, int maxChanges,
+                                            bool freeChange = false, long now = 0L, int cooldownSeconds = 0)
         {
             if (!CanDisguise(s.Phase)) return false;
             if (!s.Players.TryGetValue(sender, out var p) || p.Role != PlayerRole.Hider || p.Eliminated) return false;
+            if (now > 0L && cooldownSeconds > 0 && p.LastChangeUnix > 0L && now - p.LastChangeUnix < cooldownSeconds) return false;
             // A free change (hiding phase, when the host allows unlimited pre-hunt changes) bypasses the limit and
             // does NOT count against the hunt-phase budget; a normal change is limited and increments the counter.
             if (!freeChange && maxChanges > 0 && p.Changes >= maxChanges) return false;
@@ -412,6 +431,7 @@ namespace PropHunt.Game
             p.DecoysUsed = 0;      // ...and fresh decoy + concussion charges (CoD-style: refill on prop change)
             p.ConcussUsed = 0;
             if (!freeChange) p.Changes++;
+            if (now > 0L) p.LastChangeUnix = now;
             return true;
         }
 
@@ -451,27 +471,67 @@ namespace PropHunt.Game
             return true;
         }
 
-        /// <summary>Hider set the manual facing (yaw, degrees) of their current prop ([F]+mouse).</summary>
+        /// <summary>
+        /// Hider set the manual facing (yaw, degrees) of their current prop ([F]+mouse).
+        ///
+        /// Returns false for a facing that is already what it says, because the caller answers true with a full state
+        /// broadcast to the whole lobby. A client holding [F] reports its yaw every 150 ms whether the mouse moved or
+        /// not, so several hiders resting on the rotate key were enough to keep the host publishing continuously.
+        /// A quarter of a degree is far below what anyone can see on a prop.
+        /// </summary>
         internal static bool ApplyRotate(GameState s, ulong sender, float yaw)
         {
             if (!CanDisguise(s.Phase)) return false;
             if (!s.Players.TryGetValue(sender, out var p) || p.Role != PlayerRole.Hider || p.Eliminated || p.PropId < 0) return false;
+            if (System.Math.Abs(p.PropYaw - yaw) < 0.25f) return false;
             p.PropYaw = yaw;
             return true;
         }
 
-        /// <summary>Hider dropped a decoy of their current prop at the given world spot ([Q]). Honoured up to
-        /// <c>MaxDecoys</c> per round. <paramref name="maxHits"/> is the same size-based HP as the hider's own
-        /// prop (so a hunter needs the same number of hits to destroy the decoy as to catch the real hider).
-        /// Returns true if added.</summary>
-        internal static bool ApplyDropDecoy(GameState s, RoundSettings set, ulong sender, float x, float y, float z, float yaw, int maxHits)
+        /// <summary>
+        /// Hider dropped a decoy of their current prop at the given world spot ([Q]). Honoured up to
+        /// <c>MaxDecoys</c> per round.
+        /// </summary>
+        /// <remarks>
+        /// A decoy always has ONE hit point, whatever the prop is. It used to inherit the hider's size-based HP so it
+        /// would "feel" like the real thing, but that reversed its purpose: a big prop's decoy soaked several shots,
+        /// which told the hunter it was worth shooting - and a hider standing next to it was safer for it. One shot,
+        /// one puff, and the hunter learns only that they wasted a shot.
+        /// </remarks>
+        internal static bool ApplyDropDecoy(GameState s, RoundSettings set, ulong sender, float x, float y, float z, float yaw)
         {
             if (s.Phase != RoundPhase.Hiding && s.Phase != RoundPhase.Hunting) return false;
             if (!s.Players.TryGetValue(sender, out var p) || p.Role != PlayerRole.Hider || p.Eliminated || p.PropId < 0) return false;
-            if (set.MaxDecoys > 0 && p.DecoysUsed >= set.MaxDecoys) return false;
-            s.Decoys.Add(new DecoyState { X = x, Y = y, Z = z, Yaw = yaw, PropId = p.PropId, MaxHits = Math.Max(1, maxHits), OwnerSteamId = sender });
+            // 0 means NONE, which is what the setting has always promised ("0 = off"). It used to mean "no limit",
+            // so turning decoys off handed out unlimited ones.
+            if (set.MaxDecoys <= 0) return false;
+            if (p.DecoysUsed >= set.MaxDecoys) return false;                  // this prop's batch
+            int roundCap = DecoyRoundCap(set);
+            if (roundCap > 0 && p.DecoysTotal >= roundCap) return false;      // the whole round
+            s.Decoys.Add(new DecoyState { X = x, Y = y, Z = z, Yaw = yaw, PropId = p.PropId, MaxHits = 1, OwnerSteamId = sender });
             p.DecoysUsed++;
+            p.DecoysTotal++;
             return true;
+        }
+
+        /// <summary>How many batches a hider gets when the host allows UNLIMITED prop changes. There has to be a
+        /// number: every decoy lives in the one replicated state blob and as a clone on every client, so "as many as
+        /// you can be bothered to earn" is unbounded growth in the network payload and in what each machine renders -
+        /// for the rest of a round, and across rounds when decoys are kept.</summary>
+        private const int UnlimitedChangeBatches = 10;
+
+        /// <summary>
+        /// Decoys one hider may drop in a whole round: their change budget times the per-prop batch, because that is
+        /// how many batches they can ever earn. Without it the per-prop count refilled on every change and the real
+        /// ceiling was however long the hunt lasted.
+        ///
+        /// Always finite, including with unlimited changes - see <see cref="UnlimitedChangeBatches"/>.
+        /// </summary>
+        internal static int DecoyRoundCap(RoundSettings set)
+        {
+            if (set == null || set.MaxDecoys <= 0) return 0;   // decoys off; ApplyDropDecoy refuses before this matters
+            int batches = set.MaxPropChanges > 0 ? set.MaxPropChanges : UnlimitedChangeBatches;
+            return set.MaxDecoys * batches;
         }
 
         /// <summary>Host: a hunter hit a decoy. Only valid during Hunting; bounds-checked; a destroyed decoy

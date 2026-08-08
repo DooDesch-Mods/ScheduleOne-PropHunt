@@ -61,9 +61,9 @@ namespace PropHunt.Disguise
                     _decoys.Add(go);
                 }
                 _builtSig = sig;
-                Core.LogDebug($"[PropHunt] decoys: rendering {ActiveCount()} of {_decoys.Count}.");
+                Core.LogDebug($"decoys: rendering {ActiveCount()} of {_decoys.Count}.");
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] decoy apply failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("decoy apply failed: " + e.Message); }
         }
 
         /// <summary>Build a signature string that changes whenever the decoy count or any Destroyed flag changes.</summary>

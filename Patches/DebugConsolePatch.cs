@@ -39,7 +39,7 @@ namespace PropHunt.Patches
                         Disguise.DisguiseProbe.ToggleRemoteBodies();
                         return false;
                     case "phstatus":
-                        Core.Log.Msg($"[PropHunt] status: Ready={Net.PropHuntNet.Ready} InLobby={Net.PropHuntNet.InLobby} " +
+                        Core.Log.Msg($"status: Ready={Net.PropHuntNet.Ready} InLobby={Net.PropHuntNet.InLobby} " +
                                      $"IsHost={Net.PropHuntNet.IsHost} members={Net.PropHuntNet.MemberCount()}");
                         return false;
                     case "phhost":    // test: spin up a PropHunt session as host in the current co-op world
@@ -53,11 +53,11 @@ namespace PropHunt.Patches
                         return false;
                     case "phstart":   // host: begin a PropHunt match (stand-in for the setup-screen "Start")
                         if (Core.Session != null) Core.Session.BeginMatch();
-                        else Core.Log.Warning("[PropHunt] phstart: no active session (run phhost first, or launch via Side Hustle).");
+                        else Core.Log.Warning("phstart: no active session (run phhost first, or launch via Side Hustle).");
                         return false;
                     case "phprops":   // dump the prop pipeline: catalog size/hash, crosshair target, nearby becomable count
                         if (Core.Session != null) Core.Session.DumpPropDebug();
-                        else Core.Log.Warning("[PropHunt] phprops: no active session.");
+                        else Core.Log.Warning("phprops: no active session.");
                         return false;
                     case "phcurate":  // toggle the becomable-prop curation tool (step through every mesh, Keep/Skip)
                         Disguise.PropCurator.Toggle();
@@ -65,8 +65,9 @@ namespace PropHunt.Patches
                     case "phcurateu":  // toggle curation over ONLY the still-unreviewed candidates
                         Disguise.PropCurator.ToggleUnreviewed();
                         return false;
-                    case "phcuratekeep":  // re-review ONLY the currently-kept candidates (prune auto-seeded keeps)
-                        Disguise.PropCurator.ToggleKept();
+                    case "phcuratekeep":  // re-review the kept candidates you can SEE here ("all" also lists the not-loaded ones)
+                        Disguise.PropCurator.ToggleKept(args.Count > 1 &&
+                            string.Equals(args[1], "all", StringComparison.OrdinalIgnoreCase));
                         return false;
                     case "phcurateskip":  // review the SKIPPED scene props to RESCUE good ones the seed rejected
                         Disguise.PropCurator.ToggleSkipped();
@@ -107,7 +108,7 @@ namespace PropHunt.Patches
                     case "phcurateseed":  // seed the allowlist from the heuristic (Keep heuristic-accepted, Skip the rest) to refine
                     {
                         int kept = Disguise.PropCatalog.SeedCurationFromHeuristic();
-                        Core.Log.Msg($"[PropHunt] phcurateseed: allowlist seeded - {kept} kept (heuristic baseline), rest skipped. " +
+                        Core.Log.Msg($"phcurateseed: allowlist seeded - {kept} kept (heuristic baseline), rest skipped. " +
                                      "Run phcurate to refine, then start a new round to rebuild the catalog.");
                         return false;
                     }
@@ -128,16 +129,16 @@ namespace PropHunt.Patches
                         return false;
                     case "phnextround":  // host: from the Safehouse lobby, start the next round (stand-in for the UI button)
                         if (Core.Session != null) Core.Session.BeginNextRound();
-                        else Core.Log.Warning("[PropHunt] phnextround: no active session.");
+                        else Core.Log.Warning("phnextround: no active session.");
                         return false;
                     case "phstate":   // dump the local view of the round state
                         if (Core.Session != null)
                         {
                             var s = Core.Session;
-                            Core.Log.Msg($"[PropHunt] state: phase={s.Phase} role={s.LocalRole} secondsLeft={s.SecondsLeft} " +
+                            Core.Log.Msg($"state: phase={s.Phase} role={s.LocalRole} secondsLeft={s.SecondsLeft} " +
                                          $"players={s.State.Players.Count} isHost={s.IsHost}");
                         }
-                        else Core.Log.Warning("[PropHunt] phstate: no active session.");
+                        else Core.Log.Warning("phstate: no active session.");
                         return false;
                     case "phclockskew":   // fake a local clock that is N seconds off, to prove the host-clock correction
                     {
@@ -148,7 +149,7 @@ namespace PropHunt.Patches
                         if (args.Count > 1) long.TryParse(args[1], out skew);
                         Game.GameModeController.DebugClockSkew = skew;
                         var sess = Core.Session;
-                        Core.Log.Msg($"[PropHunt] phclockskew: local clock bent by {skew}s. " +
+                        Core.Log.Msg($"phclockskew: local clock bent by {skew}s. " +
                                      (sess != null
                                         ? $"offset={sess.ClockOffset}s secondsLeft={sess.SecondsLeft} whistleIn={sess.SecondsToWhistle}"
                                         : "no active session yet - the offset is learned from the host's next push."));
@@ -177,11 +178,11 @@ namespace PropHunt.Patches
                         return false;
                     case "phset":         // host: change one round setting live, by its blob key (e.g. phset proprot 20)
                     {
-                        if (args.Count < 3) { Core.Log.Warning("[PropHunt] phset: usage 'phset <key> <value>' (keys are the RoundSettings blob keys)."); return false; }
+                        if (args.Count < 3) { Core.Log.Warning("phset: usage 'phset <key> <value>' (keys are the RoundSettings blob keys)."); return false; }
                         var sess = Core.Session;
-                        if (sess == null) { Core.Log.Warning("[PropHunt] phset: no active session."); return false; }
+                        if (sess == null) { Core.Log.Warning("phset: no active session."); return false; }
                         sess.SetSetting(args[1], args[2]);
-                        Core.Log.Msg($"[PropHunt] phset: {args[1]}={args[2]} -> {sess.Settings}");
+                        Core.Log.Msg($"phset: {args[1]}={args[2]} -> {sess.Settings}");
                         return false;
                     }
                     case "phwater":       // what the water probe sees here (layer, collider, surface height, depth)
@@ -191,16 +192,16 @@ namespace PropHunt.Patches
                         if (Core.Session != null)
                         {
                             var s = Core.Session;
-                            Core.Log.Msg($"[PropHunt] clock: offset={s.ClockOffset}s hostNow={s.NowUnix()} " +
+                            Core.Log.Msg($"clock: offset={s.ClockOffset}s hostNow={s.NowUnix()} " +
                                          $"secondsLeft={s.SecondsLeft} whistleIn={s.SecondsToWhistle} huntStart={s.HuntStartUnix}");
                         }
-                        else Core.Log.Warning("[PropHunt] phclock: no active session.");
+                        else Core.Log.Warning("phclock: no active session.");
                         return false;
                     default:
                         return true;   // not one of ours
                 }
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] console cmd failed: " + e.Message); return false; }
+            catch (Exception e) { Core.Log.Warning("console cmd failed: " + e.Message); return false; }
         }
     }
 }

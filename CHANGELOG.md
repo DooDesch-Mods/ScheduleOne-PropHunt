@@ -4,16 +4,109 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.3.1] - 2026-08-07
+## [1.4.0] - 2026-08-08
 
 ### Added
 
+- The PropHunt app is rebuilt: the round reads as a departure board, the clock is a seven-segment face, the
+  dressing room fits on one line, and it is landscape only.
 - The Players list marks everyone on your Steam friends list. A public lobby is a wall of names that mean
   nothing until you find the two you already know.
+- The rules screen says which preset is live and marks every value you have changed away from it.
+- Ending a round or the whole match asks first. Both used to happen on the click.
 
 ### Fixed
 
-- The round timer's digits sit centred in their slab again instead of pulling to one side.
+- Opening the rules is quick again. It built every category twice and opened them all; it opens one now.
+- The preset your changes are measured against survives closing and reopening the app.
+- The round timer's digits sit centred in their slab instead of pulling to one side.
+
+## [1.3.8] - 2026-08-07
+
+### Added
+
+- 40 more props to hide as. The allowlist went from 347 to 387 entries.
+
+### Fixed
+
+- A full lobby runs at a normal frame rate. Clearing your wanted level every frame sent the host 660 network
+  messages a second at 12 players.
+- Every player action no longer republishes the whole match to everyone. That was 4.4 KB per prop pick, turn, decoy
+  and hit at 12 players; updates are bundled now.
+- Holding the rotate key sends nothing while the prop is not turning. Resting a finger on it published the whole
+  lobby state six times a second.
+- The host stopped asking Steam for the full member list, persona names and all, on every frame. Once every half a
+  second is enough to notice somebody joining.
+
+## [1.3.7] - 2026-08-07
+
+### Fixed
+
+- Settings you change in the lobby are still there next time you host. Only the host form ever saved anything, so
+  everything you tuned from the phone after starting - prop rotation most of all, because you set it once the lobby
+  has filled up - was gone with the session.
+- Every log line says PropHunt once instead of twice.
+
+## [1.3.6] - 2026-08-07
+
+### Fixed
+
+- Cars come in the colours you see on the street. A car disguise is cloned from the game's vehicle prefab, which is
+  the unpainted one, so every car anyone became was white.
+- A small prop can no longer stand submerged. The depth allowance had a 20cm floor, and a bottle is 25cm - so it
+  could sit almost entirely under water and count as dry.
+- Taunts are limited to one every 200ms per player. Only the score was capped before, so an auto-clicker turned a
+  taunt into a siren that every machine in the lobby had to play.
+
+## [1.3.5] - 2026-08-07
+
+### Added
+
+- Host setting "Prop ground offset": if props hover above the floor or sink into it, dial it in and everyone in the
+  lobby follows.
+- Messages, Products, Contacts, Dealers and Deliveries disappear from the phone during a round, and come back after
+  it. Nothing in a round needs them.
+
+### Changed
+
+- [2] has a one second cooldown, so nobody can flicker through props faster than a hunter can read what they are
+  looking at.
+- Decoys are capped for a whole round at your per-prop count times your change budget, and with unlimited changes at
+  ten batches. They used to refill on every prop change, so anyone with changes to spare could keep dropping fresh
+  batches. Setting decoys to 0 now means none at all, which is what it always claimed - it used to mean unlimited.
+- A decoy takes exactly one shot, whatever prop it copies. A big prop's decoy used to soak several hits, which told
+  the hunter it was worth shooting at.
+- Leaving the play area gives you 3 seconds instead of 10, and left click (lock your prop) is in the [H] list.
+
+### Fixed
+
+- Scores add up across rounds again. A single quiet moment from the lobby dropped the whole player list and every
+  score with it, so the table only ever showed the last round.
+- The round-end table tells the sides apart under Infection. Everyone caught ends the round as a hunter, so every
+  row read "Hunter"; caught players now read "Caught" and no longer collect the winning hunter's bonus. The
+  "Survivor" award can no longer go to someone who was caught either.
+- Small props can be shot. A cigarette packet's hitbox was a few centimetres across, so the floor answered a shot
+  before the packet did and its decoy could not be destroyed at all.
+- The play-area boundary stays on the map after you host a second lobby.
+- Doors near a safehouse open again for everyone once the round starts. Unlocking worked out which doors to touch a
+  second time instead of remembering, so a door could stay shut for the player who shut it.
+
+## [1.3.4] - 2026-08-06
+
+### Fixed
+
+- The sewer stays reachable and needs no key. A round plays in a brand new save, where the game still asks for the
+  Sewer Key that nobody in it can have - and a round starting next to a hatch shut it as well. Either way a hider
+  ended up sealed in, unreachable, with no way for the hunters to follow.
+- You can always stand up again. Crawl spaces crouch you on the way in and leave it to you to get up, which a prop
+  was not allowed to do - so one low passage left you stuck crouched for the rest of the round.
+- Hunters can use the phone torch again, and a hider who was already carrying a lit one stops glowing inside their
+  prop. A round blocked the torch for everybody instead of only for hiders, and putting it out worked on the
+  owner's screen only, so every other player still saw the light.
+- Every preset starts the play area at 50m, so the radius follows your lobby size again instead of the preset's own
+  number. Infection jumped to 75m and Side Hustle Party to 90m, whatever the lobby size said.
+- The hunter ratio defaults to 4: five players is 1 hunter and 4 props, ten is 2 and 8. Its description also
+  promised the count rounds up, while the role assignment divides down.
 
 ## [1.3.0] - 2026-08-06
 

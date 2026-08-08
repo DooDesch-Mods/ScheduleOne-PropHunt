@@ -65,7 +65,7 @@ namespace PropHunt.Phone
             }
             catch (Exception e)
             {
-                Core.LogDebug("[PropHunt] steam avatar failed for " + steamId + ": " + e.Message);
+                Core.LogDebug("steam avatar failed for " + steamId + ": " + e.Message);
                 return null;
             }
         }

@@ -34,8 +34,12 @@ namespace PropHunt.PlayArea
         private GameObject _outGo;       // the out-of-bounds wash, stretched over the whole map
         private RectTransform _outRect;
         private Image _outImg;
-        private Sprite _outSprite;       // the wash sprite this session made, the only one safe to destroy
-        private static Sprite _sprite;
+        private Sprite _outSprite;       // the wash sprite this session made
+        /// <summary>The band's sprite. Per SESSION, deliberately not static: a Sprite belongs to the scene that made
+        /// it, and hosting a new lobby loads a new world. The static cache kept handing out the destroyed sprite of
+        /// the previous session - a reference that is not null but draws nothing, which is why the red zone went
+        /// missing at random after re-hosting. Building it costs one texture upload.</summary>
+        private Sprite _sprite;
 
         // last drawn values, so the ring is only touched when the area actually changes
         private float _cx, _cz, _radius;
@@ -85,10 +89,10 @@ namespace PropHunt.PlayArea
                 if (!PaintOutside(centre, rMap, rOuter)) return;
 
                 _cx = s.AreaX; _cz = s.AreaZ; _radius = s.AreaRadius;
-                Core.LogDebug($"[PropHunt] map ring: area ({s.AreaX:F0},{s.AreaZ:F0}) r={s.AreaRadius:F0}m -> " +
+                Core.LogDebug($"map ring: area ({s.AreaX:F0},{s.AreaZ:F0}) r={s.AreaRadius:F0}m -> " +
                               $"map centre ({centre.x:F0},{centre.y:F0}) band {rMap:F0}..{rOuter:F0}");
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] map ring tick failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("map ring tick failed: " + e.Message); }
         }
 
         /// <summary>
@@ -153,7 +157,7 @@ namespace PropHunt.PlayArea
             SortBehindMarkers(map);
             BuildOutsideLayer(map, probe);
 
-            Core.LogDebug($"[PropHunt] map ring: cloned '{probe.name}' -> anchors {_rect.anchorMin}/{_rect.anchorMax} " +
+            Core.LogDebug($"map ring: cloned '{probe.name}' -> anchors {_rect.anchorMin}/{_rect.anchorMax} " +
                           $"pivot {_rect.pivot}, sibling {_rect.GetSiblingIndex()} of {map.PoIContainer.childCount}, " +
                           $"image={(img != null)}, outside={(_outRect != null)}");
             _go.SetActive(false);
@@ -201,7 +205,7 @@ namespace PropHunt.PlayArea
             }
             catch (System.Exception e)
             {
-                Core.LogDebug("[PropHunt] out-of-bounds layer failed: " + e.Message);
+                Core.LogDebug("out-of-bounds layer failed: " + e.Message);
                 _outGo = null; _outRect = null; _outImg = null;
             }
         }
@@ -291,7 +295,7 @@ namespace PropHunt.PlayArea
                 _outGo.SetActive(true);
                 return true;
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] out-of-bounds wash failed: " + e.Message); return false; }
+            catch (System.Exception e) { Core.LogDebug("out-of-bounds wash failed: " + e.Message); return false; }
         }
 
         /// <summary>
@@ -359,7 +363,7 @@ namespace PropHunt.PlayArea
         /// opposite. What carries the colour is <see cref="PaintOutside"/>, over everything the wall shuts off. This
         /// band's only job is the exact line, drawn on top of that wash.
         /// </summary>
-        private static Sprite RingSprite()
+        private Sprite RingSprite()
         {
             if (_sprite != null) return _sprite;
             try
@@ -388,7 +392,7 @@ namespace PropHunt.PlayArea
                 tex.Apply(false, false);
                 _sprite = Sprite.Create(tex, new Rect(0f, 0f, TextureSize, TextureSize), new Vector2(0.5f, 0.5f));
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] ring sprite failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("ring sprite failed: " + e.Message); }
             return _sprite;
         }
 
@@ -400,7 +404,8 @@ namespace PropHunt.PlayArea
 
         internal void Destroy()
         {
-            // The per-round wash owns its own texture and sprite; the band's sprite is shared and static, so it stays.
+            // Both sprites belong to this session and to the scene it ran in, so both go with it. Leaving either
+            // behind is what made the boundary invisible in the NEXT lobby.
             try
             {
                 if (_outSprite != null)
@@ -409,8 +414,18 @@ namespace PropHunt.PlayArea
                     UnityEngine.Object.Destroy(_outSprite);
                 }
             }
-            catch { }
+            catch (Exception e) { Core.LogDebug("map wash sprite teardown failed: " + e.Message); }
             _outSprite = null;
+            try
+            {
+                if (_sprite != null)
+                {
+                    if (_sprite.texture != null) UnityEngine.Object.Destroy(_sprite.texture);
+                    UnityEngine.Object.Destroy(_sprite);
+                }
+            }
+            catch (Exception e) { Core.LogDebug("map ring sprite teardown failed: " + e.Message); }
+            _sprite = null;
             try { if (_outGo != null) UnityEngine.Object.Destroy(_outGo); } catch { }
             try { if (_go != null) UnityEngine.Object.Destroy(_go); } catch { }
             _go = null; _rect = null;

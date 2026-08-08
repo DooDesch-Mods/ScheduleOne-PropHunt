@@ -42,7 +42,7 @@ namespace PropHunt.PlayArea
             try
             {
                 var bundle = AssetLoader.GetAssetBundleFromStream(ResourceName, Assembly.GetExecutingAssembly());
-                if (bundle == null) { Core.Log?.Warning("[PropHunt] border shader: bundle null - not built yet?"); return null; }
+                if (bundle == null) { Core.Log?.Warning("border shader: bundle null - not built yet?"); return null; }
 
                 Shader[] shaders = bundle.LoadAllAssets<Shader>();
                 _shader = (shaders != null && shaders.Length > 0) ? shaders[0] : null;
@@ -52,10 +52,10 @@ namespace PropHunt.PlayArea
                     if (_shader == null) _shader = bundle.LoadAsset<Shader>("PropHunt/Border");
                 }
 
-                if (_shader != null) Core.LogDebug($"[PropHunt] border shader loaded: {_shader.name} isSupported={_shader.isSupported}");
-                else Core.Log?.Warning("[PropHunt] border shader: not found in bundle - wall will be invisible");
+                if (_shader != null) Core.LogDebug($"border shader loaded: {_shader.name} isSupported={_shader.isSupported}");
+                else Core.Log?.Warning("border shader: not found in bundle - wall will be invisible");
             }
-            catch (Exception e) { Core.Log?.Warning("[PropHunt] border shader load failed: " + e.Message); _shader = null; }
+            catch (Exception e) { Core.Log?.Warning("border shader load failed: " + e.Message); _shader = null; }
             return _shader;
         }
     }

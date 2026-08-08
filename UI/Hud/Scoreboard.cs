@@ -179,7 +179,12 @@ namespace PropHunt.UI.Hud
         {
             var list = new List<Award>();
             AddAward(list, players, "Top Hunter", p => p.CatchesMade, v => $"{v} catches");
-            AddAward(list, players, "Survivor", p => p.Role == PlayerRole.Hider ? p.SurvivedSeconds : 0, v => $"{v}s alive");
+            // NOT caught. SurvivedSeconds is also stamped at the moment a hider IS caught (it is how long they lasted),
+            // so under the Spectator rule - where a caught hider keeps the Hider role and only gains Eliminated - the
+            // player with the most seconds could be someone who died, and the table then called its own "Survivor"
+            // Caught. If nobody lasted the round the award is simply absent, which is the truth.
+            AddAward(list, players, "Survivor",
+                     p => p.Role == PlayerRole.Hider && !p.Eliminated ? p.SurvivedSeconds : 0, v => $"{v}s alive");
             AddAward(list, players, "Trickster", p => p.DecoyBaits, v => $"{v} decoy baits");
             AddAward(list, players, "Shocker", p => p.StunsLanded, v => $"{v} stuns");
             return list;
@@ -199,16 +204,18 @@ namespace PropHunt.UI.Hud
             return "Player " + (p.SteamId % 10000);
         }
 
+        /// <summary>What this player was this round. Under Infection everyone caught ends the round as a Hunter, so a
+        /// plain Role read labelled the whole table "Hunter" - WasHider is what still separates the two sides.</summary>
         private static string RoleShort(PlayerState p)
         {
-            if (p.Role == PlayerRole.Hunter) return "Hunter";
+            if (p.Role == PlayerRole.Hunter) return p.WasHider ? "Caught" : "Hunter";
             if (p.Role == PlayerRole.Hider) return p.Eliminated ? "Caught" : "Hider";
             return "Spectator";
         }
 
         private static Color RoleColor(PlayerState p)
         {
-            if (p.Role == PlayerRole.Hunter) return Theme.DangerText;
+            if (p.Role == PlayerRole.Hunter) return p.WasHider ? Theme.TextMuted : Theme.DangerText;
             if (p.Role == PlayerRole.Hider) return p.Eliminated ? Theme.TextMuted : Theme.SuccessText;
             return Theme.InfoText;
         }

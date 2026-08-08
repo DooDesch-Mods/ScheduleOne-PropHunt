@@ -51,7 +51,7 @@ namespace PropHunt.Disguise
                 ctl.RequestSelectProp(next);
                 return true;
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] lobby prop roll failed: " + e.Message); return false; }
+            catch (System.Exception e) { Core.LogDebug("lobby prop roll failed: " + e.Message); return false; }
         }
 
         /// <summary>Back to being a person.</summary>
@@ -60,7 +60,7 @@ namespace PropHunt.Disguise
             var ctl = GameModeController.Active;
             if (ctl == null || !Active) return;
             try { ctl.RequestSelectProp(-1); }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] lobby prop clear failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("lobby prop clear failed: " + e.Message); }
         }
     }
 }

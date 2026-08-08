@@ -100,6 +100,7 @@ namespace PropHunt.UI
         internal string[] HelpHider => new[]
         {
             $"[{KeyBinds.Name(KeyBinds.Become)}] become looked-at prop",
+            "[Left click] lock the prop where it stands (mid-air too); click again to drop",
             $"[{KeyBinds.Name(KeyBinds.RandomProp)}] random prop",
             $"[{KeyBinds.Name(KeyBinds.Rotate)}]+mouse rotate facing",
             $"[{KeyBinds.Name(KeyBinds.SlowWalk)}] slow-walk",

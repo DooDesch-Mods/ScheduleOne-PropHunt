@@ -38,6 +38,25 @@ namespace PropHunt.Game
         private float _lastSettingsPush;
         private GameState _state = new GameState();
         private HostSyncVar<string> _stateVar;
+
+        /// <summary>
+        /// Shortest gap between two full-state writes, which grows with the lobby because the payload does: one push is
+        /// some 630 bytes at 2 players and 4.4 KB at 12 with the default decoy allowance. A fixed gap would let a big
+        /// lobby push ten times the bytes of a small one, so the rate comes down as the size goes up - and a two-player
+        /// session keeps the snappiness it always had. See <see cref="PushState"/>.
+        /// </summary>
+        private float StatePushIntervalSeconds =>
+            Mathf.Clamp(0.08f + 0.02f * _state.Players.Count, 0.12f, 0.5f);
+        private bool _statePushPending;
+        private float _lastStatePushAt;
+        private bool _stateSizeWarned;
+
+        /// <summary>How long a lobby member list stays good. See <see cref="GetMemberIds"/>.</summary>
+        private const float MemberIdCacheSeconds = 0.5f;
+        private readonly List<ulong> _memberIds = new List<ulong>();
+        private float _memberIdsAt = -99f;
+        private int _memberIdsVersion;        // bumped on every real re-read of the lobby
+        private int _rosterSyncedVersion = -1;   // the version the roster was last compared against
         private DisguiseController _disguise;
         private DecoyController _decoy;
         private PropPicker _picker;
@@ -298,7 +317,7 @@ namespace PropHunt.Game
             long was = _clockOffset;
             _clockOffset = observed;
             if (System.Math.Abs(_clockOffset) >= 2 && was != _clockOffset)
-                Core.Log.Msg($"[PropHunt] host clock is {_clockOffset:+#;-#;0}s from ours - correcting every timer by that.");
+                Core.Log.Msg($"host clock is {_clockOffset:+#;-#;0}s from ours - correcting every timer by that.");
         }
 
         /// <summary>Local reveal cue when a taunt fires (host direct; clients via the P2P handler): flash the HUD
@@ -314,7 +333,7 @@ namespace PropHunt.Game
                 if (isWhistle) Taunt.TauntSounds.PlayWhistle(clip, gp.transform.position);
                 else Taunt.TauntSounds.Play(clip, gp.transform.position);
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] taunt sound failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("taunt sound failed: " + e.Message); }
         }
 
         // ---- action feedback (catch / stun / decoy pop): a 3D SFX + a brief screen flash so outcomes read
@@ -382,15 +401,15 @@ namespace PropHunt.Game
         /// and a live count of becomable objects within reach of the local player.</summary>
         internal void DumpPropDebug()
         {
-            Core.Log.Msg($"[PropHunt] props: catalog={PropCatalog.Count} hash={PropCatalog.Hash} stateHash={_state.CatalogHash} " +
+            Core.Log.Msg($"props: catalog={PropCatalog.Count} hash={PropCatalog.Hash} stateHash={_state.CatalogHash} " +
                          $"phase={_state.Phase} role={LocalRole} highlighted={(_highlighter != null ? _highlighter.HighlightedCount : 0)}");
             // The pool is the usual reason a prop refuses to be taken, so say plainly whether one is in force and how
             // much of our catalog it leaves us.
             Core.Log.Msg(PropCatalog.HostPool == null
-                ? "[PropHunt] props: no host pool (we are the host, or it has not arrived yet) - all of our props are becomable."
-                : $"[PropHunt] props: host pool {PropCatalog.HostPool.Count} prop(s) -> {PropCatalog.BecomableCount()} of our {PropCatalog.Count} are becomable.");
+                ? "props: no host pool (we are the host, or it has not arrived yet) - all of our props are becomable."
+                : $"props: host pool {PropCatalog.HostPool.Count} prop(s) -> {PropCatalog.BecomableCount()} of our {PropCatalog.Count} are becomable.");
             string tgt = _picker?.CurrentTargetName;
-            Core.Log.Msg($"[PropHunt] props: crosshair -> {(tgt != null ? $"'{tgt}' (id {_picker.CurrentTargetId})" : "<nothing becomable>")}");
+            Core.Log.Msg($"props: crosshair -> {(tgt != null ? $"'{tgt}' (id {_picker.CurrentTargetId})" : "<nothing becomable>")}");
             try
             {
                 var lp = Player.Local;
@@ -405,10 +424,10 @@ namespace PropHunt.Game
                             var mf = c.GetComponentInParent<MeshFilter>();
                             if (mf != null && PropCatalog.IdForMeshFilter(mf) >= 0) near++;
                         }
-                    Core.Log.Msg($"[PropHunt] props: {near} becomable object(s) within 22m ({scanned} colliders scanned).");
+                    Core.Log.Msg($"props: {near} becomable object(s) within 22m ({scanned} colliders scanned).");
                 }
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] DumpPropDebug scan failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("DumpPropDebug scan failed: " + e.Message); }
         }
 #endif
 
@@ -419,9 +438,9 @@ namespace PropHunt.Game
             Active = this;
             _settings = BuildSettings();
             EnsureHandlers();
-            Core.LogDebug("[PropHunt] StartAsHost: creating state var...");
+            Core.LogDebug("StartAsHost: creating state var...");
             EnsureStateVar();
-            Core.LogDebug("[PropHunt] StartAsHost: building prop catalog...");
+            Core.LogDebug("StartAsHost: building prop catalog...");
             PropCatalog.BuildIfNeeded();
             _disguise = new DisguiseController { LiveLocalYaw = () => _localYaw };
             _decoy = new DecoyController();
@@ -442,9 +461,12 @@ namespace PropHunt.Game
             _spectator = new PropHunt.View.SpectatorController(this);
             _state = new GameState { Phase = RoundPhase.Lobby, SettingsBlob = _settings.Serialize(), CatalogHash = PropCatalog.Hash };
             RoundLogic.SyncRoster(_state, GetMemberIds());
+            // Before the first safehouse phase, not just before the first round: the safehouse lock closes sewer
+            // hatches, and a closed hatch in a key-less world is a dead end until this has run.
+            RoundEnvironment.UnlockSewer();
             PushState();
             BroadcastPropPool(force: true);   // tell joiners which props they may become before anyone can pick one
-            Core.Log.Msg($"[PropHunt] host session started (Lobby). Settings: {_settings}");
+            Core.Log.Msg($"host session started (Lobby). Settings: {_settings}");
         }
 
         // Host config: the Side Hustle host form sends the chosen round settings as the launch ConfigBlob (its
@@ -481,17 +503,17 @@ namespace PropHunt.Game
             _onboarding = new UI.Onboarding(this);
             _spectator = new PropHunt.View.SpectatorController(this);
             try { var cur = _stateVar?.Value; if (!string.IsNullOrEmpty(cur)) ApplyStateString(cur); } catch { }
-            Core.Log.Msg("[PropHunt] client session started; waiting for host state.");
+            Core.Log.Msg("client session started; waiting for host state.");
         }
 
         /// <summary>Host: begin the match (host setup screen "START MATCH" or the phstart debug command).</summary>
         internal void BeginMatch()
         {
-            if (!_isHost) { Core.Log.Warning("[PropHunt] BeginMatch ignored - not host."); return; }
+            if (!_isHost) { Core.Log.Warning("BeginMatch ignored - not host."); return; }
             // A prop hunt needs at least one hunter AND one hider; with a single player a round would assign the
             // lone player as hunter, leave zero hiders, and end the instant it starts. Wait for a second player.
-            if (GetMemberIds().Count < 2) { Core.Log.Msg("[PropHunt] need at least 2 players to start - waiting for more to join."); return; }
-            if (_matchStarted && _state.Phase != RoundPhase.Lobby) { Core.Log.Msg("[PropHunt] match already running."); return; }
+            if (GetMemberIds().Count < 2) { Core.Log.Msg("need at least 2 players to start - waiting for more to join."); return; }
+            if (_matchStarted && _state.Phase != RoundPhase.Lobby) { Core.Log.Msg("match already running."); return; }
             _matchStarted = true;
             _state.SettingsBlob = _settings.Serialize();
             _state.CatalogHash = PropCatalog.Hash;
@@ -506,7 +528,7 @@ namespace PropHunt.Game
             RoundLogic.BeginMatch(_state, _settings, NowUnix(), GetMemberIds());
             PushState();
             RoundEnvironment.ApplyHostWorld(_settings);   // lock time of day + freeze; police suppressed each tick
-            Core.Log.Msg($"[PropHunt] match begun. {_settings}");
+            Core.Log.Msg($"match begun. {_settings}");
         }
 
         /// <summary>Host: confirm next-round settings + open the safehouse, advancing Safehouse -> next round.
@@ -517,7 +539,7 @@ namespace PropHunt.Game
             _state.SettingsBlob = _settings.Serialize();   // re-publish any settings the host changed in the lobby
             RoundLogic.ConfirmSafehouseReady(_state, NowUnix());
             PushState();
-            Core.Log.Msg($"[PropHunt] host starting next round. {_settings}");
+            Core.Log.Msg($"host starting next round. {_settings}");
         }
 
         // ---- safehouse (between-rounds lobby; its surroundings are the play area) ----
@@ -584,7 +606,7 @@ namespace PropHunt.Game
             int next = cur < 0 ? 0 : (((cur + dir) % avail.Count) + avail.Count) % avail.Count;
             _state.SafehouseCode = avail[next];
             PushState();   // ApplySafehousePresence picks up the change next tick (re-teleport + re-lock + re-centre)
-            Core.Log.Msg($"[PropHunt] host switched safehouse -> '{_state.SafehouseCode}' ({avail.Count} options for {_state.Players.Count}).");
+            Core.Log.Msg($"host switched safehouse -> '{_state.SafehouseCode}' ({avail.Count} options for {_state.Players.Count}).");
         }
 
         /// <summary>Friendly display name of a property code (for the HUD), or the code if not resolvable.</summary>
@@ -598,7 +620,7 @@ namespace PropHunt.Game
             try
             {
                 var prop = FindProperty(code);
-                if (prop == null) { Core.Log.Warning($"[PropHunt] safehouse '{code}' not found in scene."); return; }
+                if (prop == null) { Core.Log.Warning($"safehouse '{code}' not found in scene."); return; }
 
                 // Authored points first: each player teleports to a DISTINCT baked-in interior spot. The index is
                 // the local player's rank in the sorted lobby-member list, so host + every client independently
@@ -618,7 +640,7 @@ namespace PropHunt.Game
                     int idx = ShuffledSpawnIndex(rank, pts.Count, _state.SafehouseSeed);
                     var sp = pts[idx];
                     RoundEnvironment.TeleportLocalTo(sp.Pos + UnityEngine.Vector3.up * 1f, sp.Yaw);   // face + move together, hidden by the blink
-                    Core.Log.Msg($"[PropHunt] entered safehouse '{code}' (authored point {idx + 1}/{pts.Count}, rank {rank}, seed {_state.SafehouseSeed}).");
+                    Core.Log.Msg($"entered safehouse '{code}' (authored point {idx + 1}/{pts.Count}, rank {rank}, seed {_state.SafehouseSeed}).");
                     return;
                 }
 
@@ -630,9 +652,9 @@ namespace PropHunt.Game
                 float ang = (sid % 360UL) * UnityEngine.Mathf.Deg2Rad;
                 float r = 0.3f + (sid % 3UL) * 0.35f;   // 0.3 .. 1.0m
                 RoundEnvironment.TeleportLocalTo(basePos + new UnityEngine.Vector3(UnityEngine.Mathf.Cos(ang) * r, 0f, UnityEngine.Mathf.Sin(ang) * r));
-                Core.Log.Msg($"[PropHunt] entered safehouse '{code}' (ring fallback - no authored points).");
+                Core.Log.Msg($"entered safehouse '{code}' (ring fallback - no authored points).");
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] TeleportLocalToSafehouse failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("TeleportLocalToSafehouse failed: " + e.Message); }
         }
 
         /// <summary>Turn ON all of the safehouse's lights when players spawn in (the interior should be lit during the
@@ -663,9 +685,9 @@ namespace PropHunt.Game
                         { var l = lights[i]; if (l != null) { try { l.TurnOn(); } catch { } } }
                 }
                 catch { }
-                Core.LogDebug($"[PropHunt] safehouse '{code}' lights ON ({n} switch(es)).");
+                Core.LogDebug($"safehouse '{code}' lights ON ({n} switch(es)).");
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] TurnOnSafehouseLights failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("TurnOnSafehouseLights failed: " + e.Message); }
         }
 
         /// <summary>Host: set the coded property's doors locked/open locally + broadcast to clients (PlayerAccess is
@@ -681,9 +703,17 @@ namespace PropHunt.Game
         /// host (FishNet server) swings it - the visual then replicates to clients. Idempotent.</summary>
         private const float SafehouseDoorRadius = 22f;   // non-property doors (RV/sewer/plain) within this of the spawn
 
+        /// <summary>Doors this session locked, with the access they had before. Restoring from this list rather than
+        /// re-running the radius sweep is the point: the second sweep resolves its own set from the CURRENT world, so a
+        /// door that was in range when we locked it and out of range (or gone) when we unlocked stayed locked - and only
+        /// on the machine that locked it, which is exactly how one player could open a door another could not.</summary>
+        private static readonly Dictionary<int, Il2CppScheduleOne.Doors.EDoorAccess> _lockedDoors =
+            new Dictionary<int, Il2CppScheduleOne.Doors.EDoorAccess>();
+
         private static void ApplyDoorAccess(string code, bool locked, bool swing)
         {
             if (string.IsNullOrEmpty(code)) return;
+            if (!locked) { RestoreLockedDoors(swing); return; }
             try
             {
                 // resolve the property's interior spawn so we can also catch nearby NON-PropertyDoorController doors
@@ -704,6 +734,14 @@ namespace PropHunt.Game
                     {
                         var d = doors[i];
                         if (d == null) continue;
+                        // Sewer doors DO belong in here: 'seweroffice' is one of the curated safehouses
+                        // (SafehouseSelector), its doors carry no Property back-reference, and exempting them let
+                        // players walk out of that safehouse before roles were even assigned.
+                        //
+                        // What made locking them dangerous was the key: once closed, SewerDoorController.CanPlayerAccess
+                        // demands the Sewer Key before it defers to the base, and a fresh round world has none - so one
+                        // closed hatch sealed the sewer for the session. RoundEnvironment.UnlockSewer removes that gate
+                        // at session start and at every round start, which is why they can be locked again safely.
                         bool belongs;
                         var pdc = d.TryCast<Il2CppScheduleOne.Building.Doors.PropertyDoorController>();
                         if (pdc != null)
@@ -712,12 +750,47 @@ namespace PropHunt.Game
                             belongs = haveCenter && UnityEngine.Vector3.Distance(d.transform.position, center) <= SafehouseDoorRadius;   // RV/sewer/plain
                         if (!belongs) continue;
                         n++;
-                        d.PlayerAccess = locked ? Il2CppScheduleOne.Doors.EDoorAccess.Locked : Il2CppScheduleOne.Doors.EDoorAccess.Open;
-                        if (swing) { try { d.SetIsOpen_Server(!locked, Il2CppScheduleOne.Doors.EDoorSide.Interior, false); } catch { } }
+                        int key = d.GetInstanceID();   // wrapper identity is not stable under interop; the instance id is
+                        if (!_lockedDoors.ContainsKey(key)) _lockedDoors[key] = d.PlayerAccess;
+                        d.PlayerAccess = Il2CppScheduleOne.Doors.EDoorAccess.Locked;
+                        if (swing)
+                        {
+                            try { d.SetIsOpen_Server(false, Il2CppScheduleOne.Doors.EDoorSide.Interior, false); }
+                            catch (Exception e) { Core.LogDebug("door swing failed: " + e.Message); }
+                        }
                     }
-                Core.LogDebug($"[PropHunt] safehouse '{code}' doors {(locked ? "LOCKED" : "OPENED")} ({n}, swing={swing}).");
+                Core.LogDebug($"safehouse '{code}' doors LOCKED ({n}, swing={swing}).");
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] ApplyDoorAccess failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("ApplyDoorAccess failed: " + e.Message); }
+        }
+
+        /// <summary>Give every door we locked its own previous access back. Doors that have since been destroyed are
+        /// skipped; the list is cleared either way, so a stale entry can never lock a door a later round never touched.</summary>
+        private static void RestoreLockedDoors(bool swing)
+        {
+            if (_lockedDoors.Count == 0) return;
+            int n = 0;
+            try
+            {
+                var doors = UnityEngine.Object.FindObjectsOfType<Il2CppScheduleOne.Doors.DoorController>();
+                if (doors != null)
+                    for (int i = 0; i < doors.Length; i++)
+                    {
+                        var d = doors[i];
+                        if (d == null) continue;
+                        if (!_lockedDoors.TryGetValue(d.GetInstanceID(), out var before)) continue;
+                        d.PlayerAccess = before;
+                        n++;
+                        if (swing)
+                        {
+                            try { d.SetIsOpen_Server(true, Il2CppScheduleOne.Doors.EDoorSide.Interior, false); }
+                            catch (Exception e) { Core.LogDebug("door swing failed: " + e.Message); }
+                        }
+                    }
+            }
+            catch (Exception e) { Core.LogDebug("RestoreLockedDoors failed: " + e.Message); }
+            Core.LogDebug($"restored {n} of {_lockedDoors.Count} locked door(s) (swing={swing}).");
+            _lockedDoors.Clear();
         }
 
         private static Il2CppScheduleOne.Property.Property FindProperty(string code)
@@ -777,9 +850,9 @@ namespace PropHunt.Game
                 _sentPoolHash = h;
                 var ids = PropCatalog.AllIds();
                 PropHuntNet.Client?.BroadcastMessage(new PropPoolMessage { Ids = ids });
-                Core.LogDebug($"[PropHunt] prop pool published: {ids.Count} prop(s), hash {h}.");
+                Core.LogDebug($"prop pool published: {ids.Count} prop(s), hash {h}.");
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] publishing the prop pool failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("publishing the prop pool failed: " + e.Message); }
         }
 
         /// <summary>Client: adopt the host's pool. From here a hider is only offered props the host can draw too, so
@@ -790,9 +863,9 @@ namespace PropHunt.Game
             try
             {
                 if (!PropCatalog.SetHostPool(new HashSet<int>(ids))) return;
-                Core.Log.Msg($"[PropHunt] host prop pool: {ids.Count} prop(s); {PropCatalog.BecomableCount()} of our {PropCatalog.Count} are usable.");
+                Core.Log.Msg($"host prop pool: {ids.Count} prop(s); {PropCatalog.BecomableCount()} of our {PropCatalog.Count} are usable.");
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] adopting the host prop pool failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("adopting the host prop pool failed: " + e.Message); }
         }
 
         /// <summary>Client handler: apply a door lock/open the host pushed.</summary>
@@ -815,7 +888,17 @@ namespace PropHunt.Game
             {
                 // Keep the roster live even BEFORE the match starts (in the pre-match Lobby) so the Stats/Players tabs
                 // show every joiner, not just the host. The round machine (TickHost) still only runs once started.
-                bool changed = RoundLogic.SyncRoster(_state, GetMemberIds());
+                //
+                // Compared only when the member list was actually re-read, not every frame: SyncRoster allocates a
+                // HashSet and a LINQ list per call, and comparing the same list against the same roster sixty times a
+                // second cannot find anything the first comparison missed.
+                bool changed = false;
+                var members = GetMemberIds();
+                if (_rosterSyncedVersion != _memberIdsVersion)
+                {
+                    _rosterSyncedVersion = _memberIdsVersion;
+                    changed = RoundLogic.SyncRoster(_state, members);
+                }
                 // A joiner has no pool until we send it one, and the send is a no-op unless the roster or our own
                 // catalog actually moved - so this costs a hash compare on an ordinary tick.
                 if (changed) BroadcastPropPool(force: true);
@@ -845,20 +928,30 @@ namespace PropHunt.Game
                 _lastSettingsPush = Time.unscaledTime;
                 _state.SettingsBlob = _settings.Serialize();
                 PushState();
+                RememberHostSettings();   // ...and keep them for the next time this host opens the form
             }
 
             if (_state.Phase != _loggedPhase)
             {
                 var prevPhase = _loggedPhase;
                 _loggedPhase = _state.Phase;
-                Core.Log.Msg($"[PropHunt] phase -> {_state.Phase} (round {_state.RoundNumber}, you={LocalRole}, {SecondsLeft}s, " +
+                Core.Log.Msg($"phase -> {_state.Phase} (round {_state.RoundNumber}, you={LocalRole}, {SecondsLeft}s, " +
                              $"hunters={RoundLogic.CountRole(_state, PlayerRole.Hunter)}, hiders={AliveHiderCount}, winner={_state.Winner})");
 
                 if (_state.Phase == RoundPhase.Hiding)
                 {
                     // re-apply the world time at the start of every round, so each round begins at the configured
                     // time of day (and, with FreezeTime off, the clock then runs from there instead of staying locked).
-                    if (_isHost) RoundEnvironment.ApplyHostWorld(_settings);
+                    if (_isHost)
+                    {
+                        RoundEnvironment.ApplyHostWorld(_settings);
+                        Core.Log.Msg($"round {_state.RoundNumber}: prop rotation " +
+                                     (_state.RotationSeconds > 0 ? $"every {_state.RotationSeconds}s" : "OFF") +
+                                     $", whistle every {_settings.TauntIntervalSeconds}s.");
+                    }
+                    // Every machine asks for itself: the unlock RPC runs locally on the caller and on the server, so a
+                    // host-only call leaves the other clients still holding a locked sewer.
+                    RoundEnvironment.UnlockSewer();
                     // Rebuild the catalog now the world is fully loaded (the client's session-start build can
                     // run BEFORE the scene finishes loading -> a near-empty catalog + hash mismatch). Both sides
                     // rebuild at the same lifecycle point -> matching deterministic ids/hash.
@@ -896,6 +989,12 @@ namespace PropHunt.Game
 
             // keep the world day-locked + police off + the local player crime-free during a round (incl. the safehouse lobby)
             bool roundActive = RoundActive;
+            // The ground offset, on every machine, from whatever the settings currently say. Applying it only where the
+            // state ARRIVES made it a client-only change: the host published a new offset, every client moved its props
+            // and their hitboxes at once, and the host kept the old height until the next round - up to 40cm of
+            // disagreement about where a prop, and therefore a shot, actually is. Idempotent, so per frame is free.
+            RoundEnvironment.ApplyFeetDrop(_settings);
+            Patches.PhoneAppVisibility.Tick(roundActive);   // the business apps have no place in a round; restored when it ends
             if (roundActive) RoundEnvironment.ClearLocalCrime();
             if (_isHost && roundActive) RoundEnvironment.SuppressPolice();
 
@@ -919,6 +1018,9 @@ namespace PropHunt.Game
             // ...and put the phone torch out. Blocking the toggle stops it being switched on, but someone who was
             // already holding a light when they became a prop would keep glowing inside it.
             if (Patches.HotbarSuppression.Disguised) DouseFlashlight();
+            // ...and stand a prop back up. A ForcePlayerCrouch trigger sets the flag directly, so blocking the toggle
+            // never sees it; the capsule is prop-sized either way, so there is no low ceiling to duck under.
+            if (Patches.HotbarSuppression.Disguised) StandUpIfCrouched();
             TickPropLock();   // a lock lives and dies with the prop it holds
             _disguise?.Apply(_state);
             _decoy?.Apply(_state);
@@ -930,13 +1032,17 @@ namespace PropHunt.Game
                 _lastLocalProp = lpid;
                 var lid = LocalId;   // realign the optimistic local yaw to the synced value on a prop/round change
                 _localYaw = (lid != 0 && _state.Players.TryGetValue(lid, out var lp)) ? lp.PropYaw : 0f;
-                Core.LogDebug($"[PropHunt] local disguise PropId -> {lpid} ({LocalPropName ?? "none"})");
+                Core.LogDebug($"local disguise PropId -> {lpid} ({LocalPropName ?? "none"})");
                 UpdatePropCollisionHeight(lpid);
             }
 
             // Local guidance quest (journal/tracker): created once the phone UI is ready, completed when the player
             // opens the PropHunt app. Points the player at the app as the control/tracking surface.
             Quests.GuideQuest.Tick();
+
+            // Everything this frame asked to publish goes out as ONE write, at the end, rate-limited. Player actions
+            // arrive on network callbacks between frames, so several of them collapse into a single push here.
+            FlushState();
 
             if (_state.Phase == RoundPhase.MatchEnd) RequestReturnToHub();
         }
@@ -1012,7 +1118,7 @@ namespace PropHunt.Game
             _spectator = null;
             try { _stateVar?.Dispose(); } catch { }
             _stateVar = null;
-            Core.Log.Msg("[PropHunt] session disposed.");
+            Core.Log.Msg("session disposed.");
         }
 
         // ---- networking plumbing ----
@@ -1026,13 +1132,13 @@ namespace PropHunt.Game
                 _stateVar = PropHuntNet.Client.CreateHostSyncVar<string>(NetKeys.State, "");
                 _stateVar.OnValueChanged += OnStateVarChanged;
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] CreateHostSyncVar failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("CreateHostSyncVar failed: " + e.Message); }
         }
 
         private void OnStateVarChanged(string oldV, string newV)
         {
             if (_isHost) return;   // host already holds the authoritative _state; ignore its own echo
-            try { ApplyStateString(newV); } catch (Exception e) { Core.Log.Warning("[PropHunt] state apply failed: " + e.Message); }
+            try { ApplyStateString(newV); } catch (Exception e) { Core.Log.Warning("state apply failed: " + e.Message); }
         }
 
         private void ApplyStateString(string blob)
@@ -1040,20 +1146,56 @@ namespace PropHunt.Game
             _state = GameState.Parse(blob);
             SyncClock(_state);   // before any effect reads a timer: every timestamp below is in host time
             if (!string.IsNullOrEmpty(_state.SettingsBlob)) _settings = RoundSettings.Parse(_state.SettingsBlob);
-            Core.LogDebug($"[PropHunt] client recv state: phase={_state.Phase} hash={_state.CatalogHash} players={_state.Players.Count} - applying effects...");
+            Core.LogDebug($"client recv state: phase={_state.Phase} hash={_state.CatalogHash} players={_state.Players.Count} - applying effects...");
             // NOTE: do NOT scan/lock doors here. ApplyStateString runs in the SteamNetworkLib state-var callback,
             // which fires once PER host push (several in quick succession when entering the safehouse). A
             // FindObjectsOfType<DoorController> city scan per push froze the client. Door locking (incl. late-join)
             // is handled once-per-code-change in the Tick-driven ApplySafehousePresence instead.
             ApplyLocalEffects();
-            Core.LogDebug("[PropHunt] client recv state: effects applied.");
+            Core.LogDebug("client recv state: effects applied.");
         }
 
+        /// <summary>
+        /// Ask for the game state to reach the clients. Marks it dirty; the actual write happens at most every
+        /// <see cref="StatePushIntervalSeconds"/> from <see cref="FlushState"/> at the end of the host's tick.
+        ///
+        /// Why it has to be coalesced: the state travels as ONE string in Steam lobby data, so every push serialises
+        /// every player and every decoy and fans that out to every member. Each of the ~20 callers is a player action -
+        /// pick a prop, turn it, drop a decoy, land a hit, step out of the area. So the number of pushes per second
+        /// grows with the player count AND so does the size of each one: the traffic grows with the SQUARE of the
+        /// lobby. Two players never noticed. Twelve players, with Steam rate-limiting lobby data on top, is the lag.
+        /// Nothing in the state needs sub-frame timing - phases carry an end timestamp, positions are the game's own
+        /// netcode - so the gap in <see cref="StatePushIntervalSeconds"/> costs nothing that anyone can see.
+        /// </summary>
         private void PushState()
         {
             if (!_isHost || _stateVar == null) return;
+            _statePushPending = true;
+        }
+
+        /// <summary>Write the state now if one was asked for and the rate allows it. Host-only, called once per tick.</summary>
+        private void FlushState()
+        {
+            if (!_statePushPending || !_isHost || _stateVar == null) return;
+            if (Time.unscaledTime - _lastStatePushAt < StatePushIntervalSeconds) return;
+            _statePushPending = false;
+            _lastStatePushAt = Time.unscaledTime;
             _state.HostNowUnix = RawNowUnix();   // clients derive their clock offset from this
-            try { _stateVar.Value = _state.Serialize(); } catch (Exception e) { Core.Log.Warning("[PropHunt] PushState failed: " + e.Message); }
+            try
+            {
+                string blob = _state.Serialize();
+                // Steam refuses a lobby data value over 8 KB, and the write would fail silently from a player's point
+                // of view: the state simply stops arriving. Say it once, loudly, while there is still headroom.
+                if (blob.Length > 7000 && !_stateSizeWarned)
+                {
+                    _stateSizeWarned = true;
+                    Core.Log.Warning($"the game state is {blob.Length} bytes with {_state.Players.Count} players and " +
+                                     $"{_state.Decoys.Count} decoys - Steam drops a lobby value over 8192. Clients will " +
+                                     "stop seeing updates if it grows further.");
+                }
+                _stateVar.Value = blob;
+            }
+            catch (Exception e) { Core.Log.Warning("PushState failed: " + e.Message); }
         }
 
         private static void EnsureHandlers()
@@ -1082,9 +1224,9 @@ namespace PropHunt.Game
                 c.RegisterMessageHandler<PropPoolMessage>((m, s) => Active?.HandlePropPool(m.Ids));
                 c.RegisterMessageHandler<PropRotationMessage>((m, s) => Active?.NotifyRotation());
                 _handlersRegistered = true;
-                Core.LogDebug("[PropHunt] P2P handlers registered.");
+                Core.LogDebug("P2P handlers registered.");
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] handler registration failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("handler registration failed: " + e.Message); }
         }
 
         private void SendToHost(P2PMessage msg)
@@ -1094,7 +1236,7 @@ namespace PropHunt.Game
                 var host = PropHuntNet.Client?.GetHostMember();
                 if (host != null) _ = PropHuntNet.Client.SendMessageToPlayerAsync(host.SteamId, msg);
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] SendToHost failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("SendToHost failed: " + e.Message); }
         }
 
         // ---- intent request hooks (sub-controllers call these) ----
@@ -1225,7 +1367,7 @@ namespace PropHunt.Game
                     }
                 }
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] ragdoll drive failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("ragdoll drive failed: " + e.Message); }
 
             DriveLocalDownedView();
         }
@@ -1248,7 +1390,7 @@ namespace PropHunt.Game
                 rb.AddRelativeTorque(new Vector3(0f, UnityEngine.Random.Range(-1f, 1f), UnityEngine.Random.Range(-1f, 1f)) * 10f, ForceMode.VelocityChange);
                 return true;
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] ragdoll failed: " + e.Message); return false; }
+            catch (Exception e) { Core.LogDebug("ragdoll failed: " + e.Message); return false; }
         }
 
         /// <summary>Stand a body back up. Returns false when it did not take, so the caller keeps the player marked
@@ -1256,7 +1398,7 @@ namespace PropHunt.Game
         private static bool StandUp(Player pl)
         {
             try { pl.SetRagdolled(false); return true; }
-            catch (Exception e) { Core.LogDebug("[PropHunt] stand-up failed: " + e.Message); return false; }
+            catch (Exception e) { Core.LogDebug("stand-up failed: " + e.Message); return false; }
         }
 
         /// <summary>The half of a knockdown that only applies to OUR player: freeze the character controller so it
@@ -1288,7 +1430,7 @@ namespace PropHunt.Game
                     PropHunt.View.BodyCam.Stop();    // ease back to first person now the body is upright
                 }
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] downed view failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("downed view failed: " + e.Message); }
         }
 
         /// <summary>Take local control away and hand it back. This used to be <c>Player.Deactivate</c>/<c>Activate</c>,
@@ -1316,7 +1458,7 @@ namespace PropHunt.Game
                 bool want = !Patches.HotbarSuppression.Disguised;
                 if (inv != null && inv.EquippingEnabled != want) inv.SetEquippingEnabled(want);
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] restore equipping failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("restore equipping failed: " + e.Message); }
         }
 
         /// <summary>The local hunter FIRED a real, ammo/aim/cooldown-gated shot (driven by the weapon-fire Harmony
@@ -1357,13 +1499,13 @@ namespace PropHunt.Game
                 if (_settings == null || !_settings.FriendlyFire) return;   // teammates are not targets
                 PropHunt.UI.Hud.HudController.ShowHitmarker();
                 RequestHitHunter(victimId, aim);
-                Core.LogDebug($"[PropHunt] vanilla bullet -> friendly fire on {victimId} at {hitPoint}");
+                Core.LogDebug($"vanilla bullet -> friendly fire on {victimId} at {hitPoint}");
                 return;
             }
 
             PropHunt.UI.Hud.HudController.ShowHitmarker();
             RequestClaimTag(victimId, aim);
-            Core.LogDebug($"[PropHunt] vanilla bullet -> claim tag on {victimId} at {hitPoint} (prop {PropIdOf(victimId)})");
+            Core.LogDebug($"vanilla bullet -> claim tag on {victimId} at {hitPoint} (prop {PropIdOf(victimId)})");
         }
 
         /// <summary>Host: apply a single setting edit from the phone Settings tab + flag it for re-publish so clients
@@ -1373,6 +1515,30 @@ namespace PropHunt.Game
             if (!_isHost) return;
             _settings.ApplyKeyValue(key, value);
             _settingsDirty = true;
+        }
+
+        /// <summary>
+        /// Write the settings this host is actually playing with back to disk, as the "your last settings" preset the
+        /// host form opens on.
+        ///
+        /// Only the HOST FORM used to persist anything - it saves what was in the form at the moment Start was pressed.
+        /// Everything edited afterwards, from the phone in the lobby, lived in this session and nowhere else, so the
+        /// next host form opened on the older values and prop rotation - which is most naturally set once the lobby has
+        /// filled up - had to be dialled in every single time.
+        ///
+        /// Rides the same throttle as the client re-publish, so a dragged slider costs one write per 0.4s rather than
+        /// one per frame. The base mode is kept as it was: it names which preset these settings started from.
+        /// </summary>
+        private void RememberHostSettings()
+        {
+            try
+            {
+                string baseMode = Config.PropHuntPreferences.CustomBase;
+                if (string.IsNullOrEmpty(baseMode)) baseMode = "Custom";
+                Config.PropHuntPreferences.SaveCustomPreset(_settings.Serialize(), baseMode);
+                Core.RefreshPresets();   // the form reads a snapshot on the descriptor, not the preference
+            }
+            catch (Exception e) { Core.LogDebug("could not remember the host settings: " + e.Message); }
         }
 
         /// <summary><paramref name="water"/> distinguishes "standing in deep water" from "outside the area radius":
@@ -1389,7 +1555,7 @@ namespace PropHunt.Game
         {
             if (!_isHost || steamId == 0 || steamId == LocalId) return;
             try { SideHustle.API.KickPlayer(steamId, "Kicked by host"); }
-            catch (Exception e) { Core.LogDebug("[PropHunt] kick failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("kick failed: " + e.Message); }
         }
 
         // host-only: last unix time each hider was AWARDED a taunt point, to cap taunt scoring at once per 15s
@@ -1444,7 +1610,7 @@ namespace PropHunt.Game
             string sound = Taunt.TauntSounds.PickDefault();   // the same clip the timed whistle uses
             try { PropHuntNet.Client?.BroadcastMessage(new TauntMessage { SteamId = victim, Sound = sound, IsWhistle = true }); } catch { }
             NotifyTaunt(victim, sound, isWhistle: true);   // the host hears it too (Broadcast does not self-send)
-            Core.LogDebug($"[PropHunt] {hunter} grabbed at {victim}'s prop - forced a whistle.");
+            Core.LogDebug($"{hunter} grabbed at {victim}'s prop - forced a whistle.");
         }
 
         /// <summary>Roughly one whistle clip. Not a cooldown on being found - a hunter may keep the siren going as long
@@ -1464,11 +1630,23 @@ namespace PropHunt.Game
             else SendToHost(new ManualTauntMessage { Sound = sound });
         }
 
+        /// <summary>Shortest gap between two taunts from one player, host-enforced. The SCORE was already capped at
+        /// one per 15s, but the sound was not - an auto-clicker turned a taunt into a continuous siren that every
+        /// machine in the lobby had to play. 200ms is faster than anyone taunts on purpose and slow enough that a held
+        /// or scripted key produces a rhythm rather than a wall of noise.</summary>
+        internal const float TauntCooldownSeconds = 0.2f;
+
+        private readonly Dictionary<ulong, float> _lastTauntAt = new Dictionary<ulong, float>();
+
         /// <summary>Host: a player manually taunted -> broadcast the reveal cue + sound to everyone (incl. self).</summary>
         private void HandleManualTaunt(ulong sender, string sound)
         {
             if (!_isHost) return;
             if (sender == 0 || !_state.Players.TryGetValue(sender, out var p) || p.Eliminated) return;
+            // Time.time, not the unix clock: this is a sub-second gate and the round clock only counts whole seconds.
+            float nowT = Time.time;
+            if (_lastTauntAt.TryGetValue(sender, out var lastT) && nowT - lastT < TauntCooldownSeconds) return;
+            _lastTauntAt[sender] = nowT;
             // Resolve a default clip on the host so every machine plays the SAME sound. An empty sound would
             // otherwise make each receiver pick its own random default; the whistle path already resolves on host.
             if (string.IsNullOrEmpty(sound)) sound = Taunt.TauntSounds.PickDefault();
@@ -1506,7 +1684,7 @@ namespace PropHunt.Game
                 {
                     if (PropCatalog.ById(propId) == null)
                     {
-                        Core.Log.Warning($"[PropHunt] host: rejected lobby prop {propId} from {sender} - not in the host catalog.");
+                        Core.Log.Warning($"host: rejected lobby prop {propId} from {sender} - not in the host catalog.");
                         BroadcastPropPool(force: true);
                         return;
                     }
@@ -1522,18 +1700,25 @@ namespace PropHunt.Game
             // watching through us. Clients are already gated on the published pool, so this only catches a stale one.
             if (propId >= 0 && PropCatalog.ById(propId) == null)
             {
-                Core.Log.Warning($"[PropHunt] host: rejected prop {propId} from {sender} - not in the host catalog.");
+                Core.Log.Warning($"host: rejected prop {propId} from {sender} - not in the host catalog.");
                 BroadcastPropPool(force: true);   // their pool is out of date; hand them the current one
                 return;
             }
             int maxHits = ComputeMaxHits(propId);
             bool freeChange = _settings.FreeChangesInHiding && _state.Phase == RoundPhase.Hiding;
-            bool ok = RoundLogic.ApplySelectProp(_state, sender, propId, maxHits, _settings.MaxPropChanges, freeChange);
+            bool ok = RoundLogic.ApplySelectProp(_state, sender, propId, maxHits, _settings.MaxPropChanges, freeChange,
+                                                NowUnix(), PropChangeCooldownSeconds);
             _state.Players.TryGetValue(sender, out var sp);
-            Core.LogDebug($"[PropHunt] host: select from {sender} prop {propId} hp {maxHits} -> {(ok ? "ACCEPTED" : "rejected")}" +
+            Core.LogDebug($"host: select from {sender} prop {propId} hp {maxHits} -> {(ok ? "ACCEPTED" : "rejected")}" +
                           (sp != null ? $" (role={sp.Role} elim={sp.Eliminated} changes={sp.Changes}/{_settings.MaxPropChanges})" : " (sender NOT in roster)"));
             if (ok) PushState();
         }
+
+        /// <summary>Smallest gap between two prop changes a PLAYER asks for, host-enforced. One second: long enough
+        /// that a hider cannot flicker through props faster than a hunter can read what they are looking at, short
+        /// enough that it never gets in the way of a deliberate change. The forced rotation is exempt - it is not the
+        /// player's doing.</summary>
+        internal const int PropChangeCooldownSeconds = 1;
 
         /// <summary>Prop HP for a catalog id, for host-side code outside this class (the forced prop rotation).</summary>
         internal int MaxHitsFor(int propId) => ComputeMaxHits(propId);
@@ -1588,17 +1773,15 @@ namespace PropHunt.Game
         private void HandleDropDecoy(ulong sender, float x, float y, float z, float yaw)
         {
             if (!_isHost) return;
-            // compute the same size-based HP the hider's own prop would have, so the decoy has identical durability
-            _state.Players.TryGetValue(sender, out var sp);
-            int maxHits = sp != null ? ComputeMaxHits(sp.PropId) : 1;
-            if (RoundLogic.ApplyDropDecoy(_state, _settings, sender, x, y, z, yaw, maxHits))
+            if (RoundLogic.ApplyDropDecoy(_state, _settings, sender, x, y, z, yaw))
             {
-                Core.Log.Msg($"[PropHunt] {sender} dropped a decoy (hp={maxHits}, {_state.Decoys.Count} total).");
+                Core.Log.Msg($"{sender} dropped a decoy ({_state.Decoys.Count} total).");
                 PushState();
             }
             else
             {
-                Core.Log.Msg($"[PropHunt] decoy from {sender} rejected (phase={_state.Phase}, used={(sp != null ? sp.DecoysUsed : -1)}/{_settings.MaxDecoys}, propId={(sp != null ? sp.PropId : -99)})");
+                _state.Players.TryGetValue(sender, out var sp);   // only for the rejection reason
+                Core.Log.Msg($"decoy from {sender} rejected (phase={_state.Phase}, used={(sp != null ? sp.DecoysUsed : -1)}/{_settings.MaxDecoys}, propId={(sp != null ? sp.PropId : -99)})");
             }
         }
 
@@ -1616,7 +1799,7 @@ namespace PropHunt.Game
             else
             {
                 _state.Players.TryGetValue(sender, out var cp);
-                Core.Log.Msg($"[PropHunt] concussion from {sender} rejected (phase={_state.Phase}, used={(cp != null ? cp.ConcussUsed : -1)}/{_settings.ConcussCharges})");
+                Core.Log.Msg($"concussion from {sender} rejected (phase={_state.Phase}, used={(cp != null ? cp.ConcussUsed : -1)}/{_settings.ConcussCharges})");
             }
         }
 
@@ -1644,9 +1827,9 @@ namespace PropHunt.Game
                     if (RoundLogic.ApplyConcussDown(_state, hid, seconds, now)) { SetKnockback(hid, pl.transform.position - center); hit++; }   // synced Downed -> ragdoll AWAY from the blast on that hunter's client
                 }
                 if (hit > 0 && _state.Players.TryGetValue(hiderId, out var hs)) hs.StunsLanded += hit;   // credit the hider (synced by HandleConcuss' PushState)
-                Core.Log.Msg($"[PropHunt] concussion by {hiderId} - knocked down {hit} hunter(s) within {r}m for {seconds}s.");
+                Core.Log.Msg($"concussion by {hiderId} - knocked down {hit} hunter(s) within {r}m for {seconds}s.");
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] concussion effect failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("concussion effect failed: " + e.Message); }
         }
 
         private void HandleClaimTag(ulong hunter, ulong victim, Vector3 aimDir)
@@ -1667,8 +1850,8 @@ namespace PropHunt.Game
             if (RoundLogic.ApplyCatch(_state, _settings, hunter, victim, NowUnix()))
             {
                 bool caught = RoundLogic.IsCaught(_state, victim);
-                if (caught) Core.Log.Msg($"[PropHunt] {hunter} CAUGHT {victim} ({_settings.Caught}).");
-                else Core.Log.Msg($"[PropHunt] {hunter} hit {victim} ({_state.Players[victim].Hits}/{_state.Players[victim].MaxHits}).");
+                if (caught) Core.Log.Msg($"{hunter} CAUGHT {victim} ({_settings.Caught}).");
+                else Core.Log.Msg($"{hunter} hit {victim} ({_state.Players[victim].Hits}/{_state.Players[victim].MaxHits}).");
                 var vpos = vp != null ? vp.transform.position : (hp != null ? hp.transform.position : Vector3.zero);
                 // Blood spurt on the hit hider - the gun no longer damages players (immunity), so the vanilla
                 // death-blood is gone; play the blood mist here as pure "you hit a hider" feedback. Host-side +
@@ -1703,7 +1886,7 @@ namespace PropHunt.Game
                     // on the victim's own client off the synced Downed flag.
                     BroadcastFx(new StunFxMessage { ThrowerId = shooter, X = vpos.x, Y = vpos.y, Z = vpos.z });
                     NotifyStunFx(shooter, vpos);
-                    Core.Log.Msg($"[PropHunt] {shooter} knocked down hunter {victim} (friendly fire).");
+                    Core.Log.Msg($"{shooter} knocked down hunter {victim} (friendly fire).");
                 }
                 PushState();
             }
@@ -1747,7 +1930,7 @@ namespace PropHunt.Game
             }
             if (RoundLogic.ApplyOutOfBounds(_state, _settings, sender, NowUnix()))
             {
-                Core.Log.Msg($"[PropHunt] {sender} eliminated ({(water ? "went into deep water" : "left the play area")}).");
+                Core.Log.Msg($"{sender} eliminated ({(water ? "went into deep water" : "left the play area")}).");
                 PushState();
             }
         }
@@ -1779,11 +1962,11 @@ namespace PropHunt.Game
                     var pm = PlayerSingleton<PlayerMovement>.Instance;
                     if (pm != null && pm.IsCrouched) pm.SetCrouched(false);
                 }
-                catch (System.Exception e) { Core.LogDebug("[PropHunt] force-uncrouch on prop equip failed: " + e.Message); }
+                catch (System.Exception e) { Core.LogDebug("force-uncrouch on prop equip failed: " + e.Message); }
 
-                Core.LogDebug($"[PropHunt] prop collision height -> {PropCollisionState.TargetHeight:F2}m (propSize={size:F2}m, propId={lpid})");
+                Core.LogDebug($"prop collision height -> {PropCollisionState.TargetHeight:F2}m (propSize={size:F2}m, propId={lpid})");
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] UpdatePropCollisionHeight failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("UpdatePropCollisionHeight failed: " + e.Message); }
         }
 
         // ---- decoy hit ----
@@ -1817,13 +2000,13 @@ namespace PropHunt.Game
                 if (dAfter.Destroyed)
                 {
                     h.DecoysSmashed++;   // hunter scores for clearing a fake (RoundScore * 3)
-                    Core.Log.Msg($"[PropHunt] hunter {hunter} DESTROYED decoy {decoyIndex} (FAKE!) hits={dAfter.Hits}/{dAfter.MaxHits}.");
+                    Core.Log.Msg($"hunter {hunter} DESTROYED decoy {decoyIndex} (FAKE!) hits={dAfter.Hits}/{dAfter.MaxHits}.");
                     var dpos = new Vector3(dAfter.X, dAfter.Y, dAfter.Z);
                     BroadcastFx(new DecoyFxMessage { HunterId = hunter, X = dpos.x, Y = dpos.y, Z = dpos.z });
                     NotifyDecoyFx(hunter, dpos);
                 }
                 else
-                    Core.Log.Msg($"[PropHunt] hunter {hunter} hit decoy {decoyIndex} ({dAfter.Hits}/{dAfter.MaxHits}).");
+                    Core.Log.Msg($"hunter {hunter} hit decoy {decoyIndex} ({dAfter.Hits}/{dAfter.MaxHits}).");
                 PushState();
             }
         }
@@ -1849,9 +2032,9 @@ namespace PropHunt.Game
             {
                 RoundLogic.EndRound(_state, _settings, NowUnix(), winnerHunters: true);
                 PublishState();
-                Core.Log.Msg($"[PropHunt] host ended round {_state.RoundNumber} early.");
+                Core.Log.Msg($"host ended round {_state.RoundNumber} early.");
             }
-            catch (Exception e) { Core.Log.Warning("[PropHunt] end round failed: " + e.Message); }
+            catch (Exception e) { Core.Log.Warning("end round failed: " + e.Message); }
         }
 
         /// <summary>Host: leave the gamemode and return to the Side Hustle hub (phone "Return to hub" button + MatchEnd auto-return).</summary>
@@ -1859,7 +2042,7 @@ namespace PropHunt.Game
         {
             if (_returnRequested) return;
             _returnRequested = true;
-            try { _ctx?.ReturnToHub(); } catch (Exception e) { Core.Log.Warning("[PropHunt] ReturnToHub failed: " + e.Message); }
+            try { _ctx?.ReturnToHub(); } catch (Exception e) { Core.Log.Warning("ReturnToHub failed: " + e.Message); }
         }
 
 #if DEBUG
@@ -1871,15 +2054,38 @@ namespace PropHunt.Game
         internal static bool DebugSoloMode;
 #endif
 
+        private static bool _loggedMemberFault;
+        /// <summary>Report a member-list fault ONCE. It is read every frame, so a broken lobby handle would bury the
+        /// log in its own warning - and a silent catch here is what hid the roster wipe for a whole session.</summary>
+        private static void LogMemberFault(string what)
+        {
+            if (_loggedMemberFault) return;
+            _loggedMemberFault = true;
+            Core.Log.Warning("lobby member list unavailable (" + what + ") - keeping the roster as it is.");
+        }
+
         private List<ulong> GetMemberIds()
         {
-            var list = new List<ulong>();
+            // Cached, because this is asked for EVERY FRAME (the host's roster sync, and the phone app's signature)
+            // while the answer only changes when somebody joins or leaves. One call walks the Steam lobby and, per
+            // member, fetches the persona name and allocates a MemberInfo, a List and a copy of that List - so at
+            // twelve players an uncached read costs some 700 Steam name lookups and 2000 allocations per second on
+            // the host alone. Half a second late on a joiner is invisible: the roster comparison runs on this
+            // refresh, and a joiner has nothing to do until they are in it.
+            if (Time.unscaledTime - _memberIdsAt < MemberIdCacheSeconds) return _memberIds;
+            _memberIdsAt = Time.unscaledTime;
+            _memberIdsVersion++;
+            var list = _memberIds;
+            list.Clear();
             try
             {
                 var ms = PropHuntNet.Client?.GetLobbyMembers();
                 if (ms != null) foreach (var m in ms) if (m.SteamId64 != 0) list.Add(m.SteamId64);
             }
-            catch { }
+            catch (Exception e) { LogMemberFault(e.Message); }
+            // An empty result is a lobby that did not answer. Callers must treat it as "unknown" - SyncRoster does -
+            // because acting on it as "the lobby is empty" wipes the roster and every session score with it.
+            if (list.Count == 0) LogMemberFault("the lobby returned no members");
 #if DEBUG
             // Solo test harness: add the stand-in AND ourselves, because with no real lobby the member list is empty
             // and even the local player is missing. Everything downstream then runs its normal two-player path.
@@ -2023,16 +2229,48 @@ namespace PropHunt.Game
         /// its own while a round is running; a cached "already applied" would then never correct it again. The actual
         /// input block is <see cref="Patches.HotbarSelectionBlockPrefix"/> - these flags are what keeps the UI honest.
         /// </summary>
-        /// <summary>Clear the phone's flashlight flag. Phone.Update rebuilds the light's visibility from it every frame,
-        /// so this is all that is needed - and it compares first, so it is free to call while disguised.</summary>
+        /// <summary>
+        /// Put the phone torch out for a player who was already holding one when they became a prop.
+        ///
+        /// Clearing the flag is not enough, and that was the bug: Phone.Update rebuilds only the LOCAL light from it
+        /// (Phone.cs:127), while the state other players render arrived earlier over Player.SetFlashlightOn_Server. So
+        /// the owner's light went dark, every other player still saw a glowing crate, and pressing [F] could not fix it -
+        /// the local flag was already false, so the toggle tried to switch the light ON, which the round blocks.
+        ///
+        /// Vanilla's own toggle does three things (Phone.cs:136-143); this repeats all three for the off direction. The
+        /// visibility attribute matters as much as the beam: left at its lit values a doused prop stays easier for NPCs
+        /// to notice. Runs once per transition, because the flag it tests is what it clears.
+        /// </summary>
         private static void DouseFlashlight()
         {
             try
             {
                 var phone = PlayerSingleton<Il2CppScheduleOne.UI.Phone.Phone>.Instance;
-                if (phone != null && phone.FlashlightOn) phone.FlashlightOn = false;
+                if (phone == null || !phone.FlashlightOn) return;
+                phone.FlashlightOn = false;
+                try
+                {
+                    var vis = phone.flashlightVisibility;
+                    if (vis != null) { vis.pointsChange = 0f; vis.multiplier = 1f; }
+                }
+                catch (Exception e) { Core.LogDebug("flashlight visibility reset failed: " + e.Message); }
+                var local = Il2CppScheduleOne.PlayerScripts.Player.Local;
+                if (local != null) local.SetFlashlightOn_Server(false);   // our network prefix always allows OFF
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] douse flashlight failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("douse flashlight failed: " + e.Message); }
+        }
+
+        /// <summary>Clear a crouch a prop never asked for. The world sets it directly through
+        /// ScheduleOne.Tools.ForcePlayerCrouch (OnTriggerEnter, no exit handler), which no toggle patch can intercept -
+        /// and a crouching crate reads as a player. Compares first, so it is free to call every frame.</summary>
+        private static void StandUpIfCrouched()
+        {
+            try
+            {
+                var pm = PlayerSingleton<Il2CppScheduleOne.PlayerScripts.PlayerMovement>.Instance;
+                if (pm != null && pm.IsCrouched) pm.SetCrouched(false);
+            }
+            catch (Exception e) { Core.LogDebug("stand-up failed: " + e.Message); }
         }
 
         private void SetHotbar(bool enabled)
@@ -2045,7 +2283,7 @@ namespace PropHunt.Game
                 if (inv.HotbarEnabled != enabled) inv.HotbarEnabled = enabled;
                 if (inv.EquippingEnabled != enabled) inv.SetEquippingEnabled(enabled);
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] SetHotbar failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("SetHotbar failed: " + e.Message); }
         }
 
         private void SetFrozen(bool frozen)
@@ -2053,7 +2291,7 @@ namespace PropHunt.Game
             if (frozen == _appliedFrozen) return;
             _appliedFrozen = frozen;
             try { var pm = PlayerSingleton<PlayerMovement>.Instance; if (pm != null) pm.CanMove = !frozen; }
-            catch (Exception e) { Core.LogDebug("[PropHunt] SetFrozen failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("SetFrozen failed: " + e.Message); }
         }
 
         /// <summary>Freeze/unfreeze the LOCAL player root by toggling its CharacterController during a knockdown. The
@@ -2095,14 +2333,14 @@ namespace PropHunt.Game
             if (WornPropId < 0) return;
             LocalPropLocked = !LocalPropLocked;
             ApplyRootFreeze();
-            Core.LogDebug($"[PropHunt] prop lock {(LocalPropLocked ? "ON" : "off")}.");
+            Core.LogDebug($"prop lock {(LocalPropLocked ? "ON" : "off")}.");
         }
 
         /// <summary>Called every tick: a lock only survives while there is a prop to lock. A forced rotation, being
         /// caught, or the round ending all clear it without each of them having to remember to.</summary>
         private void TickPropLock()
         {
-            if (LocalPropLocked && WornPropId < 0) { LocalPropLocked = false; Core.LogDebug("[PropHunt] prop lock cleared - no prop."); }
+            if (LocalPropLocked && WornPropId < 0) { LocalPropLocked = false; Core.LogDebug("prop lock cleared - no prop."); }
             ApplyRootFreeze();
         }
 
@@ -2127,7 +2365,7 @@ namespace PropHunt.Game
                     pm.Controller.enabled = true;
                 }
             }
-            catch (Exception e) { Core.LogDebug("[PropHunt] FreezeLocalRoot failed: " + e.Message); }
+            catch (Exception e) { Core.LogDebug("FreezeLocalRoot failed: " + e.Message); }
         }
 
         private void SetBlind(bool blind)

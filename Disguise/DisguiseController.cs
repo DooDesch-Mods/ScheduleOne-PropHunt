@@ -47,7 +47,7 @@ namespace PropHunt.Disguise
                     && PropCatalog.BecomableCount() < PropCatalog.Count / 2)
                 {
                     _warnedHashMismatch = true;
-                    Core.Log.Warning($"[PropHunt] only {PropCatalog.BecomableCount()} of our {PropCatalog.Count} props are in the host's pool " +
+                    Core.Log.Warning($"only {PropCatalog.BecomableCount()} of our {PropCatalog.Count} props are in the host's pool " +
                                      "- the worlds differ a lot, so there is little to hide as.");
                 }
 
@@ -81,7 +81,7 @@ namespace PropHunt.Disguise
                         // hider in the synced roster (the host still lists them until the lobby drops them) otherwise
                         // floods the log every frame - observed at 360k lines, which also stalls the host via log I/O.
                         if (disguised && _warnedUnresolved.Add(ps.SteamId))
-                            Core.Log.Warning($"[PropHunt] disguise: no game Player resolved for {ps.SteamId} (prop {ps.PropId}) - cannot render. " +
+                            Core.Log.Warning($"disguise: no game Player resolved for {ps.SteamId} (prop {ps.PropId}) - cannot render. " +
                                              "PlayerCode not yet replicated for this peer? (retries each tick)");
                         continue;
                     }
@@ -120,7 +120,7 @@ namespace PropHunt.Disguise
                         (staleNaked ??= new List<ulong>()).Add(id);
                 if (staleNaked != null) foreach (var id in staleNaked) RestoreAppearance(id, id == localId ? localPlayer : PlayerRegistry.Get(id));
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] disguise apply failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("disguise apply failed: " + e.Message); }
         }
 
         private void EnsureProp(ulong id, Player player, int propId)
@@ -154,7 +154,7 @@ namespace PropHunt.Disguise
                 var go = PropClone.Build(e, "ph_prop_" + id);
                 if (go == null)
                 {
-                    Core.LogDebug($"[PropHunt] disguise: clone build returned null for '{e.Name}'");
+                    Core.LogDebug($"disguise: clone build returned null for '{e.Name}'");
                     SetBodyVisible(player, true, isLocal);
                     return;
                 }
@@ -188,9 +188,9 @@ namespace PropHunt.Disguise
 
                 _props[id] = go;
                 _appliedPropId[id] = propId;
-                Core.LogDebug($"[PropHunt] disguise: applied '{e.Name}' to {id} (LOD={e.SourceLodGroup != null})");
+                Core.LogDebug($"disguise: applied '{e.Name}' to {id} (LOD={e.SourceLodGroup != null})");
             }
-            catch (System.Exception ex) { Core.LogDebug("[PropHunt] EnsureProp failed: " + ex.Message); }
+            catch (System.Exception ex) { Core.LogDebug("EnsureProp failed: " + ex.Message); }
         }
 
         /// <summary>Runs in LATE update (after the player has moved/rotated this frame) so re-centring the props
@@ -211,7 +211,7 @@ namespace PropHunt.Disguise
                     UpdatePropTransform(ps.SteamId, player, isLocal ? localYaw : ps.PropYaw, isLocal);
                 }
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] disguise late-apply failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("disguise late-apply failed: " + e.Message); }
         }
 
         /// <summary>
@@ -270,7 +270,7 @@ namespace PropHunt.Disguise
         private void RequestCatalogRefresh(int propId)
         {
             if (_missingProps.Add(propId))
-                Core.Log.Warning($"[PropHunt] disguise: prop {propId} is not in this machine's catalog ({PropCatalog.Count} entries) " +
+                Core.Log.Warning($"disguise: prop {propId} is not in this machine's catalog ({PropCatalog.Count} entries) " +
                                  "- hiding the body and rescanning; the world may not have streamed it in yet.");
             if (Time.unscaledTime < _nextCatalogRetry) return;
             _nextCatalogRetry = Time.unscaledTime + 2f;
@@ -280,10 +280,10 @@ namespace PropHunt.Disguise
                 if (PropCatalog.ById(propId) != null)
                 {
                     _missingProps.Remove(propId);
-                    Core.Log.Msg($"[PropHunt] disguise: prop {propId} turned up after a rescan - drawing it now.");
+                    Core.Log.Msg($"disguise: prop {propId} turned up after a rescan - drawing it now.");
                 }
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] catalog rescan failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("catalog rescan failed: " + e.Message); }
         }
 
         /// <summary>Per-frame transform upkeep for a disguise. ROTATION: world-fixed at the source orientation +
@@ -383,9 +383,9 @@ namespace PropHunt.Disguise
                 catch { }
 
                 _hitboxes[id] = host;
-                Core.LogDebug($"[PropHunt] hitbox: built for {id} on layer {host.layer} under \"{player.gameObject.name}\"");
+                Core.LogDebug($"hitbox: built for {id} on layer {host.layer} under \"{player.gameObject.name}\"");
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] hitbox build failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("hitbox build failed: " + e.Message); }
         }
 
         /// <summary>Keep the hitbox exactly on the visible prop. Pose is set in WORLD space (the object is parented
@@ -411,7 +411,7 @@ namespace PropHunt.Disguise
                 var box = host.GetComponent<BoxCollider>();
                 if (box != null) { box.center = localBounds.center; box.size = localBounds.size; }
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] hitbox update failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("hitbox update failed: " + e.Message); }
         }
 
         /// <summary>The player's CharacterController, cached per id (re-resolved if it goes away). Its world bounds
@@ -463,9 +463,9 @@ namespace PropHunt.Disguise
                 // cutoff (CharacterCustomizationUI).
                 av.LoadNakedSettings(orig, false, 19);
                 _naked.Add(id);
-                Core.LogDebug($"[PropHunt] appearance: {id} -> naked");
+                Core.LogDebug($"appearance: {id} -> naked");
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] EnsureNaked failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("EnsureNaked failed: " + e.Message); }
         }
 
         /// <summary>Restore a player's original (clothed) appearance if we made them naked.</summary>
@@ -478,7 +478,7 @@ namespace PropHunt.Disguise
                 if (av != null && _nakedOriginal.TryGetValue(id, out var orig) && orig != null)
                     av.LoadAvatarSettings(orig);
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] RestoreAppearance failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("RestoreAppearance failed: " + e.Message); }
             _naked.Remove(id);
             _nakedOriginal.Remove(id);
         }

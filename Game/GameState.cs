@@ -16,7 +16,12 @@ namespace PropHunt.Game
         internal int MaxHits = 1;      // size-based HP of the current prop (bigger prop = more hits to catch)
         internal int Changes;          // how many times this hider has (re)picked a prop this round
         internal float PropYaw;        // manual prop facing (degrees), set by [F]+mouse; prop is world-fixed at this yaw
-        internal int DecoysUsed;       // decoys dropped this round ([Q])
+        internal int DecoysUsed;       // decoys dropped on the CURRENT prop ([Q]); refills on a prop change
+        /// <summary>Decoys dropped this ROUND, across every prop. The per-prop count refills on each change, so it
+        /// alone let a player with changes to spare drop a new batch per prop - the cap that matters is the round.</summary>
+        internal int DecoysTotal;
+        /// <summary>Host time of this player's last prop change, for the change cooldown. 0 = never changed.</summary>
+        internal long LastChangeUnix;
         internal int ConcussUsed;      // concussion grenades used this round ([G])
 
         // ---- hunter combat (friendly-fire + concussion knockdown; hunters only) ----
@@ -35,6 +40,10 @@ namespace PropHunt.Game
         internal int SurvivedSeconds;  // seconds this hider survived the hunt (set when caught / at round end)
         internal int DecoysSmashed;    // decoys this player (hunter) destroyed this round
         internal int Taunts;           // scored manual taunts this hider made this round (host rate-limits to 1/15s)
+
+        /// <summary>Started this round as a hider. Under Infection a caught hider BECOMES a hunter, so Role alone
+        /// reports "Hunter" for everyone at round end - true, and useless. Set once per round by AssignRoles.</summary>
+        internal bool WasHider;
 
         // ---- session stats (NOT reset per round; the leaderboard) ----
         internal int SessScore;        // cumulative score across all rounds of this match
@@ -162,7 +171,10 @@ namespace PropHunt.Game
                   .Append(p.Downed ? '1' : '0').Append('|')
                   .Append(p.DownedUntilUnix.ToString(ci)).Append('|')
                   .Append(p.KnockX.ToString(ci)).Append('|')
-                  .Append(p.KnockZ.ToString(ci));
+                  .Append(p.KnockZ.ToString(ci)).Append('|')
+                  .Append(p.WasHider ? '1' : '0').Append('|')
+                  .Append(p.DecoysTotal.ToString(ci)).Append('|')
+                  .Append(p.LastChangeUnix.ToString(ci));
             }
             foreach (var d in Decoys)
             {
@@ -253,6 +265,9 @@ namespace PropHunt.Game
                 if (f.Length >= 23) long.TryParse(f[22], NumberStyles.Integer, ci, out p.DownedUntilUnix);
                 if (f.Length >= 24) p.KnockX = SafeFloat(f[23]);
                 if (f.Length >= 25) p.KnockZ = SafeFloat(f[24]);
+                if (f.Length >= 26) p.WasHider = f[25] == "1";
+                if (f.Length >= 27) p.DecoysTotal = SafeInt(f[26]);
+                if (f.Length >= 28) long.TryParse(f[27], NumberStyles.Integer, ci, out p.LastChangeUnix);
             }
             return gs;
         }

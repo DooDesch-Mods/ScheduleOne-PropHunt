@@ -107,7 +107,7 @@ namespace PropHunt.Phone
             }
             catch (Exception e)
             {
-                Core.LogDebug("[PropHunt] prop shot failed for " + propId + ": " + e.Message);
+                Core.LogDebug("prop shot failed for " + propId + ": " + e.Message);
                 return null;
             }
             finally

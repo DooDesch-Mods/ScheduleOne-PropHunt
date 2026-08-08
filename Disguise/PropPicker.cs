@@ -15,10 +15,12 @@ namespace PropHunt.Disguise
     {
         private readonly GameModeController _ctl;
         private float _holdUntil;
+        private float _lastRandomRoll;   // local echo of the host's prop-change cooldown
         private const float HoldTime = 0.4f;   // latch the last valid target so a key press still lands
         private bool _rotating;
         private float _yaw;
         private float _nextYawSend;
+        private float _sentYaw;   // the last facing the host was told about, so an unmoved prop reports nothing
         private const float RotateSpeed = 5f;   // degrees per mouse-X unit while holding [F]
 #if DEBUG
         private int _lastLoggedId = -2;
@@ -46,7 +48,7 @@ namespace PropHunt.Disguise
                     if (KeyBinds.Down(KeyBinds.RandomProp)) PropPreview.Roll();
                     HandleRotate();
                 }
-                catch (System.Exception e) { Core.LogDebug("[PropHunt] lobby prop tick failed: " + e.Message); }
+                catch (System.Exception e) { Core.LogDebug("lobby prop tick failed: " + e.Message); }
                 return;
             }
 
@@ -79,26 +81,33 @@ namespace PropHunt.Disguise
                 {
                     _lastLoggedId = CurrentTargetId;
                     Core.LogDebug(CurrentTargetId >= 0
-                        ? $"[PropHunt] crosshair -> '{CurrentTargetName}' (id {CurrentTargetId})"
-                        : "[PropHunt] crosshair -> <nothing becomable>");
+                        ? $"crosshair -> '{CurrentTargetName}' (id {CurrentTargetId})"
+                        : "crosshair -> <nothing becomable>");
                 }
 #endif
                 if (KeyBinds.Down(KeyBinds.Become) && CurrentTargetId >= 0)
                 {
                     _ctl.RequestSelectProp(CurrentTargetId);
-                    Core.LogDebug($"[PropHunt] selected prop {CurrentTargetId} ({CurrentTargetName}).");
+                    Core.LogDebug($"selected prop {CurrentTargetId} ({CurrentTargetName}).");
                 }
                 // [2] become a random prop (no aiming needed) - only when the host allows it
-                if (KeyBinds.Down(KeyBinds.RandomProp) && (_ctl.Settings == null || _ctl.Settings.AllowRandomChange))
-                { _ctl.RequestSelectRandomProp(); Core.LogDebug("[PropHunt] random prop requested ([2])."); }
+                // Mirrors the host's cooldown locally so a held [2] does not fire a request per frame that the host
+                // then throws away. The host decides; this only keeps the wire quiet.
+                if (KeyBinds.Down(KeyBinds.RandomProp) && (_ctl.Settings == null || _ctl.Settings.AllowRandomChange)
+                    && UnityEngine.Time.time - _lastRandomRoll >= Game.GameModeController.PropChangeCooldownSeconds)
+                {
+                    _lastRandomRoll = UnityEngine.Time.time;
+                    _ctl.RequestSelectRandomProp();
+                    Core.LogDebug("random prop requested ([2]).");
+                }
                 // [Q] drop a decoy of the current prop;  [G] concussion grenade (stun nearby hunters)
-                if (KeyBinds.Down(KeyBinds.Decoy) && _ctl.LocalPropId >= 0) { _ctl.RequestDropDecoy(); Core.LogDebug("[PropHunt] decoy requested ([Q])."); }
-                if (KeyBinds.Down(KeyBinds.Concussion)) { _ctl.RequestConcuss(); Core.LogDebug("[PropHunt] concussion requested ([G])."); }
+                if (KeyBinds.Down(KeyBinds.Decoy) && _ctl.LocalPropId >= 0) { _ctl.RequestDropDecoy(); Core.LogDebug("decoy requested ([Q])."); }
+                if (KeyBinds.Down(KeyBinds.Concussion)) { _ctl.RequestConcuss(); Core.LogDebug("concussion requested ([G])."); }
                 // [F] held + mouse = rotate the prop's facing (camera locked while rotating)
                 HandleRotate();
                 HandleLock();
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] picker tick failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("picker tick failed: " + e.Message); }
         }
 
         /// <summary>
@@ -174,7 +183,7 @@ namespace PropHunt.Disguise
                     return;
                 }
             }
-            catch (System.Exception e) { Core.LogDebug("[PropHunt] grabber probe failed: " + e.Message); }
+            catch (System.Exception e) { Core.LogDebug("grabber probe failed: " + e.Message); }
         }
 
         /// <summary>
@@ -213,10 +222,17 @@ namespace PropHunt.Disguise
             bool holding = KeyBinds.Held(KeyBinds.Rotate) && _ctl.WornPropId >= 0;
             if (holding)
             {
-                if (!_rotating) { _rotating = true; _yaw = _ctl.LocalPropYaw; SetCanLook(false); _nextYawSend = Time.time; }
+                if (!_rotating) { _rotating = true; _yaw = _sentYaw = _ctl.LocalPropYaw; SetCanLook(false); _nextYawSend = Time.time; }
                 float dx = Input.GetAxis("Mouse X");
                 if (Mathf.Abs(dx) > 0.0001f) { _yaw += dx * RotateSpeed; _ctl.SetLocalYaw(_yaw); }
-                if (Time.time >= _nextYawSend) { _nextYawSend = Time.time + 0.15f; _ctl.RequestRotate(_yaw); }
+                // Only when it actually moved: an unchanged facing still cost the host a full state broadcast to the
+                // whole lobby, so resting a finger on [F] published six times a second for nothing.
+                if (Time.time >= _nextYawSend && Mathf.Abs(Mathf.DeltaAngle(_sentYaw, _yaw)) > 0.25f)
+                {
+                    _nextYawSend = Time.time + 0.15f;
+                    _sentYaw = _yaw;
+                    _ctl.RequestRotate(_yaw);
+                }
             }
             else if (_rotating) StopRotating();
         }
@@ -225,7 +241,9 @@ namespace PropHunt.Disguise
         {
             _rotating = false;
             SetCanLook(true);
-            _ctl.RequestRotate(_yaw);   // push the final facing
+            // The final facing always goes out, even a small last nudge - this is the one that has to stick.
+            _sentYaw = _yaw;
+            _ctl.RequestRotate(_yaw);
         }
 
         private static void SetCanLook(bool can)

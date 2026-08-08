@@ -30,7 +30,7 @@ namespace PropHunt.Config
                 Segmented("Round", "caught","On catch",           "Spectator = sit out till round end; Infection = become a hunter.", new[] { "Spectator", "Infection" }, PropHuntPreferences.CaughtBehaviorRaw),
 
                 // --- Roles & Combat ---
-                IntSlider("Roles & Combat", "pph",    "Hunter ratio",  "1 hunter per N players, rounded up.",            2, 10, 1, null, PropHuntPreferences.PlayersPerHunter),
+                IntSlider("Roles & Combat", "pph",    "Hunter ratio",  "1 hunter per N players, at least one. At 4: five players = 1 hunter and 4 props, ten = 2 and 8.",            2, 10, 1, null, PropHuntPreferences.PlayersPerHunter),
                 IntSlider("Roles & Combat", "hiderspeed", "Hider speed", "Hiders move at this % of hunter speed (100 = same).", 70, 100, 5, "%", PropHuntPreferences.HiderSpeedPercent),
                 Dropdown ("Roles & Combat", "weapon", "Hunter weapon", "Weapon each hunter gets when the hunt starts.",
                           w.opts, w.vals,                                                                    PropHuntPreferences.HunterWeapon),
@@ -45,16 +45,17 @@ namespace PropHunt.Config
                 IntSlider("Props", "chg",     "Max prop changes", "Re-picks per round; each resets HP (0 = unlimited).",   0, 20, 1, null, PropHuntPreferences.MaxPropChanges),
                 Toggle   ("Props", "freechg", "Unlimited changes while hiding", "Prop changes during the hiding phase are unlimited; the limit applies only once the hunt starts.", PropHuntPreferences.FreeChangesInHiding),
                 Toggle   ("Props", "rnd",     "Random prop [2]",  "Let hiders press [2] to become a random prop.",         PropHuntPreferences.AllowRandomChange),
-                IntSlider("Props", "decoy",   "Decoys per prop",  "Decoys [Q] a hider may drop per prop (0 = off).",       0, 10, 1, null, PropHuntPreferences.MaxDecoys),
+                IntSlider("Props", "decoy",   "Decoys per prop",  "Decoys [Q] a hider may drop per prop (0 = off). Over a whole round you get this many per prop change, no more - so it never turns into decoy spam.",       0, 10, 1, null, PropHuntPreferences.MaxDecoys),
                 IntSlider("Props", "conc",    "Concussions per prop", "Concussions [G] a hider may use per prop (0 = off).", 0, 10, 1, null, PropHuntPreferences.ConcussCharges),
                 IntSlider("Props", "concr",   "Concussion radius","Hunters within this of a concussion get stunned.",      2, 20, 1, "m", (int)PropHuntPreferences.ConcussRadius),
                 IntSlider("Props", "stun",    "Concussion stun time", "Seconds a concussion knocks nearby hunters down (short stun).", 1, 10, 1, "s", (int)PropHuntPreferences.ConcussStunSeconds),
                 Toggle   ("Props", "rmdecoy", "Clear decoys between rounds", "Remove dropped decoys at round end (off = they carry over).", PropHuntPreferences.RemoveDecoysBetweenRounds),
                 Toggle   ("Props", "propsize", "Hiders are prop-sized", "A disguised hider shrinks to their prop, so a small prop fits where a person cannot. Never bigger than normal.", PropHuntPreferences.PropSizeCollision),
-                IntSlider("Props", "proprot", "Prop rotation",    "Force every hider into a new random prop this often, so nobody can camp one perfect spot (0 = off).", 0, 180, 10, "s", PropHuntPreferences.PropRotationSeconds),
+                IntSlider("Props", "proprot", "Prop rotation",    "Force every hider into a new random prop this often, so nobody can camp one perfect spot (0 = off). Takes effect from the NEXT round - changing it mid-round would swap props on the spot.", 0, 180, 10, "s", PropHuntPreferences.PropRotationSeconds),
 
                 // --- World ---
                 IntSlider("World", "area",  "Play-area radius",   "Radius of the round's play area around the safehouse. Left alone, it grows with the lobby: 50m up to ten players, then 60m and five more per further five.", 50, 200, 5, "m", (int)PropHuntPreferences.PlayAreaRadius),
+                IntSlider("World", "feetdrop", "Prop ground offset", "Where a disguise's underside sits, in centimetres below the player's root. Raise it if props hover, lower it if they sink into the floor.", 80, 120, 1, "cm", PropHuntPreferences.FeetDropCm),
                 IntSlider("World", "time",  "Time of day",        "World time during a round (HHMM; 1200 = noon).",        0, 2300, 100, null, PropHuntPreferences.TimeOfDay),
                 Toggle   ("World", "freeze","Lock time of day",   "Lock the world clock during a round. Off = start at the set time, then let it run.", PropHuntPreferences.FreezeTime),
                 Toggle   ("World", "autostart","Auto-start next round","Automatically start the next round after a short safehouse pause. Off = start each round manually. Toggle live in the phone app.", PropHuntPreferences.AutoStartNextRound),

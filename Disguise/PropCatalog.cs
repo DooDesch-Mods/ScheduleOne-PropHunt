@@ -25,6 +25,13 @@ namespace PropHunt.Disguise
         // buildable with all its parts + nested LODGroups) instead of a single mesh or one LODGroup. Set by
         // PropSources for the registry/vehicle curate lists (DEBUG). Default false = unchanged single/LOD behaviour.
         internal bool CloneWholeRoot;
+#if DEBUG
+        // a curation key whose mesh is not in memory at all: reviewable by name only, with NOTHING on screen. Never
+        // the same thing as a prop that has no visuals - this one may be perfectly good and simply lives in an
+        // interior that is not loaded here, so a decision on it is a guess. The curator is the only thing that sets
+        // or reads it, and the curator does not ship.
+        internal bool NotLoaded;
+#endif
     }
 
     /// <summary>
@@ -164,7 +171,7 @@ namespace PropHunt.Disguise
                 // (Avatar + LODGroup) per mesh froze StartAsHost. So the order below is deliberate: every CHEAP
                 // reject (name/vertex/material, content-key dedup, allowlist/heuristic) runs FIRST, and only the
                 // few hundred SURVIVORS pay for the hierarchy walks.
-                Core.LogDebug($"[PropHunt] catalog: scanning {scanned} mesh filters (curated={curated})...");
+                Core.LogDebug($"catalog: scanning {scanned} mesh filters (curated={curated})...");
                 if (filters != null)
                 {
                     for (int i = 0; i < filters.Length; i++)
@@ -223,14 +230,14 @@ namespace PropHunt.Disguise
             }
             catch (System.Exception e)
             {
-                Core.Log.Warning("[PropHunt] catalog build failed: " + e.Message);
+                Core.Log.Warning("catalog build failed: " + e.Message);
                 if (_entries.Count == 0) AddPrimitiveFallback();
             }
             ComputeHash();
             sw.Stop();
             int lodCount = 0;
             foreach (var e in _entries) if (e.SourceLodGroup != null) lodCount++;
-            Core.Log.Msg($"[PropHunt] prop catalog: {_entries.Count} props ({lodCount} with LODGroup, hash {_hash}){(curated ? " [curated allowlist]" : "")} " +
+            Core.Log.Msg($"prop catalog: {_entries.Count} props ({lodCount} with LODGroup, hash {_hash}){(curated ? " [curated allowlist]" : "")} " +
                          $"- scanned {scanned} filters, {survivors} survivors, {sw.ElapsedMilliseconds}ms.");
         }
 
@@ -299,7 +306,7 @@ namespace PropHunt.Disguise
                     }
                 }
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] EnumerateAllCandidates failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("EnumerateAllCandidates failed: " + e.Message); }
             list.Sort((a, c) => string.CompareOrdinal(a.Key, c.Key));
             return list;
         }
@@ -383,9 +390,9 @@ namespace PropHunt.Disguise
                     tmp.Add(e);
                     added++;
                 }
-                if (added > 0) Core.LogDebug($"[PropHunt] catalog: +{added} approved composite props (buildables/vehicles/world).");
+                if (added > 0) Core.LogDebug($"catalog: +{added} approved composite props (buildables/vehicles/world).");
             }
-            catch (System.Exception ex) { Core.Log.Warning("[PropHunt] IngestCompositeSources failed: " + ex.Message); }
+            catch (System.Exception ex) { Core.Log.Warning("IngestCompositeSources failed: " + ex.Message); }
         }
 
 #if DEBUG
@@ -399,7 +406,7 @@ namespace PropHunt.Disguise
             if (!_curationLoaded) LoadCuration();
             int lodCount = 0;
             for (int i = 0; i < candidates.Count; i++) if (candidates[i].SourceLodGroup != null) lodCount++;
-            Core.Log.Msg($"[PropHunt] phcuratelist: {candidates.Count} candidates ({lodCount} with LODGroup)");
+            Core.Log.Msg($"phcuratelist: {candidates.Count} candidates ({lodCount} with LODGroup)");
             for (int i = 0; i < candidates.Count; i++)
             {
                 var e = candidates[i];
@@ -416,7 +423,7 @@ namespace PropHunt.Disguise
                 catch { }
                 var dec = DecisionOf(e.Key);
                 string decTag = dec == true ? "KEEP" : dec == false ? "SKIP" : "----";
-                Core.Log.Msg($"[PropHunt]  {i + 1,4}  {lodTag}  {sz,5:F2}m  v{verts,6}  m{mats}  [{decTag}]  {e.Name}  ({e.Key})");
+                Core.Log.Msg($" {i + 1,4}  {lodTag}  {sz,5:F2}m  v{verts,6}  m{mats}  [{decTag}]  {e.Name}  ({e.Key})");
             }
         }
 
@@ -482,7 +489,7 @@ namespace PropHunt.Disguise
                                 if (!idx.ContainsKey(lk)) idx[lk] = entry;
                     }
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] BuildKeyIndex failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("BuildKeyIndex failed: " + e.Message); }
             return idx;
         }
 
@@ -514,11 +521,11 @@ namespace PropHunt.Disguise
                 string[] lines; string source;
                 if (File.Exists(path)) { lines = File.ReadAllLines(path); source = "user"; }
                 else { lines = ReadShippedCuration(); source = "shipped"; }   // default allowlist baked into the mod
-                if (lines == null) { Core.LogDebug("[PropHunt] curation: no user file and no shipped allowlist - heuristic mode."); return; }
+                if (lines == null) { Core.LogDebug("curation: no user file and no shipped allowlist - heuristic mode."); return; }
                 ParseCurationLines(lines);
-                Core.LogDebug($"[PropHunt] curation loaded ({source}): {_curation.Count} decisions, {KeepCount()} kept.");
+                Core.LogDebug($"curation loaded ({source}): {_curation.Count} decisions, {KeepCount()} kept.");
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] LoadCuration failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("LoadCuration failed: " + e.Message); }
         }
 
         private static void ParseCurationLines(string[] lines)
@@ -564,7 +571,7 @@ namespace PropHunt.Disguise
                 foreach (var kv in _curation) sb.Append(kv.Key).Append('=').Append(kv.Value ? '1' : '0').Append('\n');
                 File.WriteAllText(path, sb.ToString());
             }
-            catch (System.Exception e) { Core.Log.Warning("[PropHunt] SaveCuration failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("SaveCuration failed: " + e.Message); }
         }
 
         /// <summary>Record a keep/skip decision for an entry Key and persist immediately.</summary>
