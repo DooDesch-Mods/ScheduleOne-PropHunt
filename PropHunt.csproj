@@ -68,7 +68,6 @@
     <!-- Where the post-build step drops the DLL. The TEST copy, never the real installation: a plain "dotnet build"
          is usually a Debug build, and the default must not be able to replace the release DLL somebody is playing on
          with one that carries the debug console and its logging. Pass -p:ModsDirectory=... for a deliberate install. -->
-    <ModsDirectory Condition="'$(ModsDirectory)' == ''">$(MSBuildThisFileDirectory)../_MPTest/Schedule I/Mods</ModsDirectory>
   </PropertyGroup>
 
   <!-- Backend selection derived from the active TargetFramework -->
@@ -92,6 +91,10 @@
        a plain ../Workspace path resolves one level too high in CI and silently skips the import. Comes after the
        Workspace Remove above so CI does not strip the included files. -->
   <Import Project="$(WorkspaceLibPath)/../build/ScreenTransition.props" Condition="Exists('$(WorkspaceLibPath)/../build/ScreenTransition.props')" />
+  <!-- Where a build is allowed to install: the test copy by default, and never a real game installation
+       without saying so out loud. See Workspace/build/Deploy.props. -->
+  <Import Project="$(MSBuildThisFileDirectory)../Workspace/build/Deploy.props" Condition="Exists('$(MSBuildThisFileDirectory)../Workspace/build/Deploy.props')" />
+  <Import Project="$(MSBuildThisFileDirectory)Workspace/build/Deploy.props" Condition="Exists('$(MSBuildThisFileDirectory)Workspace/build/Deploy.props')" />
 
   <!-- The one shipped asset: the precompiled outline-shader AssetBundle, embedded into the DLL when present
        (resource name = PropHunt.Assets.Bundles.propoutline, loaded by Disguise/OutlineShader.cs). Exists-guarded
