@@ -2,6 +2,8 @@
 
 > 🛟 **Need help or found a bug?** Get support at [support.doodesch.de/prophunt](https://support.doodesch.de/prophunt).
 
+📖 **Documentation:** [docs.doodesch.de/mods/prophunt/](https://docs.doodesch.de/mods/prophunt/)
+
 > A multiplayer prop-hunt gamemode for Schedule I - as far as I know the first prop hunt for
 > this game. Hiders look at any world prop and become an exact copy of it (a crate, a bin, a
 > traffic cone) and blend into the map; hunters get a weapon and track them down before the
