@@ -835,6 +835,10 @@ class App {
       // A caught hider's prop is no longer a secret worth keeping, and seeing what fooled you is the point.
       if (p.propImage) row.appendChild(picture(p.propImage, 34, 'row-thumb'));
 
+      // Who you already know, before the round starts. A public lobby is a list of Steam names that mean nothing,
+      // and the one thing worth reading off it is which of them you have played with before.
+      if (p.friend) row.appendChild(el('div', 'stamp friend', 'FRIEND'));
+
       row.appendChild(el('div', 'stamp', ROLE_STAMP[caught ? 'Caught' : p.role] || '?'));
 
       if (s.host && !p.self && p.id !== '0')

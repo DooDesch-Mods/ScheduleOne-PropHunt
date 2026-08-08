@@ -24,6 +24,9 @@ function player(i, role, opts = {}) {
     role,
     eliminated: !!opts.eliminated,
     self: !!opts.self,
+    // Every third mocked player, so the roster preview shows the badge next to names that also have roles,
+    // thumbnails and kick buttons - which is where it has to hold up.
+    friend: !opts.self && i % 3 === 1,
     catches: opts.catches ?? 0,
     survived: opts.survived ?? 0,
     score: opts.score ?? 0,

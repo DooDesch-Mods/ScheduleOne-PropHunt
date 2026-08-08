@@ -163,6 +163,7 @@ namespace PropHunt.Phone
                         Role = p.Role.ToString(),
                         Eliminated = p.Eliminated,
                         Self = self,
+                        Friend = !self && IsSteamFriend(p.SteamId),
                         Catches = p.CatchesMade,
                         SurvivedSeconds = p.SurvivedSeconds,
                         Score = p.SessScore,
@@ -193,6 +194,30 @@ namespace PropHunt.Phone
 
                 return rows;
             }
+        }
+
+        /// <summary>
+        /// Whether a player in the lobby is on the local Steam friends list.
+        ///
+        /// Cached for the process: the roster is rebuilt on every phone poll, and a friendship does not change during
+        /// a round. A Steam call that is unavailable (no overlay, no Steam) answers "not a friend" - a missing badge
+        /// is a non-event, a wrong one is a claim about who someone is.
+        /// </summary>
+        private static readonly Dictionary<ulong, bool> _friendCache = new Dictionary<ulong, bool>();
+
+        private static bool IsSteamFriend(ulong steamId)
+        {
+            if (steamId == 0UL) return false;
+            if (_friendCache.TryGetValue(steamId, out bool known)) return known;
+            bool friend = false;
+            try
+            {
+                friend = Il2CppSteamworks.SteamFriends.GetFriendRelationship(new Il2CppSteamworks.CSteamID(steamId))
+                         == Il2CppSteamworks.EFriendRelationship.k_EFriendRelationshipFriend;
+            }
+            catch (Exception e) { Core.Log.Warning("[PropHunt] could not read the Steam friend relationship: " + e.Message); }
+            _friendCache[steamId] = friend;
+            return friend;
         }
 
         // ---- rules ----

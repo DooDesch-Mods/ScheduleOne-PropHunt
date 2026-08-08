@@ -144,6 +144,9 @@ namespace PropHunt.Phone
         internal bool Eliminated;
         internal bool Self;
 
+        /// <summary>This player is on the local player's Steam friends list. Never set for yourself.</summary>
+        internal bool Friend;
+
         internal int Catches;
         internal int SurvivedSeconds;
         internal int Score;

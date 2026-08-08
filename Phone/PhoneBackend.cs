@@ -208,6 +208,7 @@ namespace PropHunt.Phone
                     .Add("role", p.Role)
                     .Add("eliminated", p.Eliminated)
                     .Add("self", p.Self)
+                    .Add("friend", p.Friend)
                     .Add("catches", p.Catches)
                     .Add("survived", p.SurvivedSeconds)
                     .Add("score", p.Score)

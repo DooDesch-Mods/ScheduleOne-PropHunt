@@ -4,6 +4,17 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-08-07
+
+### Added
+
+- The Players list marks everyone on your Steam friends list. A public lobby is a wall of names that mean
+  nothing until you find the two you already know.
+
+### Fixed
+
+- The round timer's digits sit centred in their slab again instead of pulling to one side.
+
 ## [1.3.0] - 2026-08-06
 
 ### Added

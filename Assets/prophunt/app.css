@@ -92,6 +92,9 @@ body {
 .stamp.seat      { border-color: var(--hair); color: var(--mute); letter-spacing: 1.2px; }
 .stamp.seat.host { border-color: var(--teal-dim); color: var(--teal); }
 
+/* Someone on your Steam friends list. Same treatment as the host seat - a name you have a reason to trust. */
+.stamp.friend { border-color: var(--teal-dim); color: var(--teal); }
+
 /* Inside a manifest row the stamp is one cell among several, so it stops claiming the top of the line. */
 .row .stamp { align-self: center; }
 
@@ -134,12 +137,17 @@ body {
   border: 1px solid #171D20;
 }
 
-/* The segments an unlit digit still shows. Static: drawn once, never touched again. */
-.digit-ghost { position: absolute; left: 0; top: 0; width: 28px; height: 60px; justify-content: center; }
+/* The segments an unlit digit still shows. Static: drawn once, never touched again. It sits BEHIND a reel cell,
+   so it has to be centred the same way that cell is - centred vertically by justify-content and horizontally by
+   align-items - or the lit digit and the ghost behind it do not line up. */
+.digit-ghost { position: absolute; left: 0; top: 0; width: 28px; height: 60px; justify-content: center; align-items: center; }
 .digit-ghost .glyph { color: #191F22; }
 
-/* flex: none, or the reel is shrunk to the one cell its parent is tall and every glyph piles up. */
-.reel { flex: none; transition: transform 120ms; }
+/* flex: none, or the reel is shrunk to the one cell its parent is tall and every glyph piles up.
+   align-items is the HORIZONTAL axis here, because the reel stacks its cells in a column: without it the
+   cells stretch to the reel's width instead of sitting centred under each other, and the digits come out
+   off-centre in their slab. */
+.reel { flex: none; align-items: center; transition: transform 120ms; }
 
 /* A frame of a fixed height with the character INSIDE it, never the character itself. A box that carries direct
    text is the text leaf, and its height is whatever TMP measures for that glyph - which differs per character,
