@@ -1,13 +1,10 @@
-/* Authoring only - never shipped (see the Exclude in PropHunt.csproj).
- *
- * Stands in for the mod so the SHIPPED app.js can be opened in Chrome. It answers ph.snapshot with a scenario
- * chosen from the strip above the phone, which is the only way to look at RoundEnd or a twenty-player roster
- * without four people and a lobby.
- *
- * What it deliberately does NOT emulate: the renderer. The browser has real CSS, so a layout that works here can
- * still be wrong in the game. This checks structure, copy, state and flow; F9 and Ctrl+F10 in the game check the
- * rest.
- */
+// The stand-in data and handlers for PropHunt's browser preview. Authoring only - never shipped (see the Exclude
+// in PropHunt.csproj).
+//
+// Everything around it - the stage, the fenced DOM, the storage, the back and orientation events - is shared and
+// lives in sideload-preview.js. Only the parts that are PropHunt are here: a table of sessions, and the switch that
+// answers ph.snapshot with whichever one the strip above the phone has selected. That strip is the only way to look
+// at RoundEnd or a twenty-player roster without four people and a lobby.
 
 const NAMES = [
   'DooDesch', 'fadestyle', 'DonyThePony', 'xAkitoh', 'godofn00bs', 'Marcy', 'Ming',
@@ -272,30 +269,43 @@ const SCENARIOS = {
 };
 
 let scenario = 'hunting (hider, hurt)';
-const listeners = {};
-const store = {};
 
-globalThis.s1 = {
-  orientation: 'landscape',
-  call(name, arg) {
-    if (name === 'ph.snapshot') return JSON.stringify(SCENARIOS[scenario]());
-    console.log('call ' + name + (arg ? ' <- ' + JSON.stringify(arg) : ''));
-    return 'ok';
-  },
-  on(name, fn) { (listeners[name] ||= []).push(fn); },
-  setOrientation(v) { globalThis.s1.orientation = v; },
-  storage: {
-    get: (k, d) => (k in store ? store[k] : d),
-    set: (k, v) => { store[k] = v; },
-    remove: (k) => { delete store[k]; },
-    clear: () => { for (const k in store) delete store[k]; },
-  },
-};
+// The bridge, handed over by the shell before the page runs. It is how this file pushes at the page instead of only
+// answering it - which is what the mod does when the session moves on.
+let host = null;
+export const ready = (s1) => { host = s1; };
 
-globalThis.__mock = {
-  scenarios: Object.keys(SCENARIOS),
-  pick(name) {
-    scenario = name;
-    for (const fn of listeners['ph.changed'] || []) fn('');
-  },
-};
+export function call(name, argument = '') {
+  switch (name) {
+    case 'ph.snapshot':
+      return JSON.stringify(SCENARIOS[scenario]());
+
+    // The rest of PropHunt/Phone/PhoneBackend.cs Handlers. Every one of them changes a live session and there is
+    // no session here, so they are accepted and not applied - the strip above the phone moves the state instead.
+    // Answering anything other than "ok" is what the mod does when it REFUSES a command, and app.js says so in the
+    // console, so a silent stand-in would read as the mod turning every button down.
+    case 'ph.begin':
+    case 'ph.next':
+    case 'ph.endround':
+    case 'ph.hub':
+    case 'ph.map':
+    case 'ph.set':
+    case 'ph.preset':
+    case 'ph.kick':
+    case 'ph.prop.roll':
+    case 'ph.prop.clear':
+      console.log('call ' + name + (argument ? ' <- ' + JSON.stringify(argument) : ''));
+      return 'ok';
+
+    default:
+      console.warn(`[preview] no stand-in for s1.call("${name}")`);
+      return '';
+  }
+}
+
+// One chip per session above. Built from the table rather than written out again, so a session added there cannot
+// go missing from the strip. Picking one only swaps which snapshot the next call answers with - the page is told
+// to ask again by the same event the mod raises when the round moves.
+export const scenarios = Object.fromEntries(
+  Object.keys(SCENARIOS).map((name) => [name, () => { scenario = name; host?.emit('ph.changed'); }]),
+);

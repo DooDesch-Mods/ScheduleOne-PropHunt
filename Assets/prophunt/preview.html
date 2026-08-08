@@ -2,135 +2,35 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>PropHunt - phone app preview</title>
+<link rel="stylesheet" href="sideload-preview.css">
 <style>
-  body { margin: 0; background: #1b1e22; color: #ccc; font: 13px/1.4 system-ui, sans-serif; padding: 20px; }
-  h1 { font-size: 13px; font-weight: 600; margin: 0 0 4px; letter-spacing: .4px; color: #8a8f9e; }
-  p.note { font-size: 12px; color: #6b7378; margin: 0 0 14px; max-width: 720px; }
-
-  .controls { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; max-width: 760px; }
-  .controls button {
-    background: #262b30; color: #ccc; border: 1px solid #363c42; padding: 5px 10px;
-    font: inherit; cursor: pointer; border-radius: 2px;
-  }
-  .controls button:hover { border-color: #08A6A6; color: #fff; }
-  .controls button.on { border-color: #08A6A6; color: #08A6A6; }
-
-  .frame-label { font-size: 11px; color: #6b7378; margin: 0 0 6px; letter-spacing: .5px; }
-
-  /* The game does NOT render this page at 733x400 device pixels. The phone panel is about 1201x655 and the
-     renderer scales the whole viewport to fit, so one CSS pixel is 1.6375 device pixels (Sideload/Host/WebView.cs
-     computes exactly that, and ARCHITECTURE.md measured the panel). A browser showing 733x400 at 1:1 therefore
-     draws the same page smaller and at a different density - which is most of what makes the two look unalike.
-     So the stage scales by the same factor, and the toggle exists because 1:1 is still the honest way to check
-     whether something fits. */
-  #stage { width: 1200px; height: 655px; }
-  #viewport {
-    border: 1px solid #3a4148; background: #0E1113; width: 733px; height: 400px; overflow: hidden;
-    transform: scale(1.6375);
-    transform-origin: top left;
-  }
-  #stage.raw { width: 735px; height: 402px; }
-  #stage.raw #viewport { transform: none; }
-
-  /* The renderer treats every element as a flex container defaulting to COLUMN, and border-box is always in
-     force. `:where` so this carries zero specificity and can never outrank a class in app.css. */
-  :where(#viewport, #viewport *) { display: flex; flex-direction: column; box-sizing: border-box; position: relative; }
-  :where(#viewport img) { display: block; }
-
-  /* The game's faces do not exist in a browser, so both are stood in for here.
-
-     Its house typeface IS Open Sans (Sideload/Paint/TextSupport.cs), so `game-ui` maps straight to it and the
-     text metrics land close. The clock is set in the game's own fs-sevegment asset, which is a TMP font asset
-     rather than a font file and cannot be loaded here at all - DSEG7 Classic (OFL, vendored beside this file)
-     stands in. It is a different cut of the same idea: close enough to judge size, spacing and legibility,
-     not close enough to judge the letterforms. */
+  /* The clock is set in the game's own fs-sevegment asset, which is a TMP font asset rather than a font file and
+     cannot be loaded in a browser at all. DSEG7 Classic (OFL, vendored beside this file) stands in for it: a
+     different cut of the same idea, close enough to judge size, spacing and legibility, not close enough to judge
+     the letterforms. app.css asks for `game-segment`, a family only the game has, so the swap happens here. */
   @font-face {
     font-family: "preview-seg";
     src: url("preview-seg.woff2") format("woff2");
     font-display: block;
   }
-  :where(#viewport, #viewport *) { font-family: "Open Sans", "Segoe UI", system-ui, sans-serif; }
-  #viewport .glyph { font-family: "preview-seg", ui-monospace, monospace; }
-
-  /* Sideload has no align-content: wrapped lines stack tightly from the cross start. */
-  :where(#viewport, #viewport *) { align-content: flex-start; }
+  #sl-viewport .glyph { font-family: "preview-seg", ui-monospace, monospace; }
 </style>
 </head>
 <body>
+<script type="module">
+import { mount } from './sideload-preview.js';
+import { call, ready, scenarios } from './s1-mock.js';
 
-<h1>PropHunt phone app - browser preview</h1>
-<p class="note">
-  Runs the shipped app.js and app.css against a stand-in mod, so structure, copy, state and flow can be checked
-  without launching the game. Close, not identical: Chrome has real CSS and the game has a renderer that
-  implements a subset of it, the body text is the game's own Open Sans but measured by a browser rather than by
-  TextMeshPro, and the clock is a stand-in seven-segment face because the game's own is a TMP asset, not a font
-  file. Judge structure, copy, state and flow here; judge the layout itself in game with F9 and Ctrl+F10.
-</p>
-
-<div class="controls" id="controls"></div>
-<div class="frame-label" id="framelabel">733 x 400 css, drawn at 1.64x - the density the game uses</div>
-<div id="stage"><div id="viewport"></div></div>
-
-<script src="s1-mock.js"></script>
-<script>
-const viewport = document.getElementById('viewport');
-
-// A document facade scoped to the viewport, so app.js reaches only its own page.
-const scoped = {
-  body: viewport,
-  getElementById: (id) => viewport.querySelector('#' + id),
-  querySelector: (sel) => viewport.querySelector(sel),
-  querySelectorAll: (sel) => viewport.querySelectorAll(sel),
-  createElement: (tag) => document.createElement(tag),
-  addEventListener: (type, fn) => viewport.addEventListener(type, fn),
-};
-
-// The SHIPPED index.html, not a copy of it. This used to be a duplicate of the markup pasted in here, and the
-// duplicate is what a preview harness is worst at: it drifts silently, and the day it does the preview is
-// checking a page the game does not have. Its <script> tag is dropped because app.js is loaded below instead -
-// innerHTML would not execute it anyway, and the page has to be built before the script runs.
-// Every fetch bypasses the HTTP cache, and the stylesheet gets a fresh query string on the way in. A preview
-// that quietly shows the previous edit is worse than no preview: the first symptom is a script error about a
-// node the markup "should" have, and the second is half an hour spent looking for it in the wrong file.
-const fresh = (url) => fetch(url, { cache: 'no-store' }).then((r) => r.text());
-const stamp = Date.now();
-
-Promise.all([fresh('index.html'), fresh('app.js')])
-  .then(([markup, src]) => {
-    viewport.innerHTML = markup
-      .replace(/<script\b[\s\S]*?<\/script>/gi, '')
-      .replace(/href="app\.css"/g, 'href="app.css?v=' + stamp + '"');
-    new Function('document', 's1', 'console', src)(scoped, s1, console);
-  })
-  .catch((e) => { document.body.innerHTML += '<pre style="color:#E4572E">' + e + '</pre>'; });
-
-const stage = document.getElementById('stage');
-const controls = document.getElementById('controls');
-
-function chip(label, onClick) {
-  const b = document.createElement('button');
-  b.textContent = label;
-  b.onclick = () => onClick(b);
-  controls.appendChild(b);
-  return b;
-}
-
-const zoom = chip('show at 1:1 instead', () => {
-  const raw = stage.classList.toggle('raw');
-  zoom.classList.toggle('on', raw);
-  zoom.textContent = raw ? 'show at game density (1.64x)' : 'show at 1:1 instead';
-  document.getElementById('framelabel').textContent = raw
-    ? '733 x 400 css at 1:1 - smaller and denser than the game draws it'
-    : '733 x 400 css, drawn at 1.64x - the density the game uses';
+mount({
+  title: 'PropHunt',
+  appId: 'prophunt',
+  background: '#0E1113',
+  accent: '#08A6A6',
+  note: 'The strip above the phone picks a session, which is the only way to look at RoundEnd or a twenty-player roster without four people and a lobby.',
+  call,
+  ready,
+  scenarios,
 });
-
-for (const name of __mock.scenarios) {
-  const b = chip(name, () => {
-    __mock.pick(name);
-    for (const other of controls.children) if (other !== zoom) other.classList.toggle('on', other === b);
-  });
-}
 </script>
 </body>
 </html>
