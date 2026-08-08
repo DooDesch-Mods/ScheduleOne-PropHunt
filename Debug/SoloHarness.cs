@@ -88,39 +88,47 @@ namespace PropHunt.Game
             foreach (var b in broken) Core.Log.Warning("phbecomeall   " + b);
         }
 
-        /// <summary>phphone: build every tab of the phone app into a throwaway container. A tab that throws would
-        /// otherwise only show up when a player opens it mid-round, which is the worst time to find out.</summary>
+        /// <summary>
+        /// phphone: build the snapshot the phone app renders from, and assert the one rule it must never break.
+        ///
+        /// The layout is checked in the browser and in the headless suite; what cannot be checked there is the live
+        /// game state feeding it. So this reports what the page would receive right now, and fails loudly if a
+        /// hider who is still in the round has a prop on the roster - the leak that would turn the app into a
+        /// wallhack. A round is the worst possible time to discover either.
+        /// </summary>
         internal static void PhoneSelfTest()
         {
             var ctl = Core.Session;
             if (ctl == null) { Core.Log.Warning("phphone: no active session."); return; }
 
-            for (int tab = 0; tab < PropHunt.Phone.PhoneScreens.TabLabels.Length; tab++)
+            try
             {
-                GameObject host = null;
-                try
+                string json = PropHunt.Phone.PhoneBackend.Snapshot();
+                if (string.IsNullOrEmpty(json) || json.Length < 16)
                 {
-                    host = new GameObject("ph_phonetest_" + tab);
-                    host.AddComponent<RectTransform>();
-                    PropHunt.Phone.PhoneScreens.Build(host.transform, ctl, tab, ctl.IsHost, host.transform);
-                    int rows = host.transform.childCount;
-                    int deep = CountDescendants(host.transform);
-                    Core.Log.Msg($"phphone: tab {tab} \"{PropHunt.Phone.PhoneScreens.TabLabels[tab]}\" built ok " +
-                                 $"({rows} root child(ren), {deep} object(s) total).");
+                    Core.Log.Error("phphone: the snapshot came back empty.");
+                    return;
                 }
-                catch (Exception e)
-                {
-                    Core.Log.Error($"phphone: tab {tab} \"{PropHunt.Phone.PhoneScreens.TabLabels[tab]}\" THREW - {e}");
-                }
-                finally { if (host != null) { try { UnityEngine.Object.DestroyImmediate(host); } catch { } } }
-            }
-        }
 
-        private static int CountDescendants(Transform t)
-        {
-            int n = 0;
-            for (int i = 0; i < t.childCount; i++) { n += 1 + CountDescendants(t.GetChild(i)); }
-            return n;
+                var host = new PropHunt.Phone.GameHost();
+                var roster = host.Roster;
+                int leaks = 0;
+
+                foreach (var p in roster)
+                {
+                    if (p.Self || p.Eliminated || p.PropId < 0) continue;
+                    leaks++;
+                    Core.Log.Error($"phphone: LEAK - living hider {p.Name} exposes prop {p.PropId} ({p.PropName}).");
+                }
+
+                Core.Log.Msg($"phphone: snapshot ok ({json.Length} chars), phase {host.Phase}, " +
+                             $"{roster.Count} player(s), {host.Settings.Count} rule(s), {host.Presets.Count} preset(s), " +
+                             $"{host.Awards.Count} award(s), {leaks} leak(s).");
+            }
+            catch (Exception e)
+            {
+                Core.Log.Error("phphone: THREW - " + e);
+            }
         }
 
         /// <summary>phmapring: report whether the play-area ring exists on the phone map and where it thinks it is.

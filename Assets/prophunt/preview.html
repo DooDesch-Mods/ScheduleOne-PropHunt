@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="sideload-preview.css">
+<style>
+  /* The clock is set in the game's own fs-sevegment asset, which is a TMP font asset rather than a font file and
+     cannot be loaded in a browser at all. DSEG7 Classic (OFL, vendored beside this file) stands in for it: a
+     different cut of the same idea, close enough to judge size, spacing and legibility, not close enough to judge
+     the letterforms. app.css asks for `game-segment`, a family only the game has, so the swap happens here. */
+  @font-face {
+    font-family: "preview-seg";
+    src: url("preview-seg.woff2") format("woff2");
+    font-display: block;
+  }
+  #sl-viewport .glyph { font-family: "preview-seg", ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<script type="module">
+import { mount } from './sideload-preview.js';
+import { call, ready, scenarios } from './s1-mock.js';
+
+mount({
+  title: 'PropHunt',
+  appId: 'prophunt',
+  background: '#0E1113',
+  accent: '#08A6A6',
+  note: 'The strip above the phone picks a session, which is the only way to look at RoundEnd or a twenty-player roster without four people and a lobby.',
+  call,
+  ready,
+  scenarios,
+});
+</script>
+</body>
+</html>
