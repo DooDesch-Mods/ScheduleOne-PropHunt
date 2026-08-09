@@ -94,7 +94,7 @@ development builds and are not shipped in the release.
 4. The host starts the match and each round from the in-game **PropHunt phone app**.
 
 It's built for a group, so grab a few friends or open a public lobby. Looking for people to
-play with (or need a hand setting it up)? Hop in the [Discord](https://discord.gg/aN3u7BTa3h).
+play with (or need a hand setting it up)? Hop in the [Discord](https://mods.doodesch.de).
 
 ### Controls
 
