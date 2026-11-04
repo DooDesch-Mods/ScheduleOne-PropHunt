@@ -2,8 +2,6 @@
 
 > 🛟 **Need help or found a bug?** Get support at [support.doodesch.de/prophunt](https://support.doodesch.de/prophunt).
 
-[![Discord](https://mods.doodesch.de/img/badge.svg)](https://mods.doodesch.de)
-
 > A multiplayer prop-hunt gamemode for Schedule I - as far as I know the first prop hunt for
 > this game. Hiders look at any world prop and become an exact copy of it (a crate, a bin, a
 > traffic cone) and blend into the map; hunters get a weapon and track them down before the
@@ -18,7 +16,7 @@
 ![Game](https://img.shields.io/badge/game-Schedule%20I-purple)
 ![MelonLoader](https://img.shields.io/badge/MelonLoader-0.7.3+-green)
 ![S1API](https://img.shields.io/badge/S1API-required-orange)
-[![Polyfill](https://polyfill.doomods.com/badge/prophunt.svg)](https://polyfill.doomods.com/mod/prophunt)
+[![Discord](https://mods.doodesch.de/img/badge.svg)](https://mods.doodesch.de) [![Polyfill](https://polyfill.doomods.com/badge/prophunt.svg)](https://polyfill.doomods.com/mod/prophunt)
 
 [![MLVScan PropHunt.dll](https://mlvscan.com/attestations/att_WwsJ9p9KuIsaMWvr5q3DyvmB/badge.svg)](https://mlvscan.com/attestations/att_WwsJ9p9KuIsaMWvr5q3DyvmB)
 
