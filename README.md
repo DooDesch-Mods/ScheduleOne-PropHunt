@@ -56,9 +56,9 @@
 | Schedule I | `0.4.6f11` (IL2CPP, current Steam public build) |
 | MelonLoader | `0.7.3+` |
 | S1API | [ifBars/S1API_Forked](https://thunderstore.io/c/schedule-i/p/ifBars/S1API_Forked/) - the Schedule I modding API |
-| Side Hustle | [DooDesch/SideHustle](https://www.nexusmods.com/schedule1/mods/2232) - the gamemode hub PropHunt launches from; also raises the lobby cap for you |
+| Side Hustle | [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2232) - the gamemode hub PropHunt launches from; also raises the lobby cap for you |
 | SteamNetworkLib | [ifBars/SteamNetworkLib_Il2Cpp](https://thunderstore.io/c/schedule-i/p/ifBars/SteamNetworkLib_Il2Cpp/) - multiplayer state sync |
-| WhatsDab | [DooDesch/WhatsDab](https://www.nexusmods.com/schedule1/mods/2361) - the in-round chat |
+| WhatsDab | [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2361) - the in-round chat |
 
 ## Installation
 
