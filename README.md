@@ -4,6 +4,8 @@
 
 **Download:** [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2283) · [Thunderstore](https://thunderstore.io/c/schedule-i/p/DooDesch/PropHunt/) · [GitHub Releases](https://github.com/DooDesch-Mods/ScheduleOne-PropHunt/releases)
 
+[![Discord](https://mods.doodesch.de/img/badge.svg)](https://mods.doodesch.de)
+
 📖 **Documentation:** [docs.doodesch.de/mods/prophunt/](https://docs.doodesch.de/mods/prophunt/)
 
 > A multiplayer prop-hunt gamemode for Schedule I - as far as I know the first prop hunt for
@@ -145,6 +147,12 @@ Press `H` any time for the in-game controls overlay.
 - Everyone in the lobby needs the same mods and the same PropHunt build.
 - Side Hustle can auto-disable incompatible mods for the session (PropHunt asks for a
   required-mods-only lobby by default).
+
+## Community
+
+[![DooDesch Mods on Discord](https://mods.doodesch.de/img/card.svg)](https://mods.doodesch.de)
+
+Join the DooDesch Mods Discord: update pings, polls on what comes next, and playtests of new mods.
 
 ## Credits
 
