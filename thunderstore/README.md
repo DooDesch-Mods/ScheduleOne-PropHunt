@@ -2,6 +2,8 @@
 
 > 🛟 **Need help or found a bug?** Get support at [support.doodesch.de/prophunt](https://support.doodesch.de/prophunt).
 
+[![Discord](https://mods.doodesch.de/img/badge.svg)](https://mods.doodesch.de)
+
 > A multiplayer prop-hunt gamemode for Schedule I - as far as I know the first prop hunt for
 > this game. Hiders look at any world prop and become an exact copy of it (a crate, a bin, a
 > traffic cone) and blend into the map; hunters get a weapon and track them down before the
@@ -68,6 +70,12 @@ A mod manager installs all of these automatically.
 It's built for a group, so grab a few friends or open a public lobby. Everyone in the lobby
 needs the same mods and the same PropHunt build - easiest if you all install from the same
 mod-manager profile. Looking for people to play with? Hop in the [Discord](https://discord.gg/aN3u7BTa3h).
+
+## Community
+
+[![DooDesch Mods on Discord](https://mods.doodesch.de/img/card.svg)](https://mods.doodesch.de)
+
+Join the DooDesch Mods Discord: update pings, polls on what comes next, and playtests of new mods.
 
 If you have fun with it, leaving a rating (or an endorsement over on Nexus) really helps
 other people find it - ty either way, and lemme know if anything breaks or you've got ideas 🙂
