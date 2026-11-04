@@ -69,7 +69,7 @@ A mod manager installs all of these automatically.
 
 It's built for a group, so grab a few friends or open a public lobby. Everyone in the lobby
 needs the same mods and the same PropHunt build - easiest if you all install from the same
-mod-manager profile. Looking for people to play with? Hop in the [Discord](https://discord.gg/aN3u7BTa3h).
+mod-manager profile. Looking for people to play with? Hop in the [Discord](https://mods.doodesch.de).
 
 ## Community
 
