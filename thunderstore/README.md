@@ -2,6 +2,12 @@
 
 > 🛟 **Need help or found a bug?** Get support at [support.doodesch.de/prophunt](https://support.doodesch.de/prophunt).
 
+> ⚠️ **A required mod is missing on Thunderstore?** Thunderstore sometimes takes one of my library mods off its listing, and then r2modman and Gale can't install it. Get it from Nexus Mods or GitHub instead and put the DLL into the `Mods` folder of your profile. Stuck? Ask in the [Discord](https://mods.doodesch.de).
+>
+> - **SideHustle:** [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2232) · [GitHub](https://github.com/DooDesch-Mods/ScheduleOne-SideHustle/releases/latest)
+> - **WhatsDab:** [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2361) · [GitHub](https://github.com/DooDesch-Mods/ScheduleOne-WhatsDab/releases/latest)
+> - **Sideload:** [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2360) · [GitHub](https://github.com/DooDesch-Mods/ScheduleOne-Sideload/releases/latest)
+
 > A multiplayer prop-hunt gamemode for Schedule I - as far as I know the first prop hunt for
 > this game. Hiders look at any world prop and become an exact copy of it (a crate, a bin, a
 > traffic cone) and blend into the map; hunters get a weapon and track them down before the
