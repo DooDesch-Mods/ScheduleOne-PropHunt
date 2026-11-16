@@ -161,7 +161,10 @@ ROSTER_JS = r"""
   for (var i = 0; i < rows.length; i++) {
     var note = rows[i].querySelector('.row-note'), stamps = rows[i].querySelectorAll('.stamp'), st = [];
     for (var k = 0; k < stamps.length; k++) st.push(String(stamps[k].textContent || ''));
-    out.push({ note: note ? String(note.textContent || '') : '', stamps: st });
+    var face = rows[i].querySelector('.row-face'), initial = rows[i].querySelector('.row-initial');
+    var kind = !face ? 'none' : (String(face.tagName || '').toUpperCase() === 'IMG' ? 'picture' : 'initial');
+    out.push({ note: note ? String(note.textContent || '') : '', stamps: st, face: kind,
+               initial: initial ? String(initial.textContent || '') : '' });
   }
   return JSON.stringify(out);
 })()
@@ -325,6 +328,17 @@ class Phone:
         clash = [row for row in rows
                  if row["note"] in ("Ready to play", "Waiting for the next round") and "SPECTATING" in row["stamps"]]
         self.r.check("%s: no SPECTATING stamp next to a waiting player" % phase_tag, not clash, clash)
+        # A player without a Steam picture gets the first letter of the name, never an empty tile. Steam answers
+        # such a player with a valid but blank picture; the mod logs each one and must then draw the initial.
+        faces = [(row["face"], row["initial"]) for row in rows]
+        empty = [f for f in faces if not (f[0] == "picture" or (f[0] == "initial" and f[1].strip()))]
+        self.r.check("%s: every roster tile shows a picture or an initial" % phase_tag, bool(rows) and not empty,
+                     faces)
+        blank = set(re.findall(r"steam avatar for (\d+) is blank", "\n".join(self.s.lines(grep=r"steam avatar for \d+ is blank"))))
+        initials = sum(1 for f in faces if f[0] == "initial")
+        self.r.check("%s: each blank Steam picture shows as an initial (%d blank, %d initials, %d pictures)"
+                     % (phase_tag, len(blank), initials, len(faces) - initials),
+                     initials >= min(len(blank), len(faces)), faces)
 
     def hud(self):
         """The phhud report as a dict: phone, becomePill, hint, card, help, becomeWanted, headline, rows."""

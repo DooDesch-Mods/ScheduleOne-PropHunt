@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Il2CppSteamworks;
 
@@ -24,8 +25,12 @@ namespace PropHunt.Phone
         /// <summary>Refuse anything absurd rather than allocating it - a Steam avatar is 32, 64 or 184 square.</summary>
         private const uint MaxSide = 512;
 
+        /// <summary>Players whose Steam picture came back empty. Asked once; after that they keep the initial.</summary>
+        private static readonly HashSet<ulong> Blank = new HashSet<ulong>();
+
         internal static byte[] Png(ulong steamId)
         {
+            if (Blank.Contains(steamId)) return null;
             try
             {
                 var id = new CSteamID(steamId);
@@ -50,6 +55,14 @@ namespace PropHunt.Phone
                 byte[] flipped = FlipRows(buf, (int)w, (int)h);
                 if (flipped == null) return null;
 
+                string blank = BlankReason(flipped);
+                if (blank != null)
+                {
+                    if (Blank.Add(steamId))
+                        Core.Log.Msg($"steam avatar for {steamId} is blank ({w}x{h}, {blank}); the roster shows the initial.");
+                    return null;
+                }
+
                 var tex = new Texture2D((int)w, (int)h, TextureFormat.RGBA32, false)
                 {
                     hideFlags = HideFlags.HideAndDontSave,
@@ -68,6 +81,32 @@ namespace PropHunt.Phone
                 Core.LogDebug("steam avatar failed for " + steamId + ": " + e.Message);
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Why a picture carries no face, or null when it does. A player without a Steam picture (and every seat of a
+        /// Steam emulator without one configured) still gets a valid handle, filled with one flat colour or nothing
+        /// opaque at all; drawn on the roster that is an empty dark square, where the initial says who it is.
+        /// </summary>
+        private static string BlankReason(byte[] rgba)
+        {
+            int opaque = 0;
+            int minR = 255, minG = 255, minB = 255, maxR = 0, maxG = 0, maxB = 0;
+            for (int i = 0; i + 3 < rgba.Length; i += 4)
+            {
+                if (rgba[i + 3] < 16) continue;
+                opaque++;
+                int r = rgba[i], g = rgba[i + 1], b = rgba[i + 2];
+                if (r < minR) minR = r; if (r > maxR) maxR = r;
+                if (g < minG) minG = g; if (g > maxG) maxG = g;
+                if (b < minB) minB = b; if (b > maxB) maxB = b;
+            }
+
+            if (opaque == 0) return "fully transparent";
+            if (maxR - minR <= 8 && maxG - minG <= 8 && maxB - minB <= 8)
+                return $"one flat colour #{minR:x2}{minG:x2}{minB:x2}";
+            Core.LogDebug($"steam avatar: {opaque} opaque px, colour range #{minR:x2}{minG:x2}{minB:x2}-#{maxR:x2}{maxG:x2}{maxB:x2}");
+            return null;
         }
 
         /// <summary>
