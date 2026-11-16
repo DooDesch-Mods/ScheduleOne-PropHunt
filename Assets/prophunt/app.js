@@ -671,7 +671,7 @@ class App {
     dress.appendChild(shot);
 
     const main = el('div', 'dress-main inline');
-    main.appendChild(el('div', 'dress-name', wearing ? s.me.propName : plural(s.becomable, 'prop nearby', 'props nearby')));
+    main.appendChild(el('div', 'dress-name', wearing ? (s.me.propName || 'A prop') : plural(s.becomable, 'prop nearby', 'props nearby')));
 
     const pair = el('div', 'pair');
     pair.appendChild(button('btn', wearing ? 'Try another' : 'Try a random prop', 'random', () => this.#send('ph.prop.roll')));
@@ -893,7 +893,14 @@ class App {
       // and the one thing worth reading off it is which of them you have played with before.
       if (p.friend) row.appendChild(el('div', 'stamp friend', 'FRIEND'));
 
-      row.appendChild(el('div', 'stamp', ROLE_STAMP[caught ? 'Caught' : p.role] || '?'));
+      // No role exists before the first round, so the lobby shows none. Outside a round, someone who is not out
+      // has no role yet either, whatever the snapshot calls them; the stamp then agrees with the note beside it.
+      if (s.phase !== 'Lobby') {
+        const inRound = s.phase === 'Hiding' || s.phase === 'Hunting';
+        let stampRole = caught ? 'Caught' : p.role;
+        if (!inRound && !p.eliminated && (p.role === 'Spectator' || p.role === 'Unassigned')) stampRole = 'Unassigned';
+        row.appendChild(el('div', 'stamp', ROLE_STAMP[stampRole] || '?'));
+      }
 
       if (s.host && !p.self && p.id !== '0')
         row.appendChild(button('btn', 'Kick', 'kick', () => this.#send('ph.kick', p.id)));
@@ -907,7 +914,7 @@ class App {
   #rosterNote(p, s, caught) {
     if (p.role === 'Hunter') return plural(p.catches, 'catch', 'catches') + ' this session';
     if (caught) return p.propName ? 'Caught as a ' + p.propName.toLowerCase() : 'Caught';
-    if (p.self && p.prop >= 0) return p.propName + '  -  ' + Math.max(0, p.maxHp - p.hp) + ' of ' + p.maxHp + ' hits left';
+    if (p.self && p.prop >= 0) return (p.propName || 'A prop') + '  -  ' + Math.max(0, p.maxHp - p.hp) + ' of ' + p.maxHp + ' hits left';
     if (p.role === 'Hider') {
       if (s.phase === 'Hunting' || s.phase === 'Hiding') return 'Still hiding';
       // The round is decided, and the next one may swap roles or never come.

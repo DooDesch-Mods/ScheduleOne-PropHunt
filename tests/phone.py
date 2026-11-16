@@ -155,6 +155,32 @@ STATE_JS = r"""
 """
 
 
+ROSTER_JS = r"""
+(function () {
+  var rows = document.querySelectorAll('#pane .row'), out = [];
+  for (var i = 0; i < rows.length; i++) {
+    var note = rows[i].querySelector('.row-note'), stamps = rows[i].querySelectorAll('.stamp'), st = [];
+    for (var k = 0; k < stamps.length; k++) st.push(String(stamps[k].textContent || ''));
+    out.push({ note: note ? String(note.textContent || '') : '', stamps: st });
+  }
+  return JSON.stringify(out);
+})()
+"""
+
+# A prompt name that still carries mesh noise: a LOD tag, a ".003" suffix, an underscore or a bare modelling word.
+RAW_NAME = re.compile(r"LOD\d|\.\d{3}|_|^(body|cube|mesh|object|default|model)$", re.I)
+
+
+def ranks_ok(rows):
+    """Standard competition ranking over (place, score) rows sorted by score: equal scores share a place, the next
+    score takes the place after everyone above it."""
+    for i, (rank, score) in enumerate(rows):
+        want = 1 if i == 0 else (rows[i - 1][0] if score == rows[i - 1][1] else i + 1)
+        if rank != want:
+            return False
+    return True
+
+
 class Phone:
     def __init__(self, slot, label, results):
         self.s = slot
@@ -231,6 +257,12 @@ class Phone:
 
     def audit(self, where):
         raw = self.js(AUDIT_JS)
+        if isinstance(raw, str) and "TimeoutException" in raw:
+            # The audit walks every box; on a loaded machine it can run past Sideload's 250 ms script budget once.
+            print("      [%s] layout audit of %s ran past the script budget; measuring again" % (self.label, where),
+                  flush=True)
+            time.sleep(0.5)
+            raw = self.js(AUDIT_JS)
         try:
             data = json.loads(raw) if raw else None
         except ValueError:
@@ -247,6 +279,8 @@ class Phone:
     def capture(self, phase_tag, panes=PANES):
         """Every pane of the screen that is up now: click, measure, photograph, and the end of a long pane."""
         blinded = phase_tag.startswith("hiding") and self.state().get("role", "").strip().upper() == "HUNTER"
+        # First, while the phase is fresh: the round-over scoreboard is up for only a few seconds.
+        self.hud_checks(phase_tag)
         for pane in panes:
             self.open_pane(pane)
             where = "%s/%s" % (phase_tag, pane)
@@ -258,6 +292,8 @@ class Phone:
                 text = self.state().get("pane", "")
                 self.r.check("%s: a hider who made it is not told they hide next round" % phase_tag,
                              "Hiding next round" not in text, text[:160])
+            if pane == "roster":
+                self.roster_checks(phase_tag)
             for sc in (data or {}).get("scrolls") or []:
                 if sc["id"] == "pane" and sc["content"] > sc["view"] + 1:
                     # scrollToEnd only pins the box; the pin lands on the next rebuild, so one is forced with a
@@ -267,7 +303,86 @@ class Phone:
                             "return 'ok';})()")
                     time.sleep(0.4)
                     self.shot("phone-%s-%s-%s-end" % (self.label, phase_tag, pane))
+        # hud_checks points the crosshair at a prop in a round; it stays on through the shots, so they show the open
+        # phone with a prompt the HUD holds back.
+        if phase_tag.split("-")[0] in ("hiding", "hunting"):
+            self.s.cmd("phhud look off", wait=0.2)
         self.state_checks(phase_tag)
+
+    def roster_checks(self, phase_tag):
+        """A row's stamp has to agree with its note: no role at all in the lobby, no SPECTATING next to a player who
+        is ready or waiting for a round."""
+        raw = self.js(ROSTER_JS)
+        try:
+            rows = json.loads(raw) if raw else None
+        except ValueError:
+            rows = None
+        if rows is None:
+            return self.r.check("%s: roster rows readable" % phase_tag, False, raw)
+        roles = [st for row in rows for st in row["stamps"] if st != "FRIEND"]
+        if phase_tag.split("-")[0] == "lobby":
+            self.r.check("%s: the lobby roster shows no role stamp" % phase_tag, not roles, roles)
+        clash = [row for row in rows
+                 if row["note"] in ("Ready to play", "Waiting for the next round") and "SPECTATING" in row["stamps"]]
+        self.r.check("%s: no SPECTATING stamp next to a waiting player" % phase_tag, not clash, clash)
+
+    def hud(self):
+        """The phhud report as a dict: phone, becomePill, hint, card, help, becomeWanted, headline, rows."""
+        lines = self.s.cmd("phhud", wait=0.6)
+        line = next((l for l in reversed(lines) if "hud: phone=" in l), "")
+        out = dict(re.findall(r"(\w+)=(open|closed|on|off)\b", line))
+        for key in ("becomeWanted", "hintWanted", "headline"):
+            m = re.search(r"%s='([^']*)'" % key, line)
+            out[key] = m.group(1) if m else None
+        m = re.search(r"rows=([\d:,\-]*)", line)
+        out["rows"] = [tuple(int(v) for v in pair.split(":")) for pair in m.group(1).split(",") if pair] if m else []
+        out["scoreboardHidden"] = "(hidden) scoreboard" in line
+        out["neverBuilt"] = any("the HUD was never built" in l for l in lines)
+        out["line"] = line
+        return out
+
+    def hud_checks(self, phase_tag):
+        """While the phone is up, nothing of the HUD sits on top of it: no become prompt, no hint line, no role card,
+        no controls overlay. In a round the crosshair is pointed at a catalog prop first, so the prompt has a name
+        it would show, and that name has to read as a name."""
+        phase = phase_tag.split("-")[0]
+        in_round = phase in ("hiding", "hunting")
+        if in_round:
+            self.s.cmd("phhud look on", wait=0.4)
+        h = self.hud()
+        if not h.get("phone") and h["neverBuilt"] and phase == "nomatch":
+            # Before the first session there is no HUD at all, so nothing of it can sit on the phone.
+            return self.r.check("%s: no HUD exists before a session" % phase_tag, True)
+        if not h.get("phone"):
+            return self.r.check("%s: phhud answers" % phase_tag, False, h["line"] or "no hud line")
+        self.r.check("%s: the phone is open for the HUD check" % phase_tag, h["phone"] == "open", h["line"])
+        hidden = all(h.get(k) == "off" for k in ("becomePill", "hint", "card", "help", "scoreboardCard"))
+        self.r.check("%s: no prompt, hint, role card, help or scoreboard over the open phone" % phase_tag, hidden,
+                     h["line"])
+        if in_round and self.state().get("role", "").strip().upper() == "HIDER":
+            wanted = h.get("becomeWanted") or ""
+            self.r.check("%s: the hider's prompt has a target to name" % phase_tag, bool(wanted), h["line"])
+            self.r.check("%s: the prompt names the prop, not its mesh ('%s')" % (phase_tag, wanted),
+                         bool(wanted) and not RAW_NAME.search(wanted), wanted)
+        if phase == "roundover":
+            self.r.check("%s: the scoreboard has a headline" % phase_tag,
+                         not h["scoreboardHidden"] and bool(h.get("headline")), h["line"])
+            self.r.check("%s: tied scores share a place on the scoreboard" % phase_tag,
+                         bool(h["rows"]) and ranks_ok(h["rows"]), h["rows"])
+
+    def names_check(self):
+        """Every catalog prop's shown name, from the phnames report: none may still read as mesh noise."""
+        lines = self.s.cmd("phnames", wait=1.5)
+        line = next((l for l in reversed(lines) if "names: total=" in l), "")
+        m = re.search(r"total=(\d+) readable=(\d+) fallback=(\d+) raw=(\d+)", line)
+        if not m:
+            return self.r.check("%s: phnames answers" % self.label, False, line or "no names line")
+        total, readable, fallback, raw = (int(v) for v in m.groups())
+        self.r.note("%s: %d props, %d readable, %d shown as 'this prop'" % (self.label, total, readable, fallback))
+        for l in lines:
+            if "names: RAW" in l or "names: fallback" in l:
+                print("      " + l.strip(), flush=True)
+        self.r.check("%s: no catalog prop shows a mesh name" % self.label, total > 0 and raw == 0, line)
 
     def board_checks(self, phase_tag):
         """What the board says has to fit who is reading it."""
@@ -370,6 +485,8 @@ def walk_solo(ph, timeout):
             seen.add(tag)
             r.begin("%s %s" % (ph.label, tag))
             ph.capture(tag)
+            if tag == "hiding":
+                ph.names_check()
             if tag == "hunting" and not confirmed:
                 ph.confirm_dialog(tag, "END ROUND")
                 confirmed = True
@@ -503,6 +620,8 @@ def walk_coop(host, client, timeout):
             for ph in (host, client):
                 ph.r.begin("%s %s" % (ph.label, tag))
                 ph.capture(tag, panes=["board", "roster"])
+                if tag == "hiding":
+                    ph.names_check()
             if tag == "betweenrounds":
                 host.open_pane("board")
                 host.press("#pane .act", "START NEXT ROUND")

@@ -280,7 +280,7 @@ namespace PropHunt.Disguise
                     // Not becomable = the host cannot draw it, so becoming it would leave us looking like a player on
                     // their screen. Skip it and keep searching along the ray rather than offering a broken disguise.
                     if (id >= 0 && !PropCatalog.IsBecomable(id)) continue;
-                    if (id >= 0) { foundId = id; foundName = PropCatalog.ById(id)?.Name; break; }
+                    if (id >= 0) { foundId = id; foundName = PropNames.DisplayOrFallback(PropCatalog.ById(id)) ?? PropNames.Fallback; break; }
                 }
             }
 

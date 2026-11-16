@@ -20,6 +20,7 @@ namespace PropHunt.UI
         private Vector3 _spawnPos;      // where the local player started the round (safehouse)
         private float _cardShownAt;
         private bool _helpOpen;
+        private bool _tickWarned;
         private const float CardMaxSeconds = 45f;   // safety cap so it never lingers forever if you stand still
         private const float LeaveRadius = 8f;       // dismissed once you walk this far from the safehouse spawn
 
@@ -40,7 +41,10 @@ namespace PropHunt.UI
                 if (KeyBinds.Down(KeyBinds.Help)) _helpOpen = !_helpOpen;
                 if (_cardActive) UpdateCardDismiss();
             }
-            catch { }
+            catch (System.Exception e)
+            {
+                if (!_tickWarned) { _tickWarned = true; Core.Log.Warning("onboarding tick failed: " + e.Message); }
+            }
         }
 
         // The role card stays up until the player FIRST leaves the safehouse this round (walks LeaveRadius from the
@@ -48,6 +52,9 @@ namespace PropHunt.UI
         private void UpdateCardDismiss()
         {
             if (Time.time - _cardShownAt > CardMaxSeconds) { _cardActive = false; return; }
+            // Opening the phone is a deliberate look away from the card; it would sit over the app otherwise. The
+            // same keys stay one press away under [H].
+            if (PhoneState.IsOpen) { _cardActive = false; Core.Log.Msg("role card dismissed: the phone opened ([H] shows the controls)."); return; }
             var phase = _ctl.Phase;
             if (phase != RoundPhase.Hiding && phase != RoundPhase.Hunting) { _cardActive = false; return; }   // round ended
             // Once the hunt begins the hide window is over: hunters are un-blinded and the "leave the safehouse"

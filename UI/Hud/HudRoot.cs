@@ -54,6 +54,7 @@ namespace PropHunt.UI.Hud
 
         internal HudRoot()
         {
+            Current = this;
             _go = new GameObject("PropHunt_Hud");
             UnityEngine.Object.DontDestroyOnLoad(_go);
             var canvas = _go.AddComponent<Canvas>();
@@ -210,6 +211,10 @@ namespace PropHunt.UI.Hud
             bool inRound = phase == RoundPhase.Hiding || phase == RoundPhase.Hunting;
             bool hider = ctl.LocalRole == PlayerRole.Hider && !ctl.LocalSpectating;
             bool disguised = hider && ctl.LocalPropId >= 0;
+            // The HUD draws above the phone. While it is open, the world prompts and the role card step aside: they
+            // sit exactly where the app's buttons are, and none of their keys act while the phone has the mouse.
+            bool phoneOpen = PhoneState.IsOpen;
+            DebugPhoneOpen = phoneOpen;
 
             // --- status bar (always in session) ---
             string status = "PropHunt  -  " + phase;
@@ -283,7 +288,8 @@ namespace PropHunt.UI.Hud
             else if (phase == RoundPhase.Hiding && ctl.LocalRole == PlayerRole.Hunter) hint = "Get ready... (blinded until the hunt begins)";
             else if (phase == RoundPhase.Hunting && ctl.LocalRole == PlayerRole.Hunter) hint = $"Find the props  -  [{KeyBinds.Name(KeyBinds.Catch)}] to catch (big props take more hits)";
             SetText(_hint, ref _cHint, hint ?? "");
-            SetActive(_hint.gameObject, ref _aHint, hint != null);
+            SetActive(_hint.gameObject, ref _aHint, hint != null && !phoneOpen);
+            DebugHintWanted = hint;
 
             // --- transform confirm + abilities (disguised hiders, only DURING a round - not in the Safehouse
             //     between rounds, where a stale prop id would otherwise leave "You are now: ..." on screen) ---
@@ -311,7 +317,8 @@ namespace PropHunt.UI.Hud
             // --- become prompt under crosshair ---
             string becomeTn = (hider && inRound) ? ctl.LookTargetName : null;
             if (becomeTn != null) SetText(_become, ref _cBecome, $"[{KeyBinds.Name(KeyBinds.Become)}] become {becomeTn}");
-            SetActive(_becomePill, ref _aBecome, becomeTn != null);
+            SetActive(_becomePill, ref _aBecome, becomeTn != null && !phoneOpen);
+            DebugBecomeWanted = becomeTn;
 
             // --- action feedback flash ---
             if (ctl.FxActive) _flash.Trigger(ctl.FxText, ctl.FxColor, Time.unscaledTime);
@@ -339,7 +346,7 @@ namespace PropHunt.UI.Hud
             ApplyControls(ctl);
 
             // --- round-end scoreboard ---
-            _scoreboard.Apply(ctl);
+            _scoreboard.Apply(ctl, phoneOpen);
         }
 
         private void ApplyControls(GameModeController ctl)
@@ -353,8 +360,10 @@ namespace PropHunt.UI.Hud
                 return;
             }
 
-            // role card (hidden while the taunt wheel is open so they don't overlap)
-            bool showCard = ob.CardActive && !ctl.TauntWheelOpen && !ob.HelpOpen;
+            // role card (hidden while the taunt wheel is open so they don't overlap; Onboarding dismisses it for good
+            // once the phone opens, and the [H] overlay stays reachable after the phone closes)
+            bool phoneOpen = DebugPhoneOpen;
+            bool showCard = ob.CardActive && !ctl.TauntWheelOpen && !ob.HelpOpen && !phoneOpen;
             if (showCard)
             {
                 SetText(_cardTitle, ref _cCardTitle, ob.CardTitle);
@@ -374,12 +383,27 @@ namespace PropHunt.UI.Hud
                     "\n\n" + ob.ControlsHintText.Replace("Controls", "close");
                 SetText(_helpBody, ref _cHelpBody, help);
             }
-            SetActive(_helpPanel, ref _aHelp, ob.HelpOpen);
+            SetActive(_helpPanel, ref _aHelp, ob.HelpOpen && !phoneOpen);
 
             // bottom "[H] Controls" hint
             bool showHint = ob.ShowControlsHint;
             if (showHint) SetText(_controlsHint, ref _cControlsHint, ob.ControlsHintText);
             SetActive(_controlsHint.gameObject, ref _aControlsHint, showHint);
+        }
+
+        // ---- what the last Apply decided, read by the phhud test command ----
+        internal static bool DebugPhoneOpen;
+        internal static string DebugHintWanted;
+        internal static string DebugBecomeWanted;
+        internal static HudRoot Current;
+
+        internal string DebugReport()
+        {
+            return $"hud: phone={(DebugPhoneOpen ? "open" : "closed")} becomePill={(_aBecome ? "on" : "off")} " +
+                   $"hint={(_aHint ? "on" : "off")} card={(_aCard ? "on" : "off")} help={(_aHelp ? "on" : "off")} " +
+                   $"scoreboardCard={(_scoreboard.CardShown ? "on" : "off")} " +
+                   $"becomeWanted='{DebugBecomeWanted ?? ""}' hintWanted='{DebugHintWanted ?? ""}' " +
+                   _scoreboard.DebugReport();
         }
 
         // ---- change-gated setters ----

@@ -533,66 +533,9 @@ namespace PropHunt.Phone
         }
 
         /// <summary>
-        /// A catalog entry's display name, cleaned up for a player-facing list. Mesh names carry authoring noise
-        /// (SM_ prefixes, LOD suffixes, underscores) and the composite entries are keyed by a namespaced key
-        /// rather than a mesh, so those are read from the key instead.
+        /// A catalog entry's display name for the phone, or null when it has none; the page then says "A prop"
+        /// (or just "Caught"). Same cleaner as the HUD prompt, so the phone and the world never disagree.
         /// </summary>
-        internal static string PrettyPropName(PropEntry e)
-        {
-            if (e == null) return "Prop";
-
-            string raw = e.Name ?? "";
-            string key = e.Key ?? "";
-            int colon = key.IndexOf(':');
-
-            // "reg:GoldenToilet" -> "GoldenToilet". But world objects are keyed by their mesh CONTENT HASH
-            // ("world:6e6a7880" - see PropSources), and taking that suffix put an internal id where a name goes:
-            // a player stood in the lobby wearing something called 6e6a7880. Only take the suffix when it reads
-            // like a name; otherwise the mesh's own name is the better guess.
-            if (colon > 0 && colon < key.Length - 1)
-            {
-                string suffix = key.Substring(colon + 1);
-                if (!LooksLikeAnId(suffix)) raw = suffix;
-            }
-
-            if (raw.StartsWith("SM_", StringComparison.OrdinalIgnoreCase)) raw = raw.Substring(3);
-            int lod = raw.IndexOf("_LOD", StringComparison.OrdinalIgnoreCase);
-            if (lod > 0) raw = raw.Substring(0, lod);
-            raw = raw.Replace('_', ' ').Trim();
-            if (raw.Length == 0) return "Prop";
-
-            // "GoldenToilet" -> "Golden Toilet": the registry names are PascalCase and unreadable as one word.
-            var sb = new System.Text.StringBuilder(raw.Length + 4);
-            for (int i = 0; i < raw.Length; i++)
-            {
-                char ch = raw[i];
-                if (i > 0 && char.IsUpper(ch) && !char.IsUpper(raw[i - 1]) && raw[i - 1] != ' ') sb.Append(' ');
-                sb.Append(ch);
-            }
-
-            raw = sb.ToString();
-            if (LooksLikeAnId(raw)) return "Unnamed prop";
-
-            return char.ToUpperInvariant(raw[0]) + raw.Substring(1);
-        }
-
-        /// <summary>
-        /// Whether a string is an internal identifier rather than something to show a player: a bare run of hex
-        /// digits, which is what a content hash looks like. Six characters is the shortest hash the catalog emits
-        /// and long enough that a real word ("decade", "facade") is not mistaken for one - both of those carry
-        /// letters outside a-f.
-        /// </summary>
-        private static bool LooksLikeAnId(string s)
-        {
-            if (string.IsNullOrEmpty(s) || s.Length < 6) return false;
-
-            foreach (char c in s)
-            {
-                bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
-                if (!hex) return false;
-            }
-
-            return true;
-        }
+        internal static string PrettyPropName(PropEntry e) => PropNames.Display(e);
     }
 }

@@ -36,6 +36,9 @@ namespace PropHunt.Disguise
 
         internal int HighlightedCount => _shells.Count;
 
+        /// <summary>The local marker toggle, as the hider's key flips it. Set from the phmarkers test command.</summary>
+        internal bool MarkersEnabled { get => _enabled; set => _enabled = value; }
+
         internal void Tick()
         {
             if (_failed) return;

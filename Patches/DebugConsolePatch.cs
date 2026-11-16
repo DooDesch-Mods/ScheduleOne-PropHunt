@@ -200,6 +200,30 @@ namespace PropHunt.Patches
                     case "phbecome":      // force the local player into a prop by name/key (empty = random)
                         Game.SoloHarness.Become(args.Count > 1 ? args[1] : "");
                         return false;
+                    case "phmarkers":     // hider: show or hide the becomable-prop markers - phmarkers [on|off] (no arg = toggle)
+                    {
+                        var hl = Core.Session?.Highlighter;
+                        if (hl == null) { Core.Log.Warning("phmarkers: no active session or no highlighter yet."); return false; }
+                        string arg = args.Count > 1 ? args[1].ToLowerInvariant() : "";
+                        hl.MarkersEnabled = arg == "on" ? true : arg == "off" ? false : !hl.MarkersEnabled;
+                        Core.Log.Msg($"phmarkers: markers {(hl.MarkersEnabled ? "on" : "off")}.");
+                        return false;
+                    }
+                    case "phhud":         // what the HUD shows right now: phone, prompts, role card, help, scoreboard
+                                          // phhud look on|off: pretend the crosshair rests on a catalog prop
+                        if (args.Count > 2 && args[1].ToLowerInvariant() == "look")
+                        {
+                            if (Core.Session == null) { Core.Log.Warning("phhud look: no active session."); return false; }
+                            Core.Session.DebugLookOverride = args[2].ToLowerInvariant() == "on" ? Disguise.PropNamesReport.SampleName() : null;
+                            Core.Log.Msg($"phhud look: crosshair target '{Core.Session.DebugLookOverride ?? ""}'.");
+                            return false;
+                        }
+                        if (UI.Hud.HudRoot.Current != null) Core.Log.Msg(UI.Hud.HudRoot.Current.DebugReport());
+                        else Core.Log.Warning("phhud: the HUD was never built.");
+                        return false;
+                    case "phnames":       // every catalog prop's shown name; reports the ones that still read as mesh noise
+                        Disguise.PropNamesReport.Run();
+                        return false;
                     case "phbecomeall":   // build EVERY catalog prop as a clone and report the ones that break
                         Game.SoloHarness.BuildAll();
                         return false;
