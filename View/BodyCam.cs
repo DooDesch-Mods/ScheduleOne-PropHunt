@@ -39,7 +39,7 @@ namespace PropHunt.View
                 UnityEngine.Vector3 back = -lp.transform.forward;
                 UnityEngine.Vector3 pull = body + back * PullBack + UnityEngine.Vector3.up * Lift;
                 UnityEngine.Quaternion look = UnityEngine.Quaternion.LookRotation((body - pull).normalized, UnityEngine.Vector3.up);
-                lp.SetVisibleToLocalPlayer(true);              // un-hide our own avatar from our own camera
+                Compat.BodyVisibility.Set(lp, true);           // un-hide our own avatar from our own camera
                 cam.OverrideTransform(pull, look, StartLerp, false);   // detach + world-space ease-out; also sets canLook = false
                 _active = true;
             }
@@ -56,7 +56,7 @@ namespace PropHunt.View
                 var lp = Player.Local;
                 if (lp == null) return;
                 cam.transform.LookAt(BodyPoint(lp));           // Unity LookAt on the camera transform (NOT PlayerCamera.LookAt, which spins the player root)
-                lp.SetVisibleToLocalPlayer(true);              // the game resets local visibility each frame - re-assert it
+                Compat.BodyVisibility.Set(lp, true);           // SetRagdolled and the camera can flip the avatar layer - re-assert it
             }
             catch { }
         }
@@ -73,7 +73,7 @@ namespace PropHunt.View
                 if (cam != null) cam.StopTransformOverride(StopLerp, true, true);   // reenableCameraLook MUST be true, or the camera stays locked
             }
             catch (Exception e) { Core.LogDebug("bodycam stop failed: " + e.Message); }
-            try { Player.Local?.SetVisibleToLocalPlayer(false); } catch { }
+            Compat.BodyVisibility.Set(Player.Local, false);
         }
 
         // The ragdoll's centre (MiddleSpine) bone, so the aim follows the body as it settles; falls back to just above

@@ -33,6 +33,11 @@ namespace PropHunt.Catch
         // nothing, and the shot only lands where the weapon actually fired.
         internal void Tick() { }
 
+#if DEBUG
+        /// <summary>phfire: the world point the next resolved shot aims at, consumed by that shot.</summary>
+        internal static Vector3? DebugAimPoint;
+#endif
+
         /// <summary>Resolve a fired shot into a decoy/prop hit. <paramref name="maxRange"/> is the weapon's reach
         /// (generous for guns, short for melee). Called from the weapon-fire Harmony postfix.</summary>
         internal void ResolveShot(float maxRange)
@@ -48,6 +53,11 @@ namespace PropHunt.Catch
                 var cam = PlayerSingleton<PlayerCamera>.Instance;
                 if (cam == null || cam.Camera == null) return;
                 var t = cam.Camera.transform;
+                var fwd = t.forward;
+#if DEBUG
+                // phfire: aim this one shot at a world point instead of the camera's forward.
+                if (DebugAimPoint.HasValue) { fwd = (DebugAimPoint.Value - t.position).normalized; DebugAimPoint = null; }
+#endif
                 // The catch ray reaches as far as the weapon does (passed in): generous for guns - if your aim is on
                 // the prop when you fire, the hit counts across the play area - and short for melee. Difficulty stays
                 // in the PROP SIZE (small prop = small target).
@@ -60,7 +70,7 @@ namespace PropHunt.Catch
                 // MUST include trigger colliders: the disguise's prop hitbox (and decoys) are TRIGGERS so they never
                 // block movement. The default SphereCastAll skips triggers, which is why a shot passed straight through
                 // a hider's prop hitbox and never registered a catch. QueryTriggerInteraction.Collide hits them.
-                var hits = Physics.SphereCastAll(t.position, sweepR, t.forward, maxRange, ~0, QueryTriggerInteraction.Collide);
+                var hits = Physics.SphereCastAll(t.position, sweepR, fwd, maxRange, ~0, QueryTriggerInteraction.Collide);
                 if (hits == null || hits.Length == 0) return;
                 System.Array.Sort(hits, (System.Comparison<RaycastHit>)((a, b) => a.distance.CompareTo(b.distance)));
 
@@ -71,7 +81,7 @@ namespace PropHunt.Catch
                 for (int i = 0; i < hits.Length; i++)
                 {
                     var h = hits[i];
-                    if (!HasLineOfSight(t.position, t.forward, h, sweepR)) continue;   // a wall between shooter and this hit -> no through-wall hit
+                    if (!HasLineOfSight(t.position, fwd, h, sweepR)) continue;   // a wall between shooter and this hit -> no through-wall hit
                     if (IsDecoy(h.transform, out int decoyIdx))
                     {
                         SpawnPropHitFx(h.point);   // immediate local hit feedback on the decoy (it reads as a real prop)
@@ -86,7 +96,7 @@ namespace PropHunt.Catch
                         // by ImpactFxSuppressPatch. The host re-validates before accepting.
                         SpawnPropHitFx(h.point);
                         PropHunt.UI.Hud.HudController.ShowHitmarker();
-                        _ctl.RequestClaimTag(propVictim, t.forward);
+                        _ctl.RequestClaimTag(propVictim, fwd);
                         Core.LogDebug($"claim tag on {propVictim} via prop hitbox (size {PropCatalog.SizeOf(_ctl.PropIdOf(propVictim)):F2})");
                         return;
                     }
@@ -105,14 +115,14 @@ namespace PropHunt.Catch
                         if (_ctl.Settings != null && _ctl.Settings.FriendlyFire)
                         {
                             PropHunt.UI.Hud.HudController.ShowHitmarker();
-                            _ctl.RequestHitHunter(victimId, t.forward);
+                            _ctl.RequestHitHunter(victimId, fwd);
                             Core.LogDebug($"friendly-fire hit on hunter {victimId}");
                             return;
                         }
                         continue;
                     }
                     PropHunt.UI.Hud.HudController.ShowHitmarker();
-                    _ctl.RequestClaimTag(victimId, t.forward);
+                    _ctl.RequestClaimTag(victimId, fwd);
                     Core.LogDebug($"claim tag on {victimId} via capsule (undisguised)");
                     return;
                 }

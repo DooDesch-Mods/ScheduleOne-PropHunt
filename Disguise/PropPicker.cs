@@ -158,7 +158,7 @@ namespace PropHunt.Disguise
         {
             try
             {
-                if (!Il2CppScheduleOne.Equipping.Equippable_TrashGrabber.IsEquipped) return;
+                if (!PropHunt.Patches.RoundInteractionGate.TrashGrabberEquipped) return;
                 // [E], not the mouse. The grabber picks trash up through the INTERACTION system, so the key a hunter
                 // actually presses at a suspicious bin is the interact key - the mouse button was simply the wrong one
                 // and nothing ever fired. Reading it raw is fine: Unity input is not consumed by the interaction that

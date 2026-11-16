@@ -50,7 +50,8 @@ namespace PropHunt.View
                 SetArmsVisible(!active);
                 // Show your OWN body to your camera only in third person AND when not disguised (a disguised hider
                 // should see their prop, not their body). First person / disguised -> hidden (no floating head).
-                // Re-applied EVERY frame (not change-tracked) because the game resets local visibility each frame.
+                // Asserted every frame because ragdoll and camera code also switch the avatar layer; BodyVisibility
+                // only calls into the game when the state differs.
                 SetOwnBodyVisible(active && _ctl.WornPropId < 0);
             }
             catch { }
@@ -102,8 +103,7 @@ namespace PropHunt.View
             {
                 var lp = Player.Local;
                 if (lp == null) return;
-                lp.SetVisibleToLocalPlayer(visible);
-                if (visible) { try { lp.SetThirdPersonMeshesVisibility(true); } catch { } }   // ensure the body meshes are on
+                Compat.BodyVisibility.Set(lp, visible);
             }
             catch { }
         }
