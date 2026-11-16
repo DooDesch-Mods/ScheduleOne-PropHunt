@@ -24,7 +24,7 @@
 ![S1API](https://img.shields.io/badge/S1API-required-orange)
 [![Discord](https://mods.doodesch.de/img/badge.svg)](https://mods.doodesch.de) [![Polyfill](https://polyfill.doomods.com/badge/prophunt.svg)](https://polyfill.doomods.com/mod/prophunt)
 
-[![MLVScan PropHunt.dll](https://mlvscan.com/attestations/att_F4Zjd6HQlOJ2qx3KymbU3oqu/badge.svg)](https://mlvscan.com/attestations/att_F4Zjd6HQlOJ2qx3KymbU3oqu)
+[![MLVScan PropHunt.dll](https://mlvscan.com/attestations/att_42I00cUGJCk1AzbWzg0ztWCc/badge.svg)](https://mlvscan.com/attestations/att_42I00cUGJCk1AzbWzg0ztWCc)
 
 ![The PropHunt phone app next to a hider among the trash cans](https://raw.githubusercontent.com/DooDesch-Mods/ScheduleOne-PropHunt/main/docs/img/header.jpg)
 
