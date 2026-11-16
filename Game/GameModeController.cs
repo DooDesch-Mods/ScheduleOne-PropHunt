@@ -1315,7 +1315,7 @@ namespace PropHunt.Game
         private readonly List<ulong> _pendingStandUp = new List<ulong>();
         private readonly List<ulong> _stale = new List<ulong>();
 
-        private const float KnockSpeed = 5f;            // horizontal m/s given to every ragdoll body: about 2 m of travel on flat ground
+        private const float KnockSpeed = 5f;            // horizontal m/s given to every ragdoll body: about 2 m of travel on grass, about 5 m on asphalt
         private const float KnockSpin = 3f;             // rad/s of random spin on the root body so the tumble is not mechanical
         private const float KnockLift = 0.5f;           // upward share of the shove: a flat shove hits the ground at once and friction eats it
         private const float KnockLiveTimeout = 1f;      // seconds to wait for the ragdoll bodies to turn dynamic
@@ -1542,6 +1542,29 @@ namespace PropHunt.Game
                         else Core.Log.Msg($"knockdown: root speed {new Vector3(rb.velocity.x, 0f, rb.velocity.z).magnitude:0.00} m/s 4 steps after the shove.");
                     }
                     catch (Exception e) { Core.Log.Warning("knockdown: speed check failed: " + e.Message); }
+
+                    // Where the body is over the next two seconds, against where it fell: root body, spine bone and the
+                    // avatar root separately, so a body pulled back by something (an Animator, a network sync) shows
+                    // which of them stays put.
+                    _knockStart.TryGetValue(pl.GetInstanceID(), out var p0);
+                    float t = 0f;
+                    foreach (float mark in new[] { 0.25f, 0.5f, 1f, 2f })
+                    {
+                        while (t < mark) { yield return null; t += Time.unscaledDeltaTime; }
+                        try
+                        {
+                            var av = pl.Avatar;
+                            var rb = av?.ActiveRagdoll?.RootRigidbody;
+                            var anim = av?.Animation;
+                            Core.Log.Msg($"knockdown: trace t={mark:0.00}s {pl.PlayerName} local={pl.IsOwner} " +
+                                         $"root={(rb != null ? Horizontal(p0, rb.position).ToString("0.00") : "-")}m " +
+                                         $"spine={(av != null ? Horizontal(p0, av.CenterPoint).ToString("0.00") : "-")}m " +
+                                         $"avatar={(av != null ? Horizontal(p0, av.transform.position).ToString("0.00") : "-")}m " +
+                                         $"kinematic={(rb != null ? rb.isKinematic.ToString() : "-")} " +
+                                         $"anim={(anim != null ? anim.animationEnabled.ToString() : "-")} ragdolled={pl.IsRagdolled}.");
+                        }
+                        catch (Exception e) { Core.Log.Warning("knockdown: trace failed: " + e.Message); yield break; }
+                    }
                 }
 #endif
                 if (done) yield break;
@@ -2001,7 +2024,8 @@ namespace PropHunt.Game
 
         private void HandleClaimTag(ulong hunter, ulong victim, Vector3 aimDir)
         {
-            if (!_isHost || _state.Phase != RoundPhase.Hunting) return;
+            if (!_isHost) { Core.Log.Warning($"catch claim by {hunter} reached a client - ignored."); return; }
+            if (_state.Phase != RoundPhase.Hunting) { Core.Log.Msg($"host: catch claim by {hunter} ignored in phase {_state.Phase}."); return; }
             // TRUST THE CLIENT'S HIT. The client only sends this claim after its OWN SphereCast actually struck the
             // victim's prop hitbox / capsule (that is exactly what shows the hitmarker), so the client already did the
             // authoritative aim-hit detection. The host previously RE-derived the geometry from the victim's CAPSULE
@@ -2028,6 +2052,7 @@ namespace PropHunt.Game
                 NotifyCatchFx(hunter, victim, caught, vpos);
                 PushState();
             }
+            else Core.Log.Msg($"host: catch claim by {hunter} on {victim} not applied - not a live hider.");
         }
 
         /// <summary>Host: apply a friendly-fire hit from one hunter on another. Trusts the client's resolved hit (same

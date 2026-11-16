@@ -305,7 +305,7 @@ namespace PropHunt.Game
         {
             try
             {
-                var hits = UnityEngine.Physics.RaycastAll(pos + UnityEngine.Vector3.up * 0.3f, UnityEngine.Vector3.down, 5f);
+                UnityEngine.RaycastHit[] hits = UnityEngine.Physics.RaycastAll(pos + UnityEngine.Vector3.up * 0.3f, UnityEngine.Vector3.down, 5f);
                 if (hits != null && hits.Length > 0)
                 {
                     System.Array.Sort(hits, (System.Comparison<UnityEngine.RaycastHit>)((a, b) => a.distance.CompareTo(b.distance)));
