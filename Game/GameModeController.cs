@@ -1352,7 +1352,12 @@ namespace PropHunt.Game
             bool capWas = pl.CapCol != null && pl.CapCol.enabled;
             if (DebugKnockFree >= 1 && ctrlWas) pm.Controller.enabled = false;
             if (DebugKnockFree >= 2 && capWas) pl.CapCol.enabled = false;
-            if (!Ragdoll(pl, dx, dz)) { Core.Log.Warning("phknock: Ragdoll() returned false."); yield break; }
+            if (!Ragdoll(pl, dx, dz))
+            {
+                Core.Log.Warning("phknock: Ragdoll() returned false - controller and capsule restored.");
+                RestoreDebugKnock(pl, pm, ctrlWas, capWas);
+                yield break;
+            }
             float t = 0f, next = 0.5f, peak = 0f;
             while (t < seconds)
             {
@@ -1364,9 +1369,25 @@ namespace PropHunt.Game
             }
             Vector3 pe = BodyCentre(pl);
             StandUp(pl);
-            if (DebugKnockFree >= 1 && ctrlWas && pm != null && pm.Controller != null) pm.Controller.enabled = true;
-            if (DebugKnockFree >= 2 && capWas && pl.CapCol != null) pl.CapCol.enabled = true;
             Core.Log.Msg($"phknock: RESULT legacy={DebugLegacyKnock} speed={DebugKnockSpeed} horizontal={Horizontal(p0, pe):0.00}m peak={peak:0.00}m");
+            RestoreDebugKnock(pl, pm, ctrlWas, capWas);
+        }
+
+        /// <summary>End of a phknock run: turn the controller and capsule back on and reset the phknock overrides, so a
+        /// later real knockdown runs with the shipped values.</summary>
+        private static void RestoreDebugKnock(Player pl, PlayerMovement pm, bool ctrlWas, bool capWas)
+        {
+            try
+            {
+                if (DebugKnockFree >= 1 && ctrlWas && pm != null && pm.Controller != null) pm.Controller.enabled = true;
+                if (DebugKnockFree >= 2 && capWas && pl != null && pl.CapCol != null) pl.CapCol.enabled = true;
+            }
+            catch (Exception e) { Core.Log.Warning("phknock: restoring controller and capsule failed: " + e.Message); }
+            DebugLegacyKnock = false;
+            DebugKnockSpeed = -1f;
+            DebugKnockLift = -1f;
+            DebugKnockFree = 1;
+            Core.Log.Msg("phknock: overrides reset.");
         }
 #endif
 
@@ -1457,7 +1478,10 @@ namespace PropHunt.Game
                     return true;
                 }
 #endif
-                FreeRagdollFromCapsule(pl);
+                // The limp has taken at this point. A failure here only weakens the shove, so it must not report the
+                // knockdown as failed: the caller would retry SetRagdolled every tick.
+                try { FreeRagdollFromCapsule(pl); }
+                catch (Exception e) { Core.Log.Warning($"knockdown: freeing {pl.PlayerName}'s ragdoll from the capsule failed: " + e.Message); }
                 MelonLoader.MelonCoroutines.Start(ApplyKnockWhenLive(pl, dir));
                 return true;
             }
@@ -1475,15 +1499,17 @@ namespace PropHunt.Game
             var cap = pl.CapCol;
             if (cap == null) { Core.Log.Warning($"knockdown: {pl.PlayerName} has no CapCol; the shove may be blocked."); return; }
             if (cap.isTrigger || !cap.enabled) return;   // a remote player's capsule: nothing to collide with
-            var cols = pl.Avatar != null ? pl.Avatar.GetComponentsInChildren<Collider>(true) : null;
+            // Exactly the colliders Avatar.SetAvatarCollidersEnabled turns on for the ragdoll. Inactive or disabled ones
+            // are skipped: Unity refuses an ignore pair on them.
+            var cols = pl.Avatar != null ? pl.Avatar._avatarColliders : null;
+            if (cols == null) { Core.Log.Warning($"knockdown: {pl.PlayerName} has no avatar colliders; the shove may be blocked."); return; }
             int n = 0;
-            if (cols != null)
-                foreach (var c in cols)
-                {
-                    if (c == null || c.isTrigger || c == cap) continue;
-                    Physics.IgnoreCollision(cap, c, true);
-                    n++;
-                }
+            foreach (var c in cols)
+            {
+                if (c == null || c.isTrigger || c == cap || !c.enabled || !c.gameObject.activeInHierarchy) continue;
+                Physics.IgnoreCollision(cap, c, true);
+                n++;
+            }
             Core.Log.Msg($"knockdown: capsule of {pl.PlayerName} ignores {n} ragdoll colliders.");
         }
 

@@ -96,7 +96,8 @@ def probe(game, name_part):
     """The phprobe line of the player whose name contains name_part (or the local one for None)."""
     for line in game.cmd("phprobe"):
         m = re.search(r"phprobe: (\S+) id=(\d+) local=(\w+) role=(\w+) prop=(-?\d+) clone=(\w+) layer=(\w+) "
-                      r"meshesVisible=(\w+) ragdolled=(\w+) downed=(\w+) eliminated=(\w+) pos=\(([-\d.]+),([-\d.]+),([-\d.]+)\)", line)
+                      r"meshesVisible=(\w+) ragdolled=(\w+) downed=(\w+) eliminated=(\w+) pos=\(([-\d.]+),([-\d.]+),([-\d.]+)\)"
+                      r"(?: worn=(-?\d+))?", line)
         if not m:
             continue
         if (name_part is None and m.group(3) == "True") or (name_part is not None and m.group(3) == "False"):
@@ -183,9 +184,67 @@ def start_match(res, host, client):
     return roles if paired else None
 
 
+def worn(m):
+    """Worn outfit objects from a probe match, or None."""
+    return int(m.group(15)) if m is not None and m.group(15) is not None else None
+
+
+def check_outfit(res, hunter, hider):
+    """A stripped hider stays stripped when vanilla re-applies the outfit (it does on every clothing-slot change):
+    phredress re-applies it, the next disguise tick must strip it again. Checked on the hider's own view and on the
+    hunter's copy of the hider."""
+    res.begin("hider outfit")
+    time.sleep(2)
+    own, seen = probe(hider, None), probe(hunter, "other")
+    res.check("hider is stripped (own view)", worn(own) == 0, own.group(0) if own else "no probe line")
+    res.check("hider is stripped (hunter's view)", worn(seen) == 0, seen.group(0) if seen else "no probe line")
+    for g, arg, who in ((hider, "", None), (hunter, " remote", "other")):
+        m = g.mark()
+        g.cmd("phredress" + arg, wait=0.5)
+        line = g.wait_line(m, r"phredress: .* worn before=(-?\d+) after=(-?\d+)", 5)
+        after = int(re.search(r"after=(-?\d+)", line).group(1)) if line else -1
+        if after == 0:
+            # A test account that never finished the character creator has empty clothing slots, so there is no
+            # outfit to re-apply (the client in the rig, see free_camera).
+            res.note("%s: the hider's clothing slots are empty (character creator not finished) - redress check "
+                     "skipped" % g.label)
+            continue
+        res.check("%s: phredress puts the outfit back on" % g.label, after > 0, line or g.lines(m)[-3:])
+        again = g.wait_line(m, r"appearance: hider \d+ got \d+ worn objects back - stripped again", 5)
+        res.check("%s: the disguise tick strips the hider again" % g.label, again is not None, again or g.lines(m)[-3:])
+        time.sleep(1)
+        p = probe(g, who)
+        res.check("%s: hider stays stripped" % g.label, worn(p) == 0, p.group(0) if p else "no probe line")
+
+
+def check_trash(res, hunter, hider):
+    """Trash spawned during a round falls and lands before the round freeze pins it (TrashItem.Initialize gives it its
+    spawn velocity). phtrash throws one through the networked TrashManager path, so both clients spawn it."""
+    res.begin("trash spawned mid-round")
+    hunter.tp(*KNOCK_SPOT)
+    free_camera(res, hunter, quiet=True)
+    time.sleep(2)
+    marks = {g.label: g.mark() for g in (hunter, hider)}
+    hunter.cmd("phtrash", wait=0.5)
+    thrown = hunter.wait_line(marks[hunter.label], r"phtrash: threw .* round freeze=(\w+)", 5)
+    res.check("hunter throws trash during the round freeze",
+              thrown is not None and re.search(r"freeze=(\w+)", thrown).group(1) == "True",
+              thrown or hunter.lines(marks[hunter.label])[-3:])
+    result = hunter.wait_line(marks[hunter.label], r"phtrash: RESULT fell ([-\d.]+) m, ([-\d.]+) m above ground, kinematic=(\w+)", 10)
+    m = re.search(r"fell ([-\d.]+) m, ([-\d.]+) m above ground, kinematic=(\w+)", result) if result else None
+    res.check("the trash fell to the ground before it froze", m is not None and float(m.group(1)) >= 0.5
+              and -0.15 <= float(m.group(2)) <= 0.3 and m.group(3) == "True", result or "no phtrash RESULT line")
+    for g in (hunter, hider):
+        line = g.wait_line(marks[g.label], r"trash: spawned .+ settled after .* fell ([-\d.]+) m, ([-\d.]+) m above ground - frozen", 10)
+        m = re.search(r"fell ([-\d.]+) m, ([-\d.]+) m above ground", line) if line else None
+        res.check("%s freezes the spawned trash on the ground" % g.label, m is not None and float(m.group(1)) >= 0.5
+                  and -0.15 <= float(m.group(2)) <= 0.3, line or g.lines(marks[g.label], r"trash")[-3:])
+
+
 def run_round(res, host, client, hunter, hider):
-    """Disguise, concussion knockdown, catch and round end of one round already in Hiding."""
+    """Outfit, disguise, trash, concussion knockdown, catch and round end of one round already in Hiding."""
     both = (host, client)
+    check_outfit(res, hunter, hider)
     res.begin("disguise")
     hm = hider.mark()
     hider.cmd("phbecome", wait=3)
@@ -204,6 +263,7 @@ def run_round(res, host, client, hunter, hider):
     res.begin("hunting")
     for g in both:
         res.check("%s enters Hunting" % g.label, wait_phase(g, "Hunting", 60) is not None)
+    check_trash(res, hunter, hider)
 
     res.begin("concussion knockdown")
     # Open flat road inside the play area (centre -69,83, r 120): the blast pushes the hunter -x along the road.

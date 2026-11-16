@@ -447,16 +447,28 @@ namespace PropHunt.Disguise
         /// behind the prop when disguised. Since game 0.4.7 an avatar is a naked appearance (body, face, underwear)
         /// plus a separate outfit of worn objects, so stripping is <c>AvatarAppearance.RemoveOutfit</c> and nothing has
         /// to be cached: the clothes still sit in the player's clothing slots. Local-only per client - the outfit is
-        /// applied locally from those slots, which is why this runs for every player in the per-client Apply loop.</summary>
+        /// applied locally from those slots, which is why this runs for every player in the per-client Apply loop.
+        /// Vanilla re-applies the outfit on every clothing-slot change (<c>PlayerClothing.RefreshAppearance</c>, wired
+        /// to each slot's data-changed event): a slot replicated after the first strip, or a clothes change. So a
+        /// stripped hider is checked every tick and stripped again when worn objects are back.</summary>
         private void EnsureNaked(ulong id, Player player)
         {
-            if (_naked.Contains(id)) return;
             try
             {
                 var appearance = player != null && player.Avatar != null ? player.Avatar.Appearance : null;
                 if (appearance == null)
                 {
-                    if (_nakedWaiting.Add(id)) Core.LogDebug($"appearance: {id} has no avatar appearance yet - retrying each tick");
+                    if (_naked.Contains(id)) Core.WarnOnce("naked-noappearance-" + id, $"appearance: stripped hider {id} lost the avatar appearance");
+                    else if (_nakedWaiting.Add(id)) Core.LogDebug($"appearance: {id} has no avatar appearance yet - retrying each tick");
+                    return;
+                }
+                if (_naked.Contains(id))
+                {
+                    var worn = appearance._wornObjects;
+                    int count = worn != null ? worn.Count : 0;
+                    if (count == 0) return;
+                    appearance.RemoveOutfit();
+                    Core.Log.Msg($"appearance: hider {id} got {count} worn objects back - stripped again");
                     return;
                 }
                 _nakedWaiting.Remove(id);
@@ -494,7 +506,7 @@ namespace PropHunt.Disguise
                 var target = Vector3.one * scale;
                 if (av.transform.localScale != target) av.transform.localScale = target;
             }
-            catch { }
+            catch (System.Exception e) { Core.WarnOnce("hiderscale", "SetHiderScale failed: " + e.Message); }
         }
 
         private static void SetBodyVisible(Player player, bool visible, bool isLocal)

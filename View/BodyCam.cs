@@ -58,7 +58,7 @@ namespace PropHunt.View
                 cam.transform.LookAt(BodyPoint(lp));           // Unity LookAt on the camera transform (NOT PlayerCamera.LookAt, which spins the player root)
                 Compat.BodyVisibility.Set(lp, true);           // SetRagdolled and the camera can flip the avatar layer - re-assert it
             }
-            catch { }
+            catch (Exception e) { Core.WarnOnce("bodycam-track", "bodycam track failed: " + e.Message); }
         }
 
         /// <summary>Ease the camera back to first person and re-hide the own body (call on recovery / teardown). Safe
@@ -80,7 +80,8 @@ namespace PropHunt.View
         // the capsule if the avatar isn't resolvable.
         private static UnityEngine.Vector3 BodyPoint(Player lp)
         {
-            try { if (lp.Avatar != null && lp.Avatar.CenterPointTransform != null) return lp.Avatar.CenterPointTransform.position; } catch { }
+            try { if (lp.Avatar != null && lp.Avatar.CenterPointTransform != null) return lp.Avatar.CenterPointTransform.position; }
+            catch (Exception e) { Core.WarnOnce("bodycam-point", "bodycam: ragdoll centre lookup failed, aiming above the capsule: " + e.Message); }
             return lp.transform.position + UnityEngine.Vector3.up;
         }
     }

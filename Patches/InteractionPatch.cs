@@ -62,7 +62,7 @@ namespace PropHunt.Patches
                 if (RoundInteractionGate.TrashGrabberEquipped && IsTrash(hovered)) return true;
                 if (IsPickup(hovered)) return false;   // block picking up a prop; doors / others still interact
             }
-            catch { }
+            catch (System.Exception e) { Core.WarnOnce("pickup-block", "pickup block check failed, interaction allowed: " + e.Message); }
             return true;
         }
 
@@ -71,7 +71,7 @@ namespace PropHunt.Patches
         private static bool IsTrash(InteractableObject io)
         {
             try { return io.GetComponentInParent<Il2CppScheduleOne.Trash.TrashItem>() != null; }
-            catch { return false; }
+            catch (System.Exception e) { Core.WarnOnce("pickup-istrash", "trash check failed, treated as not trash: " + e.Message); return false; }
         }
 
         /// <summary>True if the interactable belongs to a pickup or draggable world item (vs a door, switch, etc.).</summary>
@@ -84,7 +84,7 @@ namespace PropHunt.Patches
                 if (io.GetComponentInParent<CashPickup>() != null) return true;
                 if (io.GetComponentInParent<Draggable>() != null) return true;
             }
-            catch { }
+            catch (System.Exception e) { Core.WarnOnce("pickup-ispickup", "pickup check failed, treated as not a pickup: " + e.Message); }
             return false;
         }
     }

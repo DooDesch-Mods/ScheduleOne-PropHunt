@@ -24,6 +24,14 @@ namespace PropHunt
         [System.Diagnostics.Conditional("DEBUG")]
         public static void LogDebug(string msg) { Log?.Msg(msg); }
 
+        private static readonly System.Collections.Generic.HashSet<string> _warnedOnce = new System.Collections.Generic.HashSet<string>();
+
+        /// <summary>A warning logged once per key, for per-frame paths that would otherwise repeat it every frame.</summary>
+        public static void WarnOnce(string key, string msg)
+        {
+            if (_warnedOnce.Add(key)) Log?.Warning(msg + " (repeats of this warning are not logged)");
+        }
+
         public override void OnInitializeMelon()
         {
             Instance = this;
