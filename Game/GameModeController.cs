@@ -2270,6 +2270,10 @@ namespace PropHunt.Game
         /// It never resolves to a Player object, which every per-player path already tolerates.</summary>
         internal const ulong DebugStandInMember = 1UL;
         internal static bool DebugSoloMode;
+
+        /// <summary>Drop the cached member list, so a solo switch takes effect on the very next read instead of
+        /// after the cache window - BeginMatch counts members in the same frame phsolo turns solo mode on.</summary>
+        internal void DebugForgetMembers() { _memberIdsAt = -99f; }
 #endif
 
         private static bool _loggedMemberFault;

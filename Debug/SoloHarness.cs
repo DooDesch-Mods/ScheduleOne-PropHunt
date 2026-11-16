@@ -24,6 +24,7 @@ namespace PropHunt.Game
             var s = Core.Session;
             if (s == null) { Core.Log.Warning("phsolo: no active session - run phhost first."); return; }
             GameModeController.DebugSoloMode = true;
+            s.DebugForgetMembers();
             Core.Log.Msg("phsolo: solo mode on (a stand-in member fills the hunter slot). Beginning match...");
             s.BeginMatch();
         }

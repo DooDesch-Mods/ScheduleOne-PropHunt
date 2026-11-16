@@ -16,9 +16,10 @@
    every box on the page differently from the game.
 
    `position: relative` is here because an absolutely positioned child in the engine is placed against its DIRECT
-   parent's padding box, always - the engine maps `position: relative` onto `static` and makes every parent a
-   containing block anyway (FlexLayout.cs:142 and :261). A browser walks up to the nearest positioned ancestor
-   instead, so without this an overlay pinned to a card lands on whatever container happens to be positioned. */
+   parent's padding box, always - every box is a containing block there, whether or not it says `position`
+   (FlexLayout.cs:142 and :261). A browser walks up to the nearest positioned ancestor instead, so without this an
+   overlay pinned to a card lands on whatever container happens to be positioned. Declaring it costs nothing else:
+   a relative box with no insets sits exactly where it would have sat, in the browser and in the engine alike. */
 :where([data-sideload], [data-sideload] *) {
   display: flex;
   flex-direction: column;
@@ -83,15 +84,34 @@
    control, so a button laid out as a row was a row in the game and a stack of blocks in the preview: captions
    centred instead of left, trailing icons dropped below the field they belong in. */
 :where([data-sideload] input, [data-sideload] button, [data-sideload] textarea, [data-sideload] select) {
-  appearance: none;
-  -webkit-appearance: none;
-  background: none;
   font: inherit;
   color: inherit;
   text-align: inherit;
   outline: none;
   display: flex;
 }
+
+/* A text field and a button are boxes the page styles; the browser's own chrome goes. A range, a colour input and a
+   select keep theirs: the engine draws those three itself (Sideload/Dom/FormParts.cs), so the browser's native
+   slider, picker and drop-down are the closest stand-in, and they raise the same input, change and pointer events. */
+:where([data-sideload] input:not([type=range]):not([type=color]), [data-sideload] button, [data-sideload] textarea) {
+  appearance: none;
+  -webkit-appearance: none;
+  background: none;
+}
+
+/* The engine's default look for the three, from Sideload/Css/UserAgentSheet.cs FormSource. It applies to every
+   page there, so it applies to every preview here. */
+:where([data-sideload] input[type=range]) { width: 130px; height: 18px; flex-shrink: 0; }
+:where([data-sideload] input[type=color]) {
+  width: 44px; height: 26px; padding: 3px; flex-shrink: 0; border: 1px solid rgba(128,128,128,0.55);
+  border-radius: 4px; background-color: rgba(128,128,128,0.16);
+}
+:where([data-sideload] select) {
+  padding: 4px 8px; border: 1px solid rgba(128,128,128,0.55); border-radius: 4px;
+  background-color: rgba(128,128,128,0.16);
+}
+:where([data-sideload] option, [data-sideload] optgroup) { background-color: #1B1D24; color: #ECEDF1; }
 
 :where([data-sideload] button) { cursor: pointer; }
 
@@ -113,6 +133,7 @@
   color: #ECEDF1;       /* ComputedStyle.Color */
   font-weight: 400;     /* ComputedStyle.FontWeight */
   text-align: left;     /* ComputedStyle.TextAlign */
+  accent-color: #5E6AD2; /* ComputedStyle.DefaultAccent - the range fill and thumb */
 
   /* `game-ui` is the family name the bundles ask for. In the game it resolves to the Open Sans cuts the phone
      itself uses (Sideload/Paint/TextSupport.cs). Standing in with whatever the device has is not close enough:

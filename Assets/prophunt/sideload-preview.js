@@ -20,6 +20,7 @@
 //   });
 
 import { SURFACE } from './dom-surface.js';
+import { PRESENT, ABSENT } from './globals.js';
 
 const DENSITY = 1.6375;   // the phone panel is ~1201x655 for a 733x400 page; WebView.cs computes exactly this
 const LANDSCAPE = { w: 733, h: 400 };
@@ -231,18 +232,38 @@ function fence(node, kind = 'element') {
 
   const allowed = SURFACE[kind] ?? SURFACE.element;
 
+  /*
+    Names the page hung on the node ITSELF are legal and must not be warned about.
+
+    Sideload 1.16.0 made a node take arbitrary properties - `el.whatever = x` used to throw, and that
+    was the one thing stopping a virtual-DOM renderer from mounting. React uses it on every container
+    (`__reactContainer$...`), so a fence that warns about a name the page invented is describing an
+    engine two releases old.
+  */
+  const own = new Set();
+
+  /*
+    `onclick`, `oninput`, and every other all-lower-case `on...` name.
+
+    The engine tests the SHAPE of the name rather than keeping a list (DomApi.IsHandlerName), because a
+    list answers no for the next event the web adds - and a renderer that asks `name.toLowerCase() in
+    dom` then registers its listener under the wrong spelling and the page silently does nothing when
+    touched. The fence mirrors the test rather than the list, for the same reason.
+  */
+  const isHandler = (prop) => typeof prop === 'string' && /^on[a-z]+$/.test(prop);
+
   return new Proxy(node, {
     get(target, prop, receiver) {
       if (prop === RAW) return target;
       if (typeof prop === 'symbol') return Reflect.get(target, prop, target);
-      if (!allowed.has(prop)) warn(kind, String(prop));
+      if (!allowed.has(prop) && !own.has(prop) && !isHandler(prop)) warn(kind, String(prop));
 
       const value = Reflect.get(target, prop, target);
       if (typeof value === 'function') return (...args) => wrapResult(value.apply(target, args.map(unwrap)));
       return wrapResult(value);
     },
     set(target, prop, value) {
-      if (!allowed.has(prop)) warn(kind, String(prop));
+      own.add(prop);
       return Reflect.set(target, prop, unwrap(value), target);
     },
   });
@@ -314,21 +335,94 @@ async function load(opts, dom, s1) {
   requestAnimationFrame(() => requestAnimationFrame(() => checkDivergence(dom)));
 }
 
+/*
+  The globals the page is handed, built from the GENERATED list.
+
+  PRESENT comes out of Sideload/Script - ScriptHost's SetValue and FastSetProperty calls, plus DomTypes'
+  bootstrap - so it cannot drift from the engine. It used to be typed out here instead, under a comment
+  claiming the engine installs "document, s1, console, fetch, the four timer functions, and nothing
+  else". That was true when written and stopped being true twice: 1.16.0 made `window` the global object
+  and added requestAnimationFrame, 1.17.0 added the DOM type chain. Nobody noticed, because a fence that
+  hides too much fails silently until something reaches for what it hid - react-dom reads `window.event`
+  when it schedules, so the first React page to run here died on its first render.
+
+  Run `node gen-globals.mjs` when the engine gains a global; `--check` says when this is stale.
+*/
+function engineGlobals(doc, s1, dom) {
+  /*
+    The window the engine hands a page IS its global object, so this stands in for that rather than for
+    the browser's. Handing over the real `window` would put localStorage and navigator back within
+    reach, which is the one thing the fence exists to prevent.
+  */
+  const win = {};
+
+  // The names that need a specific value. Everything else in PRESENT is a constructor, and the
+  // browser's own is the right stand-in: nothing here is ever an instance of the engine's version, and
+  // naming it is all a framework does with it.
+  const bound = {
+    document: doc,
+    s1,
+    console,
+    window: win,
+    self: win,
+    globalThis: win,
+    // Accessors, not values: the phone turns while the page is running, and the engine's own
+    // innerWidth/innerHeight are accessors for exactly that reason (ScriptHost.cs:775-781).
+    get innerWidth() { return dom.portrait ? PORTRAIT.w : LANDSCAPE.w; },
+    get innerHeight() { return dom.portrait ? PORTRAIT.h : LANDSCAPE.h; },
+    devicePixelRatio: 1,
+    setTimeout: (...a) => setTimeout(...a),
+    clearTimeout: (...a) => clearTimeout(...a),
+    setInterval: (...a) => setInterval(...a),
+    clearInterval: (...a) => clearInterval(...a),
+    // The engine schedules one frame at 60 Hz rather than tying this to a real vsync.
+    requestAnimationFrame: (fn) => setTimeout(fn, 16),
+    cancelAnimationFrame: (id) => clearTimeout(id),
+    addEventListener: (...a) => doc.addEventListener?.(...a),
+    removeEventListener: (...a) => doc.removeEventListener?.(...a),
+  };
+
+  /*
+    A constructor the HOST lacks still has to exist, because the engine has it.
+
+    react-dom does `b instanceof a.HTMLIFrameElement`, and under a headless DOM - which is how smoke.mjs
+    runs this - `globalThis.HTMLIFrameElement` is undefined, so the expression throws instead of
+    answering false. A named empty function answers false, which is the same thing the engine's own
+    chain answers: nothing here is ever an iframe.
+  */
+  const stub = (name) => {
+    const fn = function () {};
+    Object.defineProperty(fn, 'name', { value: name });
+    return fn;
+  };
+
+  const value = (name) =>
+    name in bound ? bound[name] : (globalThis[name] ?? stub(name));
+
+  for (const name of PRESENT) win[name] = value(name);
+
+  return { win, value };
+}
+
 function run(src, opts, dom, s1) {
   const doc = fencedDocument(dom.viewport, opts.fence);
+  const { win, value } = engineGlobals(doc, s1, dom);
 
-  // Shadow the globals the engine does not install (ScriptHost.Bind: document, s1, console, fetch, the four timer
-  // functions, and nothing else). An app that reaches for `window` or `localStorage` gets undefined here, which is
-  // the same nothing it gets in the game - except here it says so on the first line rather than on a player's
-  // machine.
-  const absent = opts.fence
-    ? ['window', 'globalThis', 'self', 'localStorage', 'sessionStorage', 'navigator', 'location', 'history',
-       'alert', 'requestAnimationFrame', 'cancelAnimationFrame', 'XMLHttpRequest', 'WebSocket', 'Worker',
-       'getComputedStyle', 'matchMedia', 'Node', 'Element', 'HTMLElement', 'MutationObserver']
-    : [];
+  /*
+    Shadow the globals the engine does NOT install. An app that reaches for one gets undefined here,
+    which is the same nothing it gets in the game - except here it says so on the first line rather than
+    on a player's machine.
 
-  const names = ['document', 's1', 'console', ...absent];
-  const values = [doc, s1, console, ...absent.map(() => undefined)];
+    `fetch` is on neither list on purpose: the engine has it, and a preview that let a page reach the
+    network would be exercising something the game never does on the main thread.
+  */
+  const names = opts.fence ? [...PRESENT, ...ABSENT] : ['document', 's1', 'console'];
+  const values = opts.fence
+    ? [...PRESENT.map(value), ...ABSENT.map(() => undefined)]
+    : [doc, s1, console];
+
+  // `win` is referenced through the bindings above; naming it here keeps the linter honest about it.
+  void win;
 
   new Function(...names, `"use strict";\n${src}\n//# sourceURL=app.js`)(...values);
 }

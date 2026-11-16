@@ -171,6 +171,10 @@ function mmss(total) {
 
 function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 
+/** Players in the lobby, counting the reader. The host reports 0 when the Steam lobby does not answer (a
+ *  singleplayer save has none), and the person reading the phone is in it either way. */
+function lobbyCount(s) { return Math.max(1, s.lobby | 0); }
+
 /* An <img> is sized by CSS alone - the layout runs without Unity and cannot read a PNG's intrinsic size, and
  * the HTML width/height ATTRIBUTES are not CSS. Set them as style or the box is nothing and nothing paints. */
 function icon(name, size) {
@@ -230,6 +234,10 @@ class App {
   #gauge = null;
   #whistle = null;
   #renderQueued = false;
+  #tallyRound = -1;    // the round #tallyTotal was counted in
+  #tallyTotal = 0;     // hiders this round started with - see #renderRail
+  #spanKey = '';       // phase and round the gauge's full length was taken in
+  #spanMax = 0;        // the longest countdown seen in that phase, which is the gauge's full length between rounds
 
   start() {
     this.#clock = new SevenSegment($('clock'), 4);
@@ -313,10 +321,24 @@ class App {
     return this.#snap.now + Math.floor((Date.now() - this.#takenAt) / 1000);
   }
 
-  secondsLeft() {
+  /**
+   * The host-time moment the clock counts down to, or 0 when this phase has none.
+   *
+   * Between rounds that is the start of the next round, not the end of the phase. The host rolls the scoreboard,
+   * the safehouse pause and the doors window into one countdown (RoundLogic.SecondsUntilNextRound); a clock that
+   * ran out at the end of the scoreboard and then started again disagreed with every other countdown in the game.
+   */
+  deadline() {
     const s = this.#snap;
-    if (!s || !s.ends) return -1;
-    return Math.max(0, s.ends - this.now());
+    if (!s) return 0;
+    if ((s.phase === 'RoundEnd' || s.phase === 'Safehouse') && s.nextRound >= 0) return s.now + s.nextRound;
+    return s.ends || 0;
+  }
+
+  secondsLeft() {
+    const end = this.deadline();
+    if (!end) return -1;
+    return Math.max(0, end - this.now());
   }
 
   /* ---- the per-second beat: colours only ---- */
@@ -342,7 +364,13 @@ class App {
     const clock = $('clock');
     if (clock.className !== urgency) clock.className = urgency;
 
-    const span = s.phaseLen > 0 ? s.phaseLen : Math.max(1, left);
+    // A round phase has a known length. The countdown between rounds spans several phases and has none, so its
+    // full length is the longest value seen since it started.
+    const key = s.phase + '|' + s.round;
+    if (this.#spanKey !== key) { this.#spanKey = key; this.#spanMax = 0; }
+    this.#spanMax = Math.max(this.#spanMax, left);
+    const between = s.phase === 'RoundEnd' || s.phase === 'Safehouse';
+    const span = between ? Math.max(1, this.#spanMax) : s.phaseLen > 0 ? s.phaseLen : Math.max(1, left);
     this.#gauge.set(left / span, left <= 15 ? '#E4572E' : left <= 45 ? '#E8B22A' : '#08A6A6');
 
     this.#paintWhistle();
@@ -471,14 +499,26 @@ class App {
     seat.textContent = s.host ? 'HOST' : 'VIEW ONLY';
     seat.className = s.host ? 'stamp seat host' : 'stamp seat';
 
+    // Roles are dealt when a round starts and kept until the next one is dealt, so in the lobby and the safehouse
+    // the snapshot still carries last round's role. Shown there it reads as the role you are about to play.
+    const inRound = s.phase === 'Hiding' || s.phase === 'Hunting' || s.phase === 'RoundEnd';
     const me = s.me;
     const stamp = $('role');
     const caught = me.eliminated && me.role === 'Hider';
-    stamp.textContent = ROLE_STAMP[caught ? 'Caught' : me.role] || 'WAITING';
-    stamp.className = 'stamp role ' + (caught ? 'caught' : me.role.toLowerCase());
+    const role = inRound || s.phase === 'MatchEnd' ? (caught ? 'Caught' : me.role) : 'Unassigned';
+    stamp.textContent = ROLE_STAMP[role] || 'WAITING';
+    stamp.className = 'stamp role ' + role.toLowerCase();
 
-    // The tally is the headcount: one block per hider who started, filled while they are still out there.
-    const total = s.players.filter((p) => p.role === 'Hider').length;
+    // The tally is the headcount: one block per hider who started, filled while they are still out there. It is
+    // counted at its highest for the round rather than read fresh, because in Infection a caught hider turns
+    // hunter and leaves the hider count, and the total would shrink under the blocks it is supposed to frame.
+    if (s.round !== this.#tallyRound) { this.#tallyRound = s.round; this.#tallyTotal = 0; }
+    const hiders = s.players.filter((p) => p.role === 'Hider').length;
+    this.#tallyTotal = Math.max(this.#tallyTotal, hiders, s.hidersAlive);
+    const total = this.#tallyTotal;
+
+    // Outside a round there is nobody to count, and "0 / 0" there reads as a round everyone already lost.
+    $('tallybox').className = inRound ? 'tally-box' : 'tally-box hidden';
     $('tallycount').textContent = s.hidersAlive + ' / ' + total;
 
     const tally = $('tally');
@@ -487,7 +527,7 @@ class App {
 
     // A phase without a deadline has no clock, and a seven-segment frame showing two dashes reads as a broken
     // instrument rather than as "no timer". Hide the slab and let the line under it carry the phase instead.
-    const running = s.ends > 0;
+    const running = this.deadline() > 0;
     $('clockbox').className = running ? 'clockbox' : 'clockbox blank';
     $('clocknote').textContent = this.#clockNote(s);
 
@@ -497,11 +537,20 @@ class App {
   /** The line under the clock. In a phase with no deadline it stands in for the clock entirely, so it has to
    *  say something on its own rather than annotate a number that is not there. */
   #clockNote(s) {
-    if (s.phase === 'Lobby') return plural(s.lobby, 'player in the lobby', 'players in the lobby');
+    if (s.phase === 'Lobby') return plural(lobbyCount(s), 'player in the lobby', 'players in the lobby');
     if (s.phase === 'Hiding') return 'Hunters are released when this runs out.';
     if (s.phase === 'Hunting') return 'Round ' + s.round;
-    if (s.phase === 'RoundEnd' || s.phase === 'Safehouse')
-      return s.nextRound >= 0 ? 'Next round in ' + s.nextRound + 's' : 'Waiting for the host.';
+    // The number is the clock's. This line only says what the clock is counting to, so it never goes stale
+    // between two snapshots.
+    // With auto-start off the host's countdown out of RoundEnd stops at the end of the scoreboard, because the
+    // round after it waits for the host.
+    if (s.phase === 'RoundEnd' || s.phase === 'Safehouse') {
+      const auto = this.#settingValue('autostart') === '1';
+      if (s.phase === 'RoundEnd' && this.#settingValue('round') === 'Single') return 'The match ends when this runs out.';
+      if (s.phase === 'RoundEnd' && !auto && s.ends > 0) return 'Then the host starts the next round.';
+      if (s.nextRound >= 0) return 'Next round starts when this runs out.';
+      return s.host ? 'Waiting for you to start the round.' : 'Waiting for the host.';
+    }
     if (s.phase === 'MatchEnd') return 'Match over.';
     return '';
   }
@@ -519,7 +568,8 @@ class App {
     if (!running) {
       // The whistle gauge belongs to the hunt. Build it anyway so the tick never has to test for it.
       this.#whistle = null;
-      if (box.children.length === 0)
+      // Only before a round. On the scoreboard and after the match the round it promises is not coming.
+      if (box.children.length === 0 && (s.phase === 'Lobby' || s.phase === 'Safehouse'))
         box.appendChild(el('div', 'note', 'Your prop, your hits and your gear show up here once the round starts.'));
       return;
     }
@@ -571,7 +621,7 @@ class App {
   #boardLobby(pane, s) {
     const head = el('div', 'head');
     head.appendChild(el('div', 'title', 'Waiting to start'));
-    head.appendChild(el('div', 'sub', plural(s.lobby, 'player here', 'players here')));
+    head.appendChild(el('div', 'sub', plural(lobbyCount(s), 'player here', 'players here')));
     pane.appendChild(head);
 
     if (s.host) {
@@ -665,7 +715,9 @@ class App {
     head.appendChild(el('div', 'sub', 'Round ' + s.round));
     pane.appendChild(head);
 
-    if (s.me.role === 'Hider' && !s.me.eliminated && s.me.prop >= 0) this.#wearing(pane, s);
+    const hiding = s.me.role === 'Hider' && !s.me.eliminated;
+    if (hiding && s.me.prop >= 0) this.#wearing(pane, s);
+    else if (hiding) pane.appendChild(el('div', 'note', 'Look at any prop and press [E] to become it. [2] picks one at random.'));
     else if (s.me.role === 'Hunter') pane.appendChild(el('div', 'note', 'Shoot a prop to catch it. Bigger props take more hits.'));
     else pane.appendChild(el('div', 'note', 'You are out for this round. Press [4] to switch between follow-cam and freecam.'));
 
@@ -696,7 +748,6 @@ class App {
     const word = s.winner === 0 ? 'HUNTERS WIN' : s.winner === 1 ? 'HIDERS WIN' : 'ROUND OVER';
     const cls = s.winner === 0 ? 'verdict hunters' : s.winner === 1 ? 'verdict hiders' : 'verdict';
     result.appendChild(el('div', cls, word));
-    if (s.phase === 'RoundEnd' && s.nextRound >= 0) result.appendChild(el('div', 'sub', 'Next round in ' + s.nextRound + 's'));
     pane.appendChild(result);
 
     if (s.awards.length > 0) {
@@ -713,9 +764,12 @@ class App {
     const top = [...s.players].sort((a, b) => b.score - a.score).slice(0, 3);
     if (top.length > 0) {
       pane.appendChild(el('div', 'rule'));
+      // Ties share a place, as on the Scores tab, so the two never disagree about who came first.
+      let place = 0;
       for (let i = 0; i < top.length; i++) {
+        if (i === 0 || top[i].score !== top[i - 1].score) place = i + 1;
         const row = el('div', top[i].self ? 'row me' : 'row');
-        row.appendChild(el('div', 'row-num', String(i + 1)));
+        row.appendChild(el('div', 'row-num', String(place)));
         row.appendChild(this.#face(top[i]));
 
         const main = el('div', 'row-main');
@@ -769,7 +823,7 @@ class App {
     pane.appendChild(pair);
 
     pane.appendChild(el('div', 'note', stuck
-      ? 'Only this one place is big enough for ' + s.lobby + ' players.'
+      ? 'Only this one place is big enough for ' + lobbyCount(s) + ' players.'
       : s.safehouse.options + ' places are big enough for this many players.'));
 
     pane.appendChild(button('act', 'START NEXT ROUND', 'next-round', () => this.#send('ph.next')));
@@ -854,7 +908,12 @@ class App {
     if (p.role === 'Hunter') return plural(p.catches, 'catch', 'catches') + ' this session';
     if (caught) return p.propName ? 'Caught as a ' + p.propName.toLowerCase() : 'Caught';
     if (p.self && p.prop >= 0) return p.propName + '  -  ' + Math.max(0, p.maxHp - p.hp) + ' of ' + p.maxHp + ' hits left';
-    if (p.role === 'Hider') return s.phase === 'Hunting' || s.phase === 'Hiding' ? 'Still hiding' : 'Hiding next round';
+    if (p.role === 'Hider') {
+      if (s.phase === 'Hunting' || s.phase === 'Hiding') return 'Still hiding';
+      // The round is decided, and the next one may swap roles or never come.
+      if (s.phase === 'RoundEnd' || s.phase === 'MatchEnd') return 'Survived';
+      return 'Hiding next round';
+    }
 
     // Everyone left over is either out of the round or not in it yet, and those are not the same thing. Someone
     // who joined mid-round has no role and has not been caught - calling them a spectator, under a stamp that

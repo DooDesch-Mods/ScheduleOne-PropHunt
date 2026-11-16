@@ -9,15 +9,15 @@
 
 export const SURFACE = {
   element: new Set([
-    'AddEventListener', 'AppendChild', 'Blur', 'Children', 'ClassList', 'ClassName', 'Click', 'Disabled', 'Focus',
-    'GetAttribute', 'HasAttribute', 'Id', 'InnerHTML', 'InsertBefore', 'ParentElement', 'QuerySelector',
-    'QuerySelectorAll', 'Rect', 'Remove', 'RemoveAttribute', 'RemoveChild', 'RemoveEventListener',
-    'ReplaceChildren', 'ScrollToEnd', 'SetAttribute', 'Style', 'TagName', 'TextContent', 'ToString', 'Value',
-    'addEventListener', 'appendChild', 'blur', 'children', 'classList', 'className', 'click', 'constructor',
-    'disabled', 'focus', 'getAttribute', 'hasAttribute', 'id', 'innerHTML', 'insertBefore', 'parentElement',
-    'querySelector', 'querySelectorAll', 'rect', 'remove', 'removeAttribute', 'removeChild', 'removeEventListener',
-    'replaceChildren', 'scrollToEnd', 'setAttribute', 'style', 'tagName', 'textContent', 'toString', 'value',
-    'valueOf'
+    'Get', 'HasProperty', 'Set', 'ToString', 'addEventListener', 'appendChild', 'blur', 'childElementCount',
+    'childNodes', 'children', 'classList', 'className', 'click', 'cloneNode', 'closest', 'constructor', 'contains',
+    'dispatchEvent', 'firstChild', 'firstElementChild', 'focus', 'get', 'getAttribute', 'getBoundingClientRect',
+    'hasAttribute', 'hasChildNodes', 'hasProperty', 'htmlFor', 'id', 'innerHTML', 'insertBefore', 'isConnected',
+    'lastChild', 'lastElementChild', 'localName', 'matches', 'namespaceURI', 'nextElementSibling', 'nextSibling',
+    'nodeName', 'nodeType', 'nodeValue', 'outerHTML', 'ownerDocument', 'parentElement', 'parentNode',
+    'previousElementSibling', 'previousSibling', 'querySelector', 'querySelectorAll', 'readOnly', 'rect', 'remove',
+    'removeAttribute', 'removeChild', 'removeEventListener', 'replaceChild', 'replaceChildren', 'scrollToEnd',
+    'set', 'setAttribute', 'style', 'tabIndex', 'tagName', 'textContent', 'toString', 'value', 'valueOf'
   ]),
 
   classList: new Set([
@@ -26,21 +26,26 @@ export const SURFACE = {
   ]),
 
   document: new Set([
-    'AddEventListener', 'Body', 'CreateElement', 'GetElementById', 'QuerySelector', 'QuerySelectorAll', 'ToString',
-    'addEventListener', 'body', 'constructor', 'createElement', 'getElementById', 'querySelector',
-    'querySelectorAll', 'toString', 'valueOf'
+    'ActiveElement', 'AddEventListener', 'Body', 'CreateComment', 'CreateElement', 'CreateElementNS',
+    'CreateTextNode', 'DocumentElement', 'GetElementById', 'Head', 'NodeName', 'NodeType', 'QuerySelector',
+    'QuerySelectorAll', 'ReadyState', 'RemoveEventListener', 'Title', 'ToString', 'activeElement',
+    'addEventListener', 'body', 'constructor', 'createComment', 'createElement', 'createElementNS',
+    'createTextNode', 'documentElement', 'getElementById', 'head', 'nodeName', 'nodeType', 'querySelector',
+    'querySelectorAll', 'readyState', 'removeEventListener', 'title', 'toString', 'valueOf'
   ]),
 
   event: new Set([
-    'AltKey', 'CtrlKey', 'CurrentTarget', 'DefaultPrevented', 'DeltaX', 'DeltaY', 'HasSelection', 'Key', 'NormX',
-    'NormY', 'OffsetX', 'OffsetY', 'PreventDefault', 'Repeat', 'ShiftKey', 'Source', 'StopPropagation', 'Target',
-    'ToString', 'Type', 'Value', 'WheelDelta', 'altKey', 'constructor', 'ctrlKey', 'currentTarget',
-    'defaultPrevented', 'deltaX', 'deltaY', 'hasSelection', 'key', 'normX', 'normY', 'offsetX', 'offsetY',
-    'preventDefault', 'repeat', 'shiftKey', 'source', 'stopPropagation', 'target', 'toString', 'type', 'value',
-    'valueOf', 'wheelDelta'
+    'AltKey', 'Bubbles', 'Button', 'ClientX', 'ClientY', 'CtrlKey', 'CurrentTarget', 'DefaultPrevented', 'DeltaX',
+    'DeltaY', 'Detail', 'EventPhase', 'HasSelection', 'Key', 'NormX', 'NormY', 'OffsetX', 'OffsetY',
+    'PreventDefault', 'Repeat', 'ShiftKey', 'Source', 'StopImmediatePropagation', 'StopPropagation', 'Target',
+    'ToString', 'Type', 'Value', 'WheelDelta', 'altKey', 'bubbles', 'button', 'clientX', 'clientY', 'constructor',
+    'ctrlKey', 'currentTarget', 'defaultPrevented', 'deltaX', 'deltaY', 'detail', 'eventPhase', 'hasSelection',
+    'key', 'normX', 'normY', 'offsetX', 'offsetY', 'preventDefault', 'repeat', 'shiftKey', 'source',
+    'stopImmediatePropagation', 'stopPropagation', 'target', 'toString', 'type', 'value', 'valueOf', 'wheelDelta'
   ]),
 
   rect: new Set([
-    'ToString', 'constructor', 'height', 'toString', 'valueOf', 'width', 'x', 'y'
+    'ToString', 'bottom', 'constructor', 'height', 'left', 'right', 'toString', 'top', 'valueOf', 'width', 'x',
+    'y'
   ]),
 };
