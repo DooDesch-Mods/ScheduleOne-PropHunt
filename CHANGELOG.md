@@ -4,6 +4,28 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-11-16
+
+### Added
+
+- The PropHunt phone app is rebuilt on Sideload: the round reads as a departure board with a seven-segment clock.
+- The Players list marks your Steam friends. A player without a Steam picture shows their first letter.
+- The rules screen names the live preset and marks every value you changed from it.
+- Ending a round or the whole match asks first.
+
+### Changed
+
+- PropHunt now needs Sideload.
+
+### Fixed
+
+- The "[E] become" prompt, the role card and the round-end scoreboard no longer cover the open phone.
+- Prompts name the prop instead of a model part like "Body_LOD0.003", or say "this prop".
+- The round-end scoreboard shows who won again, ties share a place, and awards read "1 catch" instead of "1 catches".
+- The app shows one countdown between rounds, never tells a living hider they are out, and gives no Survivor award
+  to a caught hider.
+- Opening the rules is quick again, and the preset your changes are measured against survives closing the app.
+
 ## [1.3.9] - 2026-11-16
 
 ### Changed
