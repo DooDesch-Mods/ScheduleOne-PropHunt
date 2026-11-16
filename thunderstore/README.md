@@ -24,7 +24,7 @@
 ![S1API](https://img.shields.io/badge/S1API-required-orange)
 [![Discord](https://mods.doodesch.de/img/badge.svg)](https://mods.doodesch.de) [![Polyfill](https://polyfill.doomods.com/badge/prophunt.svg)](https://polyfill.doomods.com/mod/prophunt)
 
-[![MLVScan PropHunt.dll](https://mlvscan.com/attestations/att_WwsJ9p9KuIsaMWvr5q3DyvmB/badge.svg)](https://mlvscan.com/attestations/att_WwsJ9p9KuIsaMWvr5q3DyvmB)
+[![MLVScan PropHunt.dll](https://mlvscan.com/attestations/att_F4Zjd6HQlOJ2qx3KymbU3oqu/badge.svg)](https://mlvscan.com/attestations/att_F4Zjd6HQlOJ2qx3KymbU3oqu)
 
 ## Features
 
