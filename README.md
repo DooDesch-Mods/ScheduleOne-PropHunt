@@ -16,7 +16,7 @@
 > **[SideHustle.doodesch.de](https://sidehustle.doodesch.de)** - how many players are in, and what the session runs.
 > You still join from the Side Hustle menu in-game.
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue)
+![Version](https://img.shields.io/badge/version-1.3.9-blue)
 ![Game](https://img.shields.io/badge/game-Schedule%20I-purple)
 ![MelonLoader](https://img.shields.io/badge/MelonLoader-0.7.3+-green)
 ![S1API](https://img.shields.io/badge/S1API-required-orange)
@@ -53,7 +53,7 @@
 
 | Component | Version / Source |
 |-----------|------------------|
-| Schedule I | `0.4.6f11` (IL2CPP, current Steam public build) |
+| Schedule I | `0.4.7f12` (IL2CPP, current Steam public build) |
 | MelonLoader | `0.7.3+` |
 | S1API | [ifBars/S1API_Forked](https://thunderstore.io/c/schedule-i/p/ifBars/S1API_Forked/) - the Schedule I modding API |
 | Side Hustle | [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2232) - the gamemode hub PropHunt launches from; also raises the lobby cap for you |
@@ -164,3 +164,5 @@ Join the DooDesch Mods Discord: update pings, polls on what comes next, and play
 ## License
 
 Provided as-is under the [MIT License](LICENSE.md).
+
+This mod is written with help from generative AI tools (Anthropic Claude, OpenAI Codex).
