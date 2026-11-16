@@ -32,6 +32,10 @@ namespace PropHunt.UI.Hud
         private readonly GameObject _content;
         private bool _active;
         private string _sig;
+        private string _report = "scoreboard: never shown";
+
+        /// <summary>The last built headline and the place:score of every row, for the phhud test command.</summary>
+        internal string DebugReport() => (_active ? "" : "(hidden) ") + _report;
 
         internal Scoreboard(Transform parent)
         {
@@ -44,17 +48,31 @@ namespace PropHunt.UI.Hud
             _card.SetActive(false);
         }
 
-        internal void Apply(GameModeController ctl)
+        /// <summary>Whether the card is on screen now; it stays built through the round end but steps aside while the
+        /// phone is open, whose board shows the same result.</summary>
+        internal bool CardShown => _shown;
+        private bool _shown;
+
+        internal void Apply(GameModeController ctl, bool phoneOpen)
         {
             if (ctl.Phase != RoundPhase.RoundEnd)
             {
-                if (_active) { _active = false; _card.SetActive(false); }
+                _active = false;
+                Show(false);
                 return;
             }
             var st = ctl.State;
             string sig = $"{st.Winner}|{st.RoundNumber}|{st.Players.Count}";
-            if (!_active) { _active = true; _card.SetActive(true); }
+            _active = true;
             if (sig != _sig) { _sig = sig; Rebuild(st, ctl.LocalId); }
+            Show(!phoneOpen);
+        }
+
+        private void Show(bool on)
+        {
+            if (_shown == on) return;
+            _shown = on;
+            _card.SetActive(on);
         }
 
         private void Rebuild(GameState st, ulong localId)
@@ -72,7 +90,9 @@ namespace PropHunt.UI.Hud
             string headline = st.Winner == 0 ? "HUNTERS WIN" : st.Winner == 1 ? "HIDERS WIN" : "ROUND OVER";
             Color hc = st.Winner == 0 ? Theme.DangerText : st.Winner == 1 ? Theme.SuccessText : Theme.TextPrimary;
             var head = HudWidgets.Label(_content.transform, "headline", Theme.H1, hc, TextAnchor.UpperCenter, FontStyle.Bold);
+            head.text = headline;
             FullRow(head, y, 38f); y += 42f;
+            var report = new System.Text.StringBuilder("scoreboard: headline='").Append(headline).Append("' rows=");
             var sub = HudWidgets.Label(_content.transform, "sub", Theme.Caption, Theme.TextMuted, TextAnchor.UpperCenter, FontStyle.Bold);
             sub.text = $"ROUND {st.RoundNumber}   -   {players.Count} PLAYERS";
             FullRow(sub, y, 16f); y += 26f;
@@ -106,11 +126,16 @@ namespace PropHunt.UI.Hud
             y += RowH + 4f;
 
             // --- leaderboard rows ---
-            int rank = 1;
+            // Standard competition ranking, the same rule as the phone's board: equal scores share a place and the
+            // next score skips the places they took (1, 1, 3). Striping follows the row, not the place.
+            int rank = 0, row = 0, previousScore = 0;
             foreach (var p in players)
             {
+                row++;
+                if (row == 1 || p.SessScore != previousScore) { rank = row; previousScore = p.SessScore; }
+                report.Append(rank).Append(':').Append(p.SessScore).Append(row < players.Count ? "," : "");
                 bool isLocal = p.SteamId == localId;
-                var bg = HudWidgets.Pill(_content.transform, "row", isLocal ? Theme.AccentSubtle : Theme.WithAlpha(Theme.BgElevated, (rank % 2 == 0) ? 0.32f : 0.16f));
+                var bg = HudWidgets.Pill(_content.transform, "row", isLocal ? Theme.AccentSubtle : Theme.WithAlpha(Theme.BgElevated, (row % 2 == 0) ? 0.32f : 0.16f));
                 if (isLocal) HudWidgets.Outline(bg, Theme.WithAlpha(Theme.AccentBorder, 0.7f));
                 TopLeft(bg, 0f, y, ContentW, RowH - 2f);
 
@@ -121,8 +146,9 @@ namespace PropHunt.UI.Hud
                 Cell(_content.transform, "catch", p.CatchesMade.ToString(), Theme.TextMuted, Theme.Body, TextAnchor.MiddleRight, FontStyle.Normal, CCatch, y, WCatch, RowH);
                 Cell(_content.transform, "surv", p.SurvivedSeconds + "s", Theme.TextMuted, Theme.Body, TextAnchor.MiddleRight, FontStyle.Normal, CSurv, y, WSurv, RowH);
                 Cell(_content.transform, "score", p.SessScore.ToString(), Theme.TextPrimary, Theme.Body, TextAnchor.MiddleRight, FontStyle.Bold, CScore, y, WScore, RowH);
-                y += RowH; rank++;
+                y += RowH;
             }
+            _report = report.ToString();
 
             // size the card to its content
             float h = y + 26f + 26f;
@@ -178,17 +204,20 @@ namespace PropHunt.UI.Hud
         private static List<Award> BuildAwards(List<PlayerState> players)
         {
             var list = new List<Award>();
-            AddAward(list, players, "Top Hunter", p => p.CatchesMade, v => $"{v} catches");
+            AddAward(list, players, "Top Hunter", p => p.CatchesMade, v => Count(v, "catch", "catches"));
             // NOT caught. SurvivedSeconds is also stamped at the moment a hider IS caught (it is how long they lasted),
             // so under the Spectator rule - where a caught hider keeps the Hider role and only gains Eliminated - the
             // player with the most seconds could be someone who died, and the table then called its own "Survivor"
             // Caught. If nobody lasted the round the award is simply absent, which is the truth.
             AddAward(list, players, "Survivor",
                      p => p.Role == PlayerRole.Hider && !p.Eliminated ? p.SurvivedSeconds : 0, v => $"{v}s alive");
-            AddAward(list, players, "Trickster", p => p.DecoyBaits, v => $"{v} decoy baits");
-            AddAward(list, players, "Shocker", p => p.StunsLanded, v => $"{v} stuns");
+            AddAward(list, players, "Trickster", p => p.DecoyBaits, v => Count(v, "decoy bait", "decoy baits"));
+            AddAward(list, players, "Shocker", p => p.StunsLanded, v => Count(v, "stun", "stuns"));
             return list;
         }
+
+        /// <summary>"1 catch", "3 catches": the award line reads as English for a count of one.</summary>
+        internal static string Count(int v, string one, string many) => $"{v} {(v == 1 ? one : many)}";
 
         private static void AddAward(List<Award> list, List<PlayerState> players, string title, Func<PlayerState, int> sel, Func<int, string> fmt)
         {

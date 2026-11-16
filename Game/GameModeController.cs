@@ -122,7 +122,15 @@ namespace PropHunt.Game
         /// <summary>Seconds until the host reshuffles props, or -1 when none is due. Derived from the synced hunt start
         /// and interval, so every client counts the same instant down without a field for it.</summary>
         internal int SecondsToPropRotation => RoundLogic.SecondsToPropRotation(_state, _settings, NowUnix());
+#if DEBUG
+        /// <summary>A crosshair target name forced by the phhud test command; null = the real picker decides.</summary>
+        internal string DebugLookOverride;
+        internal string LookTargetName => DebugLookOverride ?? (_picker != null ? _picker.CurrentTargetName : null);
+#else
         internal string LookTargetName => _picker != null ? _picker.CurrentTargetName : null;
+#endif
+        /// <summary>The hider's becomable-prop markers; null before the highlighter exists.</summary>
+        internal PropHighlighter Highlighter => _highlighter;
         internal int LookTargetId => _picker != null ? _picker.CurrentTargetId : -1;
         /// <summary>True when the local player (EITHER role) is aiming at a becomable world prop. Vanilla world
         /// interaction is suppressed in that case so a prop can never be picked up during a round (and, for a
@@ -238,7 +246,7 @@ namespace PropHunt.Game
             => (id != 0 && _state.Players.TryGetValue(id, out var p)) ? p.PropId : -1;
         internal string LocalPropName
         {
-            get { int pid = WornPropId; return pid >= 0 ? PropHunt.Disguise.PropCatalog.ById(pid)?.Name : null; }
+            get { int pid = WornPropId; return pid >= 0 ? PropHunt.Disguise.PropNames.Display(PropHunt.Disguise.PropCatalog.ById(pid)) : null; }
         }
         /// <summary>Whether the local player's prop rotation is frozen ([F] toggles it).</summary>
         internal bool LocalLocked
@@ -2270,6 +2278,10 @@ namespace PropHunt.Game
         /// It never resolves to a Player object, which every per-player path already tolerates.</summary>
         internal const ulong DebugStandInMember = 1UL;
         internal static bool DebugSoloMode;
+
+        /// <summary>Drop the cached member list, so a solo switch takes effect on the very next read instead of
+        /// after the cache window - BeginMatch counts members in the same frame phsolo turns solo mode on.</summary>
+        internal void DebugForgetMembers() { _memberIdsAt = -99f; }
 #endif
 
         private static bool _loggedMemberFault;

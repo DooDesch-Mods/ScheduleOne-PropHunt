@@ -45,9 +45,15 @@ namespace PropHunt.Quests
         {
             try
             {
-                using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("PropHunt.Assets.phone_icon.png"))
+                // The phone app's own icon, embedded with the Sideload bundle, so the journal and the home screen match.
+                const string resource = "PropHunt.Assets.prophunt.icon.png";
+                using (var s = Assembly.GetExecutingAssembly().GetManifestResourceStream(resource))
                 {
-                    if (s == null) return null;
+                    if (s == null)
+                    {
+                        Core.Log.Warning("guide quest icon not embedded (" + resource + "); the journal shows no icon");
+                        return null;
+                    }
                     var bytes = new byte[s.Length];
                     int read = 0;
                     while (read < bytes.Length) { int n = s.Read(bytes, read, bytes.Length - read); if (n <= 0) break; read += n; }
@@ -59,10 +65,15 @@ namespace PropHunt.Quests
                         if (sp != null) sp.hideFlags = HideFlags.DontUnloadUnusedAsset;
                         return sp;
                     }
+                    Core.Log.Warning("guide quest icon could not be decoded; the journal shows no icon");
                     return null;
                 }
             }
-            catch { return null; }
+            catch (System.Exception e)
+            {
+                Core.Log.Warning("guide quest icon failed to load: " + e.Message);
+                return null;
+            }
         }
 
         protected override void OnCreated()
