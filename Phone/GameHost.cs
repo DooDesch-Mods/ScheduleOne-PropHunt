@@ -421,15 +421,18 @@ namespace PropHunt.Phone
                 if (c?.State?.Players == null) return list;
 
                 var players = new List<PlayerState>(c.State.Players.Values);
-                Award(list, players, "Top Hunter", p => p.CatchesMade, "catches");
-                Award(list, players, "Survivor", p => p.Role == PlayerRole.Hider ? p.SurvivedSeconds : 0, "s alive");
-                Award(list, players, "Trickster", p => p.DecoyBaits, "decoy baits");
-                Award(list, players, "Shocker", p => p.StunsLanded, "stuns");
+                Award(list, players, "Top Hunter", p => p.CatchesMade, v => PropHunt.UI.Hud.Scoreboard.Count(v, "catch", "catches"));
+                // A caught hider also carries SurvivedSeconds (how long they lasted), so only a hider still standing
+                // counts, as on the round-end card.
+                Award(list, players, "Survivor", p => p.Role == PlayerRole.Hider && !p.Eliminated ? p.SurvivedSeconds : 0,
+                      v => v.ToString(CultureInfo.InvariantCulture) + "s alive");
+                Award(list, players, "Trickster", p => p.DecoyBaits, v => PropHunt.UI.Hud.Scoreboard.Count(v, "decoy bait", "decoy baits"));
+                Award(list, players, "Shocker", p => p.StunsLanded, v => PropHunt.UI.Hud.Scoreboard.Count(v, "stun", "stuns"));
                 return list;
             }
         }
 
-        private void Award(List<AwardView> list, List<PlayerState> players, string label, Func<PlayerState, int> pick, string unit)
+        private void Award(List<AwardView> list, List<PlayerState> players, string label, Func<PlayerState, int> pick, Func<int, string> format)
         {
             PlayerState best = null;
             int bestValue = 0;
@@ -444,7 +447,7 @@ namespace PropHunt.Phone
             {
                 Label = label,
                 Name = NameOf(best.SteamId),
-                Value = bestValue.ToString(CultureInfo.InvariantCulture) + " " + unit,
+                Value = format(bestValue),
             });
         }
 
