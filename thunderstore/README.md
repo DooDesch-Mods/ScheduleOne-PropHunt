@@ -18,7 +18,7 @@
 > **[SideHustle.doodesch.de](https://sidehustle.doodesch.de)** - how many players are in, and what the session runs.
 > You still join from the Side Hustle menu in-game.
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue)
+![Version](https://img.shields.io/badge/version-1.3.9-blue)
 ![Game](https://img.shields.io/badge/game-Schedule%20I-purple)
 ![MelonLoader](https://img.shields.io/badge/MelonLoader-0.7.3+-green)
 ![S1API](https://img.shields.io/badge/S1API-required-orange)
@@ -81,9 +81,10 @@ mod-manager profile. Looking for people to play with? Hop in the [Discord](https
 
 Join the DooDesch Mods Discord: update pings, polls on what comes next, and playtests of new mods.
 
-If you have fun with it, leaving a rating (or an endorsement over on Nexus) really helps
-other people find it - ty either way, and lemme know if anything breaks or you've got ideas 🙂
-
 Thanks to the beta testers: DonyThePony, fadestyle, xAkitoh, godofn00bs.
 
 Provided as-is under the MIT License. Built on [S1API](https://github.com/ifBars/S1API) by ifBars.
+
+This mod is written with help from generative AI tools (Anthropic Claude, OpenAI Codex).
+
+If you have fun with it, a like on the [Thunderstore page](https://thunderstore.io/c/schedule-i/p/DooDesch/PropHunt/) really helps other people find it (thumbs up next to Download, you need to be logged in) - ty either way, and lemme know if anything breaks or you've got ideas
