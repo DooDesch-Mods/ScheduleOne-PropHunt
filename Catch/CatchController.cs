@@ -10,7 +10,7 @@ namespace PropHunt.Catch
     /// Shot resolution (one sweep, nearest relevant hit wins):
     ///   1. A single SphereCastAll (radius 0.35) runs along the camera aim as far as the weapon reaches -
     ///      the weapon's own range for a gun, the host's TagRange for melee. Triggers are INCLUDED: the
-    ///      disguise/decoy hitboxes are triggers so they never block movement.
+    ///      decoy hitboxes are triggers so they never block movement.
     ///   2. Each hit is line-of-sight checked against the point on the sweep AXIS, then classified:
     ///      a decoy ("ph_decoy_&lt;i&gt;"), a disguised hider via their prop hitbox ("ph_prop_&lt;steamId&gt;"), or an
     ///      UNDISGUISED player via their capsule. The clone is not parented to the player, so a disguised
@@ -33,36 +33,53 @@ namespace PropHunt.Catch
         // nothing, and the shot only lands where the weapon actually fired.
         internal void Tick() { }
 
+#if DEBUG
+        /// <summary>phfire: the world point the next resolved shot aims at, consumed by that shot.</summary>
+        internal static Vector3? DebugAimPoint;
+#endif
+
         /// <summary>Resolve a fired shot into a decoy/prop hit. <paramref name="maxRange"/> is the weapon's reach
         /// (generous for guns, short for melee). Called from the weapon-fire Harmony postfix.</summary>
         internal void ResolveShot(float maxRange)
         {
-            if (_ctl.Phase != RoundPhase.Hunting || _ctl.LocalRole != PlayerRole.Hunter) return;
+            if (_ctl.Phase != RoundPhase.Hunting || _ctl.LocalRole != PlayerRole.Hunter)
+            {
+                Core.LogDebug($"shot ignored: phase={_ctl.Phase} role={_ctl.LocalRole}, catches need a hunter in Hunting.");
+                return;
+            }
             try
             {
                 var lp = Player.Local;
                 // A tased hunter's Fire() is skipped by the prefix, but Harmony still runs this postfix - so re-check.
-                if (lp != null && lp.IsTased) return;
-                if (_ctl.LocalDowned) return;   // knocked down (FF / concussion) -> can't shoot or catch
+                if (lp != null && lp.IsTased) { Core.LogDebug("shot ignored: the hunter is tased."); return; }
+                if (_ctl.LocalDowned) { Core.LogDebug("shot ignored: the hunter is knocked down."); return; }
 
                 var cam = PlayerSingleton<PlayerCamera>.Instance;
-                if (cam == null || cam.Camera == null) return;
+                if (cam == null || cam.Camera == null) { Core.Log.Warning("shot dropped: no player camera to aim from."); return; }
                 var t = cam.Camera.transform;
+                var fwd = t.forward;
+#if DEBUG
+                // phfire: aim this one shot at a world point instead of the camera's forward.
+                if (DebugAimPoint.HasValue) { fwd = (DebugAimPoint.Value - t.position).normalized; DebugAimPoint = null; }
+#endif
                 // The catch ray reaches as far as the weapon does (passed in): generous for guns - if your aim is on
                 // the prop when you fire, the hit counts across the play area - and short for melee. Difficulty stays
                 // in the PROP SIZE (small prop = small target).
 
                 // ONE generous sphere sweep along the aim. A thin ray needed pixel-perfect aim (decoys felt
                 // impossible to hit). The sweep widens the acceptance so you only need to be roughly on target;
-                // the disguise/decoy now carries a prop-sized trigger collider, and the host re-validates a
-                // player tag with its own prop-size lateral gate, so this stays fair.
+                // the disguise and the decoy carry a prop-sized collider, and the host re-validates a player tag with
+                // its own prop-size lateral gate, so this stays fair.
                 const float sweepR = 0.35f;
-                // MUST include trigger colliders: the disguise's prop hitbox (and decoys) are TRIGGERS so they never
-                // block movement. The default SphereCastAll skips triggers, which is why a shot passed straight through
-                // a hider's prop hitbox and never registered a catch. QueryTriggerInteraction.Collide hits them.
-                var hits = Physics.SphereCastAll(t.position, sweepR, t.forward, maxRange, ~0, QueryTriggerInteraction.Collide);
-                if (hits == null || hits.Length == 0) return;
+                // MUST include trigger colliders: the decoy hitboxes are TRIGGERS so they never block movement, and
+                // the default SphereCastAll skips triggers. QueryTriggerInteraction.Collide hits them.
+                // Typed as a managed array on purpose: the IL2CPP array converts to a copy, and Array.Sort on the
+                // IL2CPP array itself would sort that copy and leave the hits the loop reads unsorted.
+                RaycastHit[] hits = Physics.SphereCastAll(t.position, sweepR, fwd, maxRange, ~0, QueryTriggerInteraction.Collide);
+                if (hits == null || hits.Length == 0) { Core.LogDebug($"shot missed: the sweep from {t.position} hit nothing."); return; }
                 System.Array.Sort(hits, (System.Comparison<RaycastHit>)((a, b) => a.distance.CompareTo(b.distance)));
+                int blocked = 0;
+                Transform self = lp != null ? lp.transform : null;
 
                 // nearest relevant hit wins: a decoy, a DISGUISED hider (via their "ph_prop_<id>" hitbox), or an
                 // UNDISGUISED player (via their capsule). The disguise clone is NOT parented to the player (it is
@@ -71,7 +88,7 @@ namespace PropHunt.Catch
                 for (int i = 0; i < hits.Length; i++)
                 {
                     var h = hits[i];
-                    if (!HasLineOfSight(t.position, t.forward, h, sweepR)) continue;   // a wall between shooter and this hit -> no through-wall hit
+                    if (!HasLineOfSight(t.position, fwd, h, sweepR, self)) { blocked++; continue; }   // a wall between shooter and this hit -> no through-wall hit
                     if (IsDecoy(h.transform, out int decoyIdx))
                     {
                         SpawnPropHitFx(h.point);   // immediate local hit feedback on the decoy (it reads as a real prop)
@@ -86,7 +103,7 @@ namespace PropHunt.Catch
                         // by ImpactFxSuppressPatch. The host re-validates before accepting.
                         SpawnPropHitFx(h.point);
                         PropHunt.UI.Hud.HudController.ShowHitmarker();
-                        _ctl.RequestClaimTag(propVictim, t.forward);
+                        _ctl.RequestClaimTag(propVictim, fwd);
                         Core.LogDebug($"claim tag on {propVictim} via prop hitbox (size {PropCatalog.SizeOf(_ctl.PropIdOf(propVictim)):F2})");
                         return;
                     }
@@ -105,26 +122,30 @@ namespace PropHunt.Catch
                         if (_ctl.Settings != null && _ctl.Settings.FriendlyFire)
                         {
                             PropHunt.UI.Hud.HudController.ShowHitmarker();
-                            _ctl.RequestHitHunter(victimId, t.forward);
+                            _ctl.RequestHitHunter(victimId, fwd);
                             Core.LogDebug($"friendly-fire hit on hunter {victimId}");
                             return;
                         }
                         continue;
                     }
                     PropHunt.UI.Hud.HudController.ShowHitmarker();
-                    _ctl.RequestClaimTag(victimId, t.forward);
+                    _ctl.RequestClaimTag(victimId, fwd);
                     Core.LogDebug($"claim tag on {victimId} via capsule (undisguised)");
                     return;
                 }
+                Core.LogDebug($"shot missed: {hits.Length} hit(s), {blocked} behind a wall, nearest '{hits[0].transform.name}' " +
+                              $"at {hits[0].distance:0.0} m from {t.position}; no decoy, prop hitbox or catchable player.");
             }
-            catch (System.Exception e) { Core.LogDebug("catch tick failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Error("shot resolve failed: " + e); }
         }
 
         // ---- helpers ----
 
         // True if nothing SOLID sits between the shooter's eye and the hit (a wall blocks the shot). Triggers are
-        // ignored (the prop hitboxes + decoys are triggers), so only real level geometry occludes; a blocker at ~the
-        // target's distance is the target itself, not a wall. Fail-open on error so shots never silently die.
+        // ignored, and so are the shooter's own colliders: the camera sits inside the shooter's CharacterController
+        // and capsule, and a ray from there can report them a few centimetres out, which blocked every hit behind
+        // them. A blocker at about the target's distance is the target itself (a prop hitbox is solid), not a wall.
+        // Fail-open on error so shots never silently die.
         //
         // The test runs against the point on the SWEEP AXIS at the hit's distance, NOT against hit.point:
         //  - hit.point is where the 0.35m sphere first touched, so for a prop standing against a wall it sits LATERALLY
@@ -132,17 +153,30 @@ namespace PropHunt.Catch
         //  - when the sphere already OVERLAPS a collider at the sweep origin (shooting from point-blank), Unity reports
         //    distance 0 and point (0,0,0); a line to the world origin is blocked by whatever happens to be there.
         // The axis point is by construction inside the volume the sphere just swept through, so it only reports real walls.
-        private static bool HasLineOfSight(Vector3 from, Vector3 dir, RaycastHit hit, float sweepR)
+        private static bool HasLineOfSight(Vector3 from, Vector3 dir, RaycastHit hit, float sweepR, Transform self)
         {
             try
             {
                 // overlap at the muzzle: the target is already touching us, there is no room for a wall in between
                 if (hit.distance <= 0.001f) return true;
-                Vector3 to = from + dir * hit.distance;
-                if (!Physics.Linecast(from, to, out var block, ~0, QueryTriggerInteraction.Ignore)) return true;   // clear line
-                return block.distance >= hit.distance - (sweepR + 0.1f);   // blocker at/after the target = the target, not a wall
+                RaycastHit[] blocks = Physics.RaycastAll(from, dir, hit.distance, ~0, QueryTriggerInteraction.Ignore);
+                if (blocks == null) return true;
+                float nearest = float.MaxValue;
+                for (int i = 0; i < blocks.Length; i++)
+                {
+                    var b = blocks[i];
+                    if (b.collider == null) continue;
+                    if (self != null && b.transform.IsChildOf(self)) continue;   // the shooter's own body
+                    if (b.distance < nearest) nearest = b.distance;
+                }
+                if (nearest == float.MaxValue) return true;   // clear line
+                return nearest >= hit.distance - (sweepR + 0.1f);   // blocker at/after the target = the target, not a wall
             }
-            catch { return true; }
+            catch (System.Exception e)
+            {
+                Core.Log.Warning("line of sight check failed, counting the hit as visible: " + e.Message);
+                return true;
+            }
         }
 
         /// <summary>Show the game's impact particle at a world point (on the prop), so a hit registers visibly for

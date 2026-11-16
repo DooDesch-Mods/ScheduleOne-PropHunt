@@ -158,7 +158,7 @@ namespace PropHunt.Disguise
         {
             try
             {
-                if (!Il2CppScheduleOne.Equipping.Equippable_TrashGrabber.IsEquipped) return;
+                if (!PropHunt.Patches.RoundInteractionGate.TrashGrabberEquipped) return;
                 // [E], not the mouse. The grabber picks trash up through the INTERACTION system, so the key a hunter
                 // actually presses at a suspicious bin is the interact key - the mouse button was simply the wrong one
                 // and nothing ever fired. Reading it raw is fine: Unity input is not consumed by the interaction that
@@ -260,7 +260,7 @@ namespace PropHunt.Disguise
             int foundId = -1; string foundName = null;
             // look at EVERY hit along the ray and take the nearest BECOMABLE one (junk colliders in front no
             // longer mask the prop behind them, which was making the crosshair flicker on/off)
-            var hits = Physics.RaycastAll(t.position, t.forward, 8f);
+            RaycastHit[] hits = Physics.RaycastAll(t.position, t.forward, 8f);
             if (hits != null && hits.Length > 0)
             {
                 System.Array.Sort(hits, (System.Comparison<RaycastHit>)((a, b) => a.distance.CompareTo(b.distance)));
