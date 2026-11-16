@@ -25,6 +25,8 @@
 
 [![MLVScan PropHunt.dll](https://mlvscan.com/attestations/att_F4Zjd6HQlOJ2qx3KymbU3oqu/badge.svg)](https://mlvscan.com/attestations/att_F4Zjd6HQlOJ2qx3KymbU3oqu)
 
+![The PropHunt phone app next to a hider among the trash cans](https://raw.githubusercontent.com/DooDesch-Mods/ScheduleOne-PropHunt/main/docs/img/header.jpg)
+
 ## Features
 
 - **Become almost anything.** Look at a world prop and press **`E`** to turn into it, an
@@ -44,10 +46,21 @@
   hunter's weapon, play-area size, taunts, time of day and more - all set in-game from the
   PropHunt phone app, with presets. Everyone else sees the live state (players, timer,
   scoreboard) but only the host changes the rules or kicks a player.
+- **The round at a glance.** The app reads like a departure board: phase, time left and who
+  is still hiding on one screen. The rules screen shows which preset is live and marks every
+  value you changed, the Players list marks your Steam friends, and ending a round or the
+  match asks first.
 - **Made for a full lobby.** Public lobbies let non-friends join straight from the lobby
   browser - as far as I can tell nobody else has gotten public lobbies working for Schedule I
   yet. Side Hustle raises the lobby cap for you, so you can fill a big lobby. Hiders play in
   third person; you get a spectator cam once you are caught.
+
+## Screenshots
+
+| | |
+|---|---|
+| ![A hider disguised as a prop](https://raw.githubusercontent.com/DooDesch-Mods/ScheduleOne-PropHunt/main/docs/img/hiding.jpg) | ![The hunter searching the area](https://raw.githubusercontent.com/DooDesch-Mods/ScheduleOne-PropHunt/main/docs/img/hunter.jpg) |
+| ![The round result](https://raw.githubusercontent.com/DooDesch-Mods/ScheduleOne-PropHunt/main/docs/img/round-end.jpg) | ![The PropHunt app during the hunt](https://raw.githubusercontent.com/DooDesch-Mods/ScheduleOne-PropHunt/main/docs/img/app-board.jpg) |
 
 ## Requirements
 
@@ -59,6 +72,7 @@
 | Side Hustle | [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2232) - the gamemode hub PropHunt launches from; also raises the lobby cap for you |
 | SteamNetworkLib | [ifBars/SteamNetworkLib_Il2Cpp](https://thunderstore.io/c/schedule-i/p/ifBars/SteamNetworkLib_Il2Cpp/) - multiplayer state sync |
 | WhatsDab | [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2361) - the in-round chat |
+| Sideload | [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2360) - runs the PropHunt phone app |
 
 ## Installation
 
@@ -72,13 +86,13 @@
 ### Thunderstore mod manager
 
 Install from the [Thunderstore page](https://thunderstore.io/c/schedule-i/p/DooDesch/PropHunt/) with a mod manager (r2modman / Gale) from the Schedule I community; the
-dependencies (MelonLoader, S1API, Side Hustle, SteamNetworkLib) are pulled
+dependencies (MelonLoader, S1API, Side Hustle, SteamNetworkLib, WhatsDab, Sideload) are pulled
 in automatically.
 
 ### Manual
 
 1. Install **MelonLoader 0.7.3** for Schedule I and launch the game once.
-2. Install **S1API**, **Side Hustle** and **SteamNetworkLib** per their own instructions.
+2. Install **S1API**, **Side Hustle**, **SteamNetworkLib**, **WhatsDab** and **Sideload** per their own instructions.
 3. Drop **`PropHunt.dll`** into your Schedule I `Mods/` folder.
 
 Everyone who plays together needs the **same mods and the same build** - the game warns

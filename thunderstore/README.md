@@ -26,6 +26,8 @@
 
 [![MLVScan PropHunt.dll](https://mlvscan.com/attestations/att_F4Zjd6HQlOJ2qx3KymbU3oqu/badge.svg)](https://mlvscan.com/attestations/att_F4Zjd6HQlOJ2qx3KymbU3oqu)
 
+![The PropHunt phone app next to a hider among the trash cans](https://raw.githubusercontent.com/DooDesch-Mods/ScheduleOne-PropHunt/main/docs/img/header.jpg)
+
 ## Features
 
 - **Become almost anything.** Look at a prop and press `E` to turn into it (an exact copy),
@@ -39,6 +41,8 @@
 - **The host runs it from their phone.** Round length, roles, prop HP, abilities, the
   hunter's weapon, play area, taunts and more, with presets. Clients follow the live state;
   only the host changes the rules or kicks players.
+- **The round at a glance.** The app reads like a departure board: phase, time left and who
+  is still hiding on one screen. The rules screen marks every value you changed from the preset.
 - **Made for a full lobby.** Public lobbies let non-friends join straight from the lobby
   browser - as far as I can tell nobody else has gotten public lobbies working for Schedule I
   yet. Side Hustle raises the lobby cap for you, so you can fill a big lobby; hiders play in
@@ -54,6 +58,12 @@ Pick one on the host form and start - no config files, and you can still tweak a
 - **Ranked Rules** - competitive, low randomness, no friendly fire. Best for 4-8.
 - Plus **Side Hustle Party**, **Deep Cover** and **Last Prop Standing** for bigger or slower lobbies.
 
+## Screenshots
+
+![A hider disguised as a prop](https://raw.githubusercontent.com/DooDesch-Mods/ScheduleOne-PropHunt/main/docs/img/hiding.jpg)
+
+![The PropHunt app during the hunt](https://raw.githubusercontent.com/DooDesch-Mods/ScheduleOne-PropHunt/main/docs/img/app-board.jpg)
+
 ## Requirements
 
 - [MelonLoader](https://github.com/LavaGang/MelonLoader) `0.7.3+` - the mod loader.
@@ -61,6 +71,7 @@ Pick one on the host form and start - no config files, and you can still tweak a
 - [Side Hustle](https://thunderstore.io/c/schedule-i/p/DooDesch/SideHustle/) - the gamemode hub PropHunt launches from; also raises the lobby cap for you.
 - [SteamNetworkLib](https://thunderstore.io/c/schedule-i/p/ifBars/SteamNetworkLib_Il2Cpp/) - multiplayer state sync.
 - [WhatsDab](https://thunderstore.io/c/schedule-i/p/DooDesch/WhatsDab/) - the in-round chat.
+- [Sideload](https://thunderstore.io/c/schedule-i/p/DooDesch/Sideload/) - runs the PropHunt phone app.
 
 A mod manager installs all of these automatically.
 
