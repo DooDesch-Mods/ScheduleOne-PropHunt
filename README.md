@@ -2,21 +2,28 @@
 
 > 🛟 **Need help or found a bug?** Get support at [support.doodesch.de/prophunt](https://support.doodesch.de/prophunt).
 
+**Download:** [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2283) · [Thunderstore](https://thunderstore.io/c/schedule-i/p/DooDesch/PropHunt/) · [GitHub Releases](https://github.com/DooDesch-Mods/ScheduleOne-PropHunt/releases)
+
+📖 **Documentation:** [docs.doodesch.de/mods/prophunt/](https://docs.doodesch.de/mods/prophunt/)
+
 > A multiplayer prop-hunt gamemode for Schedule I - as far as I know the first prop hunt for
 > this game. Hiders look at any world prop and become an exact copy of it (a crate, a bin, a
 > traffic cone) and blend into the map; hunters get a weapon and track them down before the
-> timer runs out. Hosted and launched from the [Side Hustle](https://github.com/DooDesch-Mods/ScheduleOne-SideHustle)
+> timer runs out. Hosted and launched from the [Side Hustle](https://www.nexusmods.com/schedule1/mods/2232)
 > menu and run from your in-game phone. Built on [S1API](https://github.com/ifBars/S1API).
 
 > 🌐 **Looking for a round?** Open PropHunt lobbies are listed live at
 > **[SideHustle.doodesch.de](https://sidehustle.doodesch.de)** - how many players are in, and what the session runs.
 > You still join from the Side Hustle menu in-game.
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue)
+![Version](https://img.shields.io/badge/version-1.3.9-blue)
 ![Game](https://img.shields.io/badge/game-Schedule%20I-purple)
 ![MelonLoader](https://img.shields.io/badge/MelonLoader-0.7.3+-green)
 ![S1API](https://img.shields.io/badge/S1API-required-orange)
 ![Status](https://img.shields.io/badge/status-working-brightgreen)
+[![Discord](https://mods.doodesch.de/img/badge.svg)](https://mods.doodesch.de) [![Polyfill](https://polyfill.doomods.com/badge/prophunt.svg)](https://polyfill.doomods.com/mod/prophunt)
+
+[![MLVScan PropHunt.dll](https://mlvscan.com/attestations/att_F4Zjd6HQlOJ2qx3KymbU3oqu/badge.svg)](https://mlvscan.com/attestations/att_F4Zjd6HQlOJ2qx3KymbU3oqu)
 
 ## Features
 
@@ -46,18 +53,25 @@
 
 | Component | Version / Source |
 |-----------|------------------|
-| Schedule I | `0.4.6f11` (IL2CPP, current Steam public build) |
+| Schedule I | `0.4.7f12` (IL2CPP, current Steam public build) |
 | MelonLoader | `0.7.3+` |
 | S1API | [ifBars/S1API_Forked](https://thunderstore.io/c/schedule-i/p/ifBars/S1API_Forked/) - the Schedule I modding API |
-| Side Hustle | [DooDesch/SideHustle](https://thunderstore.io/c/schedule-i/p/DooDesch/SideHustle/) - the gamemode hub PropHunt launches from; also raises the lobby cap for you |
+| Side Hustle | [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2232) - the gamemode hub PropHunt launches from; also raises the lobby cap for you |
 | SteamNetworkLib | [ifBars/SteamNetworkLib_Il2Cpp](https://thunderstore.io/c/schedule-i/p/ifBars/SteamNetworkLib_Il2Cpp/) - multiplayer state sync |
-| WhatsDab | [DooDesch/WhatsDab](https://thunderstore.io/c/schedule-i/p/DooDesch/WhatsDab/) - the in-round chat |
+| WhatsDab | [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2361) - the in-round chat |
 
 ## Installation
 
-### Recommended: a Thunderstore mod manager
+### Recommended: Nexus Mods
 
-Install with a mod manager (r2modman / Gale) from the Schedule I community; the
+1. Install **MelonLoader 0.7.3** for Schedule I ([melonwiki.xyz](https://melonwiki.xyz/)).
+2. Download PropHunt from [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2283) and install it with Vortex,
+   or put **`PropHunt.dll`** into your Schedule I `Mods/` folder.
+3. Get the mods under Requirements the same way (third-party ones from their Thunderstore pages).
+
+### Thunderstore mod manager
+
+Install from the [Thunderstore page](https://thunderstore.io/c/schedule-i/p/DooDesch/PropHunt/) with a mod manager (r2modman / Gale) from the Schedule I community; the
 dependencies (MelonLoader, S1API, Side Hustle, SteamNetworkLib) are pulled
 in automatically.
 
@@ -92,7 +106,7 @@ development builds and are not shipped in the release.
 4. The host starts the match and each round from the in-game **PropHunt phone app**.
 
 It's built for a group, so grab a few friends or open a public lobby. Looking for people to
-play with (or need a hand setting it up)? Hop in the [Discord](https://discord.gg/aN3u7BTa3h).
+play with (or need a hand setting it up)? Hop in the [Discord](https://mods.doodesch.de).
 
 ### Controls
 
@@ -132,15 +146,23 @@ Press `H` any time for the in-game controls overlay.
 - Side Hustle can auto-disable incompatible mods for the session (PropHunt asks for a
   required-mods-only lobby by default).
 
+## Community
+
+[![DooDesch Mods on Discord](https://mods.doodesch.de/img/card.svg)](https://mods.doodesch.de)
+
+Join the DooDesch Mods Discord: update pings, polls on what comes next, and playtests of new mods.
+
 ## Credits
 
 - **DooDesch** - mod author.
 - **[ifBars/S1API](https://github.com/ifBars/S1API)** - the modding API this is built on,
   plus SteamNetworkLib.
-- **[Side Hustle](https://github.com/DooDesch-Mods/ScheduleOne-SideHustle)** - the gamemode
+- **[Side Hustle](https://www.nexusmods.com/schedule1/mods/2232)** - the gamemode
   hub PropHunt runs inside.
 - **Testers** - DonyThePony, fadestyle, xAkitoh, godofn00bs. Thanks for the playtesting.
 
 ## License
 
 Provided as-is under the [MIT License](LICENSE.md).
+
+This mod is written with help from generative AI tools (Anthropic Claude, OpenAI Codex).

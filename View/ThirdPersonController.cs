@@ -50,10 +50,11 @@ namespace PropHunt.View
                 SetArmsVisible(!active);
                 // Show your OWN body to your camera only in third person AND when not disguised (a disguised hider
                 // should see their prop, not their body). First person / disguised -> hidden (no floating head).
-                // Re-applied EVERY frame (not change-tracked) because the game resets local visibility each frame.
+                // Asserted every frame because ragdoll and camera code also switch the avatar layer; BodyVisibility
+                // only calls into the game when the state differs.
                 SetOwnBodyVisible(active && _ctl.WornPropId < 0);
             }
-            catch { }
+            catch (System.Exception e) { Core.WarnOnce("tpv-tick", "third person: tick failed: " + e.Message); }
         }
 
         // Scale the third-person pull-back to the disguise prop's largest dimension so the player frames their prop:
@@ -93,7 +94,7 @@ namespace PropHunt.View
                                            ThirdPersonView.GlobalMinDistance, ThirdPersonView.GlobalMaxDistance);
                 ThirdPersonView.Distance = Mathf.SmoothDamp(ThirdPersonView.Distance, wanted, ref _zoomVel, 0.12f);
             }
-            catch { }
+            catch (System.Exception e) { Core.WarnOnce("tpv-camera", "third person: camera framing failed: " + e.Message); }
         }
 
         private void SetOwnBodyVisible(bool visible)
@@ -101,11 +102,10 @@ namespace PropHunt.View
             try
             {
                 var lp = Player.Local;
-                if (lp == null) return;
-                lp.SetVisibleToLocalPlayer(visible);
-                if (visible) { try { lp.SetThirdPersonMeshesVisibility(true); } catch { } }   // ensure the body meshes are on
+                if (lp == null) return;   // no local player yet (loading) - nothing to show or hide
+                Compat.BodyVisibility.Set(lp, visible);
             }
-            catch { }
+            catch (System.Exception e) { Core.WarnOnce("tpv-ownbody", "third person: own body visibility failed: " + e.Message); }
         }
 
         private void SetArmsVisible(bool visible)
@@ -116,8 +116,9 @@ namespace PropHunt.View
             {
                 if (_viewmodel == null) _viewmodel = UnityEngine.Object.FindObjectOfType<ViewmodelAvatar>();
                 if (_viewmodel != null) _viewmodel.SetVisibility(visible);
+                else Core.WarnOnce("tpv-noviewmodel", "third person: no ViewmodelAvatar found - first-person arms not toggled");
             }
-            catch { }
+            catch (System.Exception e) { Core.Log.Warning("third person: arms visibility failed: " + e.Message); }
         }
 
         internal void Dispose()

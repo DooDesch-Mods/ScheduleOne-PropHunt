@@ -4,22 +4,16 @@ All notable changes to PropHunt are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.4.0] - 2026-08-08
+## [1.3.9] - 2026-11-16
 
-### Added
+### Changed
 
-- The PropHunt app is rebuilt: the round reads as a departure board, the clock is a seven-segment face, the
-  dressing room fits on one line, and it is landscape only.
-- The Players list marks everyone on your Steam friends list. A public lobby is a wall of names that mean
-  nothing until you find the two you already know.
-- The rules screen says which preset is live and marks every value you have changed away from it.
-- Ending a round or the whole match asks first. Both used to happen on the click.
+- Works on game version 0.4.7f12.
 
 ### Fixed
 
-- Opening the rules is quick again. It built every category twice and opened them all; it opens one now.
-- The preset your changes are measured against survives closing and reopening the app.
-- The round timer's digits sit centred in their slab instead of pulling to one side.
+- A knockdown throws the player 2 to 5 m back, depending on the ground. Before, they dropped on the spot.
+- A hunter's shot no longer misses a prop in plain sight because the hunter's own body counted as a wall.
 
 ## [1.3.8] - 2026-08-07
 

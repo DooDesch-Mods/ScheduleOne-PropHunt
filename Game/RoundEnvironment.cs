@@ -25,7 +25,7 @@ namespace PropHunt.Game
             try
             {
                 var tm = NetworkSingleton<TimeManager>.Instance;
-                if (tm != null) { tm.SetTimeAndSync(s.TimeOfDay); tm.SetTimeSpeedMultiplier(s.FreezeTime ? 0f : 1f); }
+                if (tm != null) { tm.SetTime_Server(s.TimeOfDay); tm.SetTimeSpeedMultiplier(s.FreezeTime ? 0f : 1f); }
                 Core.Log.Msg($"world: time set to {s.TimeOfDay}{(s.FreezeTime ? ", progression frozen" : ", progression running")}.");
                 SetSewerGoblin(s.SewerGoblin);
                 SetSewerKing(false);
@@ -124,7 +124,7 @@ namespace PropHunt.Game
         /// are clearly lit for review. Host-authoritative; no-op/safe off-host.</summary>
         internal static void LockTimeOfDay(int hhmm)
         {
-            try { var tm = NetworkSingleton<TimeManager>.Instance; if (tm != null) { tm.SetTimeAndSync(hhmm); tm.SetTimeSpeedMultiplier(0f); } }
+            try { var tm = NetworkSingleton<TimeManager>.Instance; if (tm != null) { tm.SetTime_Server(hhmm); tm.SetTimeSpeedMultiplier(0f); } }
             catch (Exception e) { Core.LogDebug("LockTimeOfDay failed: " + e.Message); }
         }
 
@@ -305,7 +305,7 @@ namespace PropHunt.Game
         {
             try
             {
-                var hits = UnityEngine.Physics.RaycastAll(pos + UnityEngine.Vector3.up * 0.3f, UnityEngine.Vector3.down, 5f);
+                UnityEngine.RaycastHit[] hits = UnityEngine.Physics.RaycastAll(pos + UnityEngine.Vector3.up * 0.3f, UnityEngine.Vector3.down, 5f);
                 if (hits != null && hits.Length > 0)
                 {
                     System.Array.Sort(hits, (System.Comparison<UnityEngine.RaycastHit>)((a, b) => a.distance.CompareTo(b.distance)));

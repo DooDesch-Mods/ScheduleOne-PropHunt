@@ -2,6 +2,12 @@
 
 > 🛟 **Need help or found a bug?** Get support at [support.doodesch.de/prophunt](https://support.doodesch.de/prophunt).
 
+> ⚠️ **A required mod is missing on Thunderstore?** Thunderstore sometimes takes one of my library mods off its listing, and then r2modman and Gale can't install it. Get it from Nexus Mods or GitHub instead and put the DLL into the `Mods` folder of your profile. Stuck? Ask in the [Discord](https://mods.doodesch.de).
+>
+> - **SideHustle:** [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2232) · [GitHub](https://github.com/DooDesch-Mods/ScheduleOne-SideHustle/releases/latest)
+> - **WhatsDab:** [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2361) · [GitHub](https://github.com/DooDesch-Mods/ScheduleOne-WhatsDab/releases/latest)
+> - **Sideload:** [Nexus Mods](https://www.nexusmods.com/schedule1/mods/2360) · [GitHub](https://github.com/DooDesch-Mods/ScheduleOne-Sideload/releases/latest)
+
 > A multiplayer prop-hunt gamemode for Schedule I - as far as I know the first prop hunt for
 > this game. Hiders look at any world prop and become an exact copy of it (a crate, a bin, a
 > traffic cone) and blend into the map; hunters get a weapon and track them down before the
@@ -12,10 +18,13 @@
 > **[SideHustle.doodesch.de](https://sidehustle.doodesch.de)** - how many players are in, and what the session runs.
 > You still join from the Side Hustle menu in-game.
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue)
+![Version](https://img.shields.io/badge/version-1.3.9-blue)
 ![Game](https://img.shields.io/badge/game-Schedule%20I-purple)
 ![MelonLoader](https://img.shields.io/badge/MelonLoader-0.7.3+-green)
 ![S1API](https://img.shields.io/badge/S1API-required-orange)
+[![Discord](https://mods.doodesch.de/img/badge.svg)](https://mods.doodesch.de) [![Polyfill](https://polyfill.doomods.com/badge/prophunt.svg)](https://polyfill.doomods.com/mod/prophunt)
+
+[![MLVScan PropHunt.dll](https://mlvscan.com/attestations/att_F4Zjd6HQlOJ2qx3KymbU3oqu/badge.svg)](https://mlvscan.com/attestations/att_F4Zjd6HQlOJ2qx3KymbU3oqu)
 
 ## Features
 
@@ -64,11 +73,18 @@ A mod manager installs all of these automatically.
 
 It's built for a group, so grab a few friends or open a public lobby. Everyone in the lobby
 needs the same mods and the same PropHunt build - easiest if you all install from the same
-mod-manager profile. Looking for people to play with? Hop in the [Discord](https://discord.gg/aN3u7BTa3h).
+mod-manager profile. Looking for people to play with? Hop in the [Discord](https://mods.doodesch.de).
 
-If you have fun with it, leaving a rating (or an endorsement over on Nexus) really helps
-other people find it - ty either way, and lemme know if anything breaks or you've got ideas 🙂
+## Community
+
+[![DooDesch Mods on Discord](https://mods.doodesch.de/img/card.svg)](https://mods.doodesch.de)
+
+Join the DooDesch Mods Discord: update pings, polls on what comes next, and playtests of new mods.
 
 Thanks to the beta testers: DonyThePony, fadestyle, xAkitoh, godofn00bs.
 
 Provided as-is under the MIT License. Built on [S1API](https://github.com/ifBars/S1API) by ifBars.
+
+This mod is written with help from generative AI tools (Anthropic Claude, OpenAI Codex).
+
+If you have fun with it, a like on the [Thunderstore page](https://thunderstore.io/c/schedule-i/p/DooDesch/PropHunt/) really helps other people find it (thumbs up next to Download, you need to be logged in) - ty either way, and lemme know if anything breaks or you've got ideas

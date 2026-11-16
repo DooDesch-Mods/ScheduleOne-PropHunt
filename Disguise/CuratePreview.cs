@@ -85,7 +85,7 @@ namespace PropHunt.Disguise
             _rot[id] = _entry.SourceRoot.transform.rotation;
             go.transform.rotation = _rot[id];
             if (PropClone.TryGetPropBoundsFromSource(_entry, out var lb)) _lb[id] = lb;
-            try { p.SetThirdPersonMeshesVisibility(false); p.SetVisibleToLocalPlayer(false); } catch { }
+            Compat.BodyVisibility.Set(p, false);
             _clones[id] = go;
         }
 
@@ -105,7 +105,7 @@ namespace PropHunt.Disguise
             if (_clones.TryGetValue(id, out var go) && go != null) { try { Object.Destroy(go); } catch { } }
             _clones.Remove(id); _lb.Remove(id); _rot.Remove(id);
             var p = PlayerRegistry.Get(id);
-            if (p != null) try { p.SetThirdPersonMeshesVisibility(true); p.SetVisibleToLocalPlayer(true); } catch { }
+            Compat.BodyVisibility.Set(p, true);
         }
 
         private static void ClearClones()

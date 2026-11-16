@@ -22,9 +22,9 @@ namespace PropHunt.Disguise
         private readonly Dictionary<ulong, GameObject> _hitboxes = new Dictionary<ulong, GameObject>();   // catch hitbox, parented under the PLAYER (see EnsureHitbox)
         private readonly Dictionary<ulong, Bounds> _localBounds = new Dictionary<ulong, Bounds>();   // clone's local bounds captured ONCE at build (stable; avoids per-frame LOD bounds garbage)
         // live hiders are rendered NAKED (underwear-only) underneath their prop: when undisguised that bare body
-        // shows, when disguised it is hidden behind the prop. We cache each one's original appearance to restore.
-        private readonly Dictionary<ulong, AvatarSettings> _nakedOriginal = new Dictionary<ulong, AvatarSettings>();
+        // shows, when disguised it is hidden behind the prop. The clothes come back from the clothing slots on restore.
         private readonly HashSet<ulong> _naked = new HashSet<ulong>();
+        private readonly HashSet<ulong> _nakedWaiting = new HashSet<ulong>();   // log "no appearance yet" once per player, not per tick
         private readonly HashSet<ulong> _warnedUnresolved = new HashSet<ulong>();   // log "can't resolve" once per player, not per frame
         private const float HiderScale = 0.7f;   // an undisguised hider's HUMAN model renders at 70% so hunters can tell them from a full-size hunter
         private bool _warnedHashMismatch;
@@ -443,44 +443,56 @@ namespace PropHunt.Disguise
             }
         }
 
-        /// <summary>Render a live hider's avatar as underwear-only (the game's own "naked" render). Applied ONCE
-        /// per hider (rebuilding the avatar is what shows the body); EnsureProp then hides it behind the prop when
-        /// disguised. The original appearance is cached BEFORE the swap (LoadNakedSettings reassigns CurrentSettings)
-        /// so it can be restored. Local-only per client - appearance does not auto-replicate, which is why this runs
-        /// for every player in the per-client Apply loop.</summary>
+        /// <summary>Render a live hider's avatar as underwear-only. Applied ONCE per hider; EnsureProp then hides it
+        /// behind the prop when disguised. Since game 0.4.7 an avatar is a naked appearance (body, face, underwear)
+        /// plus a separate outfit of worn objects, so stripping is <c>AvatarAppearance.RemoveOutfit</c> and nothing has
+        /// to be cached: the clothes still sit in the player's clothing slots. Local-only per client - the outfit is
+        /// applied locally from those slots, which is why this runs for every player in the per-client Apply loop.
+        /// Vanilla re-applies the outfit on every clothing-slot change (<c>PlayerClothing.RefreshAppearance</c>, wired
+        /// to each slot's data-changed event): a slot replicated after the first strip, or a clothes change. So a
+        /// stripped hider is checked every tick and stripped again when worn objects are back.</summary>
         private void EnsureNaked(ulong id, Player player)
         {
-            if (_naked.Contains(id)) return;
             try
             {
-                var av = player != null ? player.Avatar : null;
-                if (av == null) return;
-                var orig = av.CurrentSettings;
-                if (orig == null) return;   // avatar not ready yet - retry next tick
-                _nakedOriginal[id] = orig;
-                // keepOldLayers: false - the parameter is new in 0.4.6f11 and merges the previous body layers back in;
-                // keeping them would put the clothing we are stripping straight back on. 19 = the game's underwear
-                // cutoff (CharacterCustomizationUI).
-                av.LoadNakedSettings(orig, false, 19);
+                var appearance = player != null && player.Avatar != null ? player.Avatar.Appearance : null;
+                if (appearance == null)
+                {
+                    if (_naked.Contains(id)) Core.WarnOnce("naked-noappearance-" + id, $"appearance: stripped hider {id} lost the avatar appearance");
+                    else if (_nakedWaiting.Add(id)) Core.LogDebug($"appearance: {id} has no avatar appearance yet - retrying each tick");
+                    return;
+                }
+                if (_naked.Contains(id))
+                {
+                    var worn = appearance._wornObjects;
+                    int count = worn != null ? worn.Count : 0;
+                    if (count == 0) return;
+                    appearance.RemoveOutfit();
+                    Core.Log.Msg($"appearance: hider {id} got {count} worn objects back - stripped again");
+                    return;
+                }
+                _nakedWaiting.Remove(id);
+                appearance.RemoveOutfit();
                 _naked.Add(id);
                 Core.LogDebug($"appearance: {id} -> naked");
             }
-            catch (System.Exception e) { Core.LogDebug("EnsureNaked failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("EnsureNaked failed: " + e.Message); }
         }
 
-        /// <summary>Restore a player's original (clothed) appearance if we made them naked.</summary>
+        /// <summary>Put a player's clothes back on if we stripped them: the game's own rebuild from the clothing
+        /// slots (<c>PlayerClothing.RefreshAppearance</c>), so whatever they wear now is what comes back.</summary>
         private void RestoreAppearance(ulong id, Player player)
         {
+            _nakedWaiting.Remove(id);
             if (!_naked.Contains(id)) return;
             try
             {
-                var av = player != null ? player.Avatar : null;
-                if (av != null && _nakedOriginal.TryGetValue(id, out var orig) && orig != null)
-                    av.LoadAvatarSettings(orig);
+                var clothing = player != null ? player.Clothing : null;
+                if (clothing != null) clothing.RefreshAppearance();
+                else Core.LogDebug($"appearance: {id} has no clothing component - outfit not restored");
             }
-            catch (System.Exception e) { Core.LogDebug("RestoreAppearance failed: " + e.Message); }
+            catch (System.Exception e) { Core.Log.Warning("RestoreAppearance failed: " + e.Message); }
             _naked.Remove(id);
-            _nakedOriginal.Remove(id);
         }
 
         // Scale a player's VISUAL avatar (NOT the CharacterController - movement/grounding stay full-size). Reads the
@@ -494,17 +506,17 @@ namespace PropHunt.Disguise
                 var target = Vector3.one * scale;
                 if (av.transform.localScale != target) av.transform.localScale = target;
             }
-            catch { }
+            catch (System.Exception e) { Core.WarnOnce("hiderscale", "SetHiderScale failed: " + e.Message); }
         }
 
         private static void SetBodyVisible(Player player, bool visible, bool isLocal)
         {
-            try { player.SetThirdPersonMeshesVisibility(visible); } catch { }
-            // SetVisibleToLocalPlayer controls whether THIS player's body is drawn to the LOCAL camera.
+            // Whether THIS player's body is drawn to the LOCAL camera.
             //  - remote player: mirror `visible` so a disguised remote shows its prop, not its body.
             //  - local player: NOT touched here - ThirdPersonController owns it (show own body only in 3rd
-            //    person when undisguised; never in 1st person; never when disguised).
-            if (!isLocal) { try { player.SetVisibleToLocalPlayer(visible); } catch { } }
+            //    person when undisguised; never in 1st person; never when disguised). Since 0.4.7 the same call
+            //    also switches the avatar layer, so touching it here would show the own body in first person.
+            if (!isLocal) Compat.BodyVisibility.Set(player, visible);
         }
 
         internal void Dispose()
@@ -540,7 +552,7 @@ namespace PropHunt.Disguise
                     RestoreAppearance(id, id == localId ? Player.Local : PlayerRegistry.Get(id));
             }
             _naked.Clear();
-            _nakedOriginal.Clear();
+            _nakedWaiting.Clear();
 
             try
             {

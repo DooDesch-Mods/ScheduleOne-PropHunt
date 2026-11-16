@@ -995,6 +995,7 @@ namespace PropHunt.Game
             // disagreement about where a prop, and therefore a shot, actually is. Idempotent, so per frame is free.
             RoundEnvironment.ApplyFeetDrop(_settings);
             Patches.PhoneAppVisibility.Tick(roundActive);   // the business apps have no place in a round; restored when it ends
+            Patches.TrashFreeze.Tick(roundActive);          // trash stays put while a round runs; released when it ends
             if (roundActive) RoundEnvironment.ClearLocalCrime();
             if (_isHost && roundActive) RoundEnvironment.SuppressPolice();
 
@@ -1064,6 +1065,7 @@ namespace PropHunt.Game
             PropCollisionState.TargetHeight = 0f;   // restore vanilla CharacterController height on teardown
             try { SlowWalk.Restore(); } catch { }   // restore normal move speed
             if (_isHost) RoundEnvironment.RestoreWorld();
+            try { Patches.TrashFreeze.Tick(false); } catch (Exception e) { Core.Log.Warning("trash release on teardown failed: " + e.Message); }
             RestoreLocalEffects();
             try { _disguise?.Dispose(); } catch { }
             try { _decoy?.Dispose(); } catch { }
@@ -1313,7 +1315,81 @@ namespace PropHunt.Game
         private readonly List<ulong> _pendingStandUp = new List<ulong>();
         private readonly List<ulong> _stale = new List<ulong>();
 
-        private const float KnockImpulse = 30f;         // matches the impulse vanilla puts on a falling body
+        private const float KnockSpeed = 5f;            // horizontal m/s given to every ragdoll body: about 2 m of travel on grass, about 5 m on asphalt
+        private const float KnockSpin = 3f;             // rad/s of random spin on the root body so the tumble is not mechanical
+        private const float KnockLift = 0.5f;           // upward share of the shove: a flat shove hits the ground at once and friction eats it
+        private const float KnockLiveTimeout = 1f;      // seconds to wait for the ragdoll bodies to turn dynamic
+#if DEBUG
+        internal static bool DebugLegacyKnock;          // phknock legacy: the pre-fix path (one AddForce on one body, same frame)
+        internal static float DebugKnockSpeed = -1f;    // phknock override of the shove speed (legacy: of the 30 m/s impulse)
+        internal static float DebugKnockLift = -1f;     // phknock override of KnockLift
+        internal static int DebugKnockFree = 1;        // phknock: 1 = character controller off for the run, 2 = also Player.CapCol off
+        private static readonly Dictionary<int, Vector3> _knockStart = new Dictionary<int, Vector3>();   // body centre at the knockdown, per player
+
+        /// <summary>phknock: knock the LOCAL player down in the horizontal direction (dx, dz), stand up after the given
+        /// seconds and log how far the body centre travelled.</summary>
+        internal static void DebugKnock(float dx, float dz, float seconds)
+        {
+            var pl = Player.Local;
+            if (pl == null) { Core.Log.Warning("phknock: no local player."); return; }
+            MelonLoader.MelonCoroutines.Start(DebugKnockRun(pl, dx, dz, seconds));
+        }
+
+        private static Vector3 BodyCentre(Player pl)
+        {
+            try { return pl.Avatar != null ? pl.Avatar.CenterPoint : pl.transform.position; }
+            catch (Exception e) { Core.Log.Warning("phknock: body centre lookup failed: " + e.Message); return pl.transform.position; }
+        }
+
+        private static float Horizontal(Vector3 a, Vector3 b) => Vector2.Distance(new Vector2(a.x, a.z), new Vector2(b.x, b.z));
+
+        private static System.Collections.IEnumerator DebugKnockRun(Player pl, float dx, float dz, float seconds)
+        {
+            Vector3 p0 = BodyCentre(pl);
+            Core.Log.Msg($"phknock: start legacy={DebugLegacyKnock} speed={DebugKnockSpeed} free={DebugKnockFree} centre=({p0.x:0.00},{p0.y:0.00},{p0.z:0.00})");
+            var pm = PlayerSingleton<PlayerMovement>.Instance;
+            bool ctrlWas = pm != null && pm.Controller != null && pm.Controller.enabled;
+            bool capWas = pl.CapCol != null && pl.CapCol.enabled;
+            if (DebugKnockFree >= 1 && ctrlWas) pm.Controller.enabled = false;
+            if (DebugKnockFree >= 2 && capWas) pl.CapCol.enabled = false;
+            if (!Ragdoll(pl, dx, dz))
+            {
+                Core.Log.Warning("phknock: Ragdoll() returned false - controller and capsule restored.");
+                RestoreDebugKnock(pl, pm, ctrlWas, capWas);
+                yield break;
+            }
+            float t = 0f, next = 0.5f, peak = 0f;
+            while (t < seconds)
+            {
+                t += Time.unscaledDeltaTime;
+                float d = Horizontal(p0, BodyCentre(pl));
+                if (d > peak) peak = d;
+                if (t >= next) { next += 0.5f; Core.Log.Msg($"phknock: t={t:0.0}s dist={d:0.00}m"); }
+                yield return null;
+            }
+            Vector3 pe = BodyCentre(pl);
+            StandUp(pl);
+            Core.Log.Msg($"phknock: RESULT legacy={DebugLegacyKnock} speed={DebugKnockSpeed} horizontal={Horizontal(p0, pe):0.00}m peak={peak:0.00}m");
+            RestoreDebugKnock(pl, pm, ctrlWas, capWas);
+        }
+
+        /// <summary>End of a phknock run: turn the controller and capsule back on and reset the phknock overrides, so a
+        /// later real knockdown runs with the shipped values.</summary>
+        private static void RestoreDebugKnock(Player pl, PlayerMovement pm, bool ctrlWas, bool capWas)
+        {
+            try
+            {
+                if (DebugKnockFree >= 1 && ctrlWas && pm != null && pm.Controller != null) pm.Controller.enabled = true;
+                if (DebugKnockFree >= 2 && capWas && pl != null && pl.CapCol != null) pl.CapCol.enabled = true;
+            }
+            catch (Exception e) { Core.Log.Warning("phknock: restoring controller and capsule failed: " + e.Message); }
+            DebugLegacyKnock = false;
+            DebugKnockSpeed = -1f;
+            DebugKnockLift = -1f;
+            DebugKnockFree = 1;
+            Core.Log.Msg("phknock: overrides reset.");
+        }
+#endif
 
         /// <summary>Ragdoll every player whose synced Downed flag says so, and stand the rest back up.
         ///
@@ -1373,8 +1449,11 @@ namespace PropHunt.Game
         }
 
         /// <summary>Drop a player limp and shove the body in the synced knockback direction (away from the attacker).
-        /// Mirrors what vanilla does when a player dies (Player.OnDied): SetRagdolled + a spine impulse + a little
-        /// random torque so the tumble does not look mechanical. A zero direction falls straight down.
+        /// The shove is a velocity on EVERY ragdoll body, not an impulse on one: a single body yanked at speed drags the
+        /// limbs behind it on their joints. It must wait until the avatar's Animator is off: <c>AvatarAnimation</c> keeps
+        /// animating for one more frame after the ragdoll starts and then writes its cached pose onto every bone, and
+        /// that rewrite drops any velocity set before it. <see cref="ApplyKnockWhenLive"/> does the waiting. A zero
+        /// direction falls straight down.
         ///
         /// Returns false when the limp did not take. The caller only records the player as ragdolled on a true, so a
         /// transient failure is retried next tick instead of being remembered as done.</summary>
@@ -1382,23 +1461,160 @@ namespace PropHunt.Game
         {
             try
             {
+#if DEBUG
+                _knockStart[pl.GetInstanceID()] = BodyCentre(pl);
+#endif
                 pl.SetRagdolled(true);
-                var rb = pl.Avatar?.MiddleSpineRB;
-                if (rb == null) return true;   // limp applied; only the shove is missing
                 var dir = new Vector3(kx, 0f, kz);
-                if (dir.sqrMagnitude > 0.0001f) rb.AddForce(dir.normalized * KnockImpulse, ForceMode.VelocityChange);
-                rb.AddRelativeTorque(new Vector3(0f, UnityEngine.Random.Range(-1f, 1f), UnityEngine.Random.Range(-1f, 1f)) * 10f, ForceMode.VelocityChange);
+#if DEBUG
+                if (DebugLegacyKnock)
+                {
+                    // The pre-fix recipe, kept only to measure the fix against: one impulse on one body in the same frame.
+                    var legacyRb = pl.Avatar?.ActiveRagdoll?.RootRigidbody;
+                    if (legacyRb == null) { Core.Log.Warning("phknock legacy: no ragdoll root body."); return true; }
+                    if (dir.sqrMagnitude > 0.0001f)
+                        legacyRb.AddForce(dir.normalized * (DebugKnockSpeed >= 0f ? DebugKnockSpeed : 30f), ForceMode.VelocityChange);
+                    Core.Log.Msg($"knockdown: legacy impulse on the root body, kinematic={legacyRb.isKinematic}.");
+                    return true;
+                }
+#endif
+                // The limp has taken at this point. A failure here only weakens the shove, so it must not report the
+                // knockdown as failed: the caller would retry SetRagdolled every tick.
+                try { FreeRagdollFromCapsule(pl); }
+                catch (Exception e) { Core.Log.Warning($"knockdown: freeing {pl.PlayerName}'s ragdoll from the capsule failed: " + e.Message); }
+                MelonLoader.MelonCoroutines.Start(ApplyKnockWhenLive(pl, dir));
                 return true;
             }
-            catch (Exception e) { Core.LogDebug("ragdoll failed: " + e.Message); return false; }
+            catch (Exception e) { Core.Log.Warning("ragdoll failed: " + e.Message); return false; }
+        }
+
+        /// <summary>On the owning client <c>Player.CapCol</c> is a solid capsule (other clients see it as a trigger), and
+        /// it stays where the player stood, around the limp body. The ragdoll colliders hit it from inside, which eats
+        /// most of the shove and pushes the body sideways. Vanilla's own death ragdoll turns the capsule off for this;
+        /// here only the capsule-to-ragdoll pairs are ignored, so ladders, water and detectors keep seeing the player.
+        /// Unity drops an ignore pair when a collider is disabled, and <c>SetRagdolled</c> toggles the avatar colliders,
+        /// so this runs on every knockdown.</summary>
+        private static void FreeRagdollFromCapsule(Player pl)
+        {
+            var cap = pl.CapCol;
+            if (cap == null) { Core.Log.Warning($"knockdown: {pl.PlayerName} has no CapCol; the shove may be blocked."); return; }
+            if (cap.isTrigger || !cap.enabled) return;   // a remote player's capsule: nothing to collide with
+            // Exactly the colliders Avatar.SetAvatarCollidersEnabled turns on for the ragdoll. Inactive or disabled ones
+            // are skipped: Unity refuses an ignore pair on them.
+            var cols = pl.Avatar != null ? pl.Avatar._avatarColliders : null;
+            if (cols == null) { Core.Log.Warning($"knockdown: {pl.PlayerName} has no avatar colliders; the shove may be blocked."); return; }
+            int n = 0;
+            foreach (var c in cols)
+            {
+                if (c == null || c.isTrigger || c == cap || !c.enabled || !c.gameObject.activeInHierarchy) continue;
+                Physics.IgnoreCollision(cap, c, true);
+                n++;
+            }
+            Core.Log.Msg($"knockdown: capsule of {pl.PlayerName} ignores {n} ragdoll colliders.");
+        }
+
+        /// <summary>Give every dynamic ragdoll body the same velocity (so the limbs do not shear apart) plus a small random
+        /// spin on the root. Returns false while the root body is missing or kinematic, or the Animator still owns the
+        /// bones, so the caller can wait.</summary>
+        private static bool ShoveIfLive(Player pl, Vector3 dir, float waited)
+        {
+            var ragdoll = pl != null && pl.Avatar != null ? pl.Avatar.ActiveRagdoll : null;
+            var root = ragdoll != null ? ragdoll.RootRigidbody : null;
+            if (root == null || root.isKinematic) return false;
+            var anim = pl.Avatar.Animation;
+            if (anim != null && (anim._activateRagdollNextFrame || anim.animationEnabled)) return false;   // pose rewrite still pending
+            float speed = KnockSpeed;
+#if DEBUG
+            if (DebugKnockSpeed >= 0f) speed = DebugKnockSpeed;
+#endif
+            float lift = KnockLift;
+#if DEBUG
+            if (DebugKnockLift >= 0f) lift = DebugKnockLift;
+#endif
+            var vel = dir.sqrMagnitude > 0.0001f ? dir.normalized * speed + Vector3.up * (speed * lift) : Vector3.zero;
+            int n = 0;
+            var bodies = ragdoll.Rigidbodies;
+            if (bodies != null)
+                foreach (var rb in bodies) { if (rb == null || rb.isKinematic) continue; rb.velocity = vel; n++; }
+            if (n == 0) { root.velocity = vel; n = 1; }
+            root.angularVelocity = new Vector3(0f, UnityEngine.Random.Range(-1f, 1f), UnityEngine.Random.Range(-1f, 1f)) * KnockSpin;
+            Core.Log.Msg($"knockdown: shove v={new Vector3(vel.x, 0f, vel.z).magnitude:0.0} m/s on {n} bodies after {waited:0.00}s, lift {vel.y:0.0} m/s.");
+            return true;
+        }
+
+        /// <summary>Wait until the ragdoll is physics-driven (root body dynamic, Animator off), then shove. Gives up after <see cref="KnockLiveTimeout"/>
+        /// seconds and logs a warning; the player is still ragdolled, only the shove is missing.</summary>
+        private static System.Collections.IEnumerator ApplyKnockWhenLive(Player pl, Vector3 dir)
+        {
+            float waited = 0f;
+            while (waited < KnockLiveTimeout)
+            {
+                yield return null;
+                waited += Time.unscaledDeltaTime;
+                bool done;
+                try { done = ShoveIfLive(pl, dir, waited); }
+                catch (Exception e) { Core.Log.Warning("knockdown: applying the shove failed: " + e.Message); yield break; }
+#if DEBUG
+                if (done)
+                {
+                    // The root body's horizontal speed four physics steps after the shove: whatever blocks the body
+                    // (the player's own capsule did) shows up here as a speed far below the shove.
+                    var step = new WaitForFixedUpdate();
+                    for (int i = 0; i < 4; i++) yield return step;
+                    try
+                    {
+                        var rb = pl.Avatar?.ActiveRagdoll?.RootRigidbody;
+                        if (rb == null) Core.Log.Warning("knockdown: no root body 4 steps after the shove.");
+                        else Core.Log.Msg($"knockdown: root speed {new Vector3(rb.velocity.x, 0f, rb.velocity.z).magnitude:0.00} m/s 4 steps after the shove.");
+                    }
+                    catch (Exception e) { Core.Log.Warning("knockdown: speed check failed: " + e.Message); }
+
+                    // Where the body is over the next two seconds, against where it fell: root body, spine bone and the
+                    // avatar root separately, so a body pulled back by something (an Animator, a network sync) shows
+                    // which of them stays put.
+                    _knockStart.TryGetValue(pl.GetInstanceID(), out var p0);
+                    float t = 0f;
+                    foreach (float mark in new[] { 0.25f, 0.5f, 1f, 2f })
+                    {
+                        while (t < mark) { yield return null; t += Time.unscaledDeltaTime; }
+                        try
+                        {
+                            var av = pl.Avatar;
+                            var rb = av?.ActiveRagdoll?.RootRigidbody;
+                            var anim = av?.Animation;
+                            Core.Log.Msg($"knockdown: trace t={mark:0.00}s {pl.PlayerName} local={pl.IsOwner} " +
+                                         $"root={(rb != null ? Horizontal(p0, rb.position).ToString("0.00") : "-")}m " +
+                                         $"spine={(av != null ? Horizontal(p0, av.CenterPoint).ToString("0.00") : "-")}m " +
+                                         $"avatar={(av != null ? Horizontal(p0, av.transform.position).ToString("0.00") : "-")}m " +
+                                         $"kinematic={(rb != null ? rb.isKinematic.ToString() : "-")} " +
+                                         $"anim={(anim != null ? anim.animationEnabled.ToString() : "-")} ragdolled={pl.IsRagdolled}.");
+                        }
+                        catch (Exception e) { Core.Log.Warning("knockdown: trace failed: " + e.Message); yield break; }
+                    }
+                }
+#endif
+                if (done) yield break;
+            }
+            Core.Log.Warning($"knockdown: ragdoll not physics-driven after {KnockLiveTimeout}s - shove skipped.");
         }
 
         /// <summary>Stand a body back up. Returns false when it did not take, so the caller keeps the player marked
         /// and tries again rather than leaving them limp forever.</summary>
         private static bool StandUp(Player pl)
         {
-            try { pl.SetRagdolled(false); return true; }
-            catch (Exception e) { Core.LogDebug("stand-up failed: " + e.Message); return false; }
+            try
+            {
+#if DEBUG
+                if (_knockStart.TryGetValue(pl.GetInstanceID(), out var p0))
+                {
+                    _knockStart.Remove(pl.GetInstanceID());
+                    Core.Log.Msg($"knockdown: travel {Horizontal(p0, BodyCentre(pl)):0.00} m for {pl.PlayerName} (local={pl.IsOwner}).");
+                }
+#endif
+                pl.SetRagdolled(false);
+                return true;
+            }
+            catch (Exception e) { Core.Log.Warning("stand-up failed: " + e.Message); return false; }
         }
 
         /// <summary>The half of a knockdown that only applies to OUR player: freeze the character controller so it
@@ -1834,7 +2050,8 @@ namespace PropHunt.Game
 
         private void HandleClaimTag(ulong hunter, ulong victim, Vector3 aimDir)
         {
-            if (!_isHost || _state.Phase != RoundPhase.Hunting) return;
+            if (!_isHost) { Core.Log.Warning($"catch claim by {hunter} reached a client - ignored."); return; }
+            if (_state.Phase != RoundPhase.Hunting) { Core.Log.Msg($"host: catch claim by {hunter} ignored in phase {_state.Phase}."); return; }
             // TRUST THE CLIENT'S HIT. The client only sends this claim after its OWN SphereCast actually struck the
             // victim's prop hitbox / capsule (that is exactly what shows the hitmarker), so the client already did the
             // authoritative aim-hit detection. The host previously RE-derived the geometry from the victim's CAPSULE
@@ -1861,6 +2078,7 @@ namespace PropHunt.Game
                 NotifyCatchFx(hunter, victim, caught, vpos);
                 PushState();
             }
+            else Core.Log.Msg($"host: catch claim by {hunter} on {victim} not applied - not a live hider.");
         }
 
         /// <summary>Host: apply a friendly-fire hit from one hunter on another. Trusts the client's resolved hit (same

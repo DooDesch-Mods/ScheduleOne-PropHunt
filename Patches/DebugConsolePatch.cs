@@ -1,6 +1,8 @@
 #if DEBUG
 using System;
 using HarmonyLib;
+using UnityEngine;
+using Il2CppScheduleOne.PlayerScripts;
 
 namespace PropHunt.Patches
 {
@@ -30,8 +32,42 @@ namespace PropHunt.Patches
             try
             {
                 if (args == null || args.Count == 0) return true;   // not ours - let the game handle it
+                // The game submits each console entry twice in one frame; run a ph command once per frame and text.
+                if (args[0].StartsWith("ph", StringComparison.OrdinalIgnoreCase))
+                {
+                    var sig = string.Join(" ", ToArray(args));
+                    if (UnityEngine.Time.frameCount == _lastFrame && sig == _lastSig) return false;
+                    _lastFrame = UnityEngine.Time.frameCount;
+                    _lastSig = sig;
+                }
                 switch (args[0].ToLower())
                 {
+                    case "phknock":       // phknock [fix|legacy] [speed] [dx] [dz] [seconds] [free] [lift]: knock the local player down, log travel distance
+                    {                     // free: 0 = as is, 1 = character controller off (as in a round), 2 = also the capsule off; lift: upward share of the shove
+                        Game.GameModeController.DebugKnockLift = Arg(args, 7, -1f);
+                        Game.GameModeController.DebugLegacyKnock = args.Count > 1 && args[1].ToLower() == "legacy";
+                        Game.GameModeController.DebugKnockSpeed = Arg(args, 2, -1f);
+                        Game.GameModeController.DebugKnockFree = (int)Arg(args, 6, 1f);
+                        Game.GameModeController.DebugKnock(Arg(args, 3, 1f), Arg(args, 4, 0f), Arg(args, 5, 3f));
+                        return false;
+                    }
+                    case "phfire":        // hunter: fire one catch shot at another player's prop hitbox (or body) - phfire [name]
+                        DebugShots.Fire(args.Count > 1 ? args[1] : "");
+                        return false;
+                    case "phconcuss":     // hider: set off the concussion at the local player's position
+                        if (Core.Session == null) { Core.Log.Warning("phconcuss: no active session."); return false; }
+                        Core.Session.RequestConcuss();
+                        Core.Log.Msg("phconcuss: requested.");
+                        return false;
+                    case "phprobe":       // per player: role, prop, clone, avatar layer, mesh visibility, ragdoll, downed, worn objects
+                        DebugShots.Probe();
+                        return false;
+                    case "phtrash":       // throw one trash item from 1 m in front of the camera, log where it lies 4 s later - phtrash [id|list]
+                        DebugShots.ThrowTrash(args.Count > 1 ? args[1] : "");
+                        return false;
+                    case "phredress":     // re-apply the outfit from the clothing slots, as a slot change does - phredress [remote]
+                        DebugShots.Redress(args.Count > 1 && args[1].ToLower() == "remote");
+                        return false;
                     case "phping":
                         Net.PropHuntNet.SendPing();
                         return false;
@@ -202,6 +238,213 @@ namespace PropHunt.Patches
                 }
             }
             catch (Exception e) { Core.Log.Warning("console cmd failed: " + e.Message); return false; }
+        }
+
+        private static int _lastFrame = -1;
+        private static string _lastSig;
+
+        private static string[] ToArray(Il2CppSystem.Collections.Generic.List<string> args)
+        {
+            var a = new string[args.Count];
+            for (int i = 0; i < a.Length; i++) a[i] = args[i];
+            return a;
+        }
+
+        private static float Arg(Il2CppSystem.Collections.Generic.List<string> args, int i, float fallback) =>
+            args.Count > i && float.TryParse(args[i], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? v : fallback;
+    }
+
+    /// <summary>Scripted stand-ins for a hunter's aimed shot and a state dump, for the co-op test scripts.</summary>
+    internal static class DebugShots
+    {
+        /// <summary>Aim the next catch shot at the named player (empty = the first other player) and resolve it
+        /// through the normal catch sweep, so line of sight, hitbox and the host claim all run as for a real shot.</summary>
+        internal static void Fire(string name)
+        {
+            var ctl = Core.Session;
+            if (ctl == null) { Core.Log.Warning("phfire: no active session."); return; }
+            var target = FindOther(name);
+            if (target == null) { Core.Log.Warning($"phfire: no other player matching '{name}'."); return; }
+            ulong id = Game.PlayerRegistry.IdForPlayer(target);
+            Vector3 aim;
+            string via;
+            // The hitbox hangs under the player; the render clone carries the same name in world space but no collider.
+            var hitbox = target.transform.Find("ph_prop_" + id);
+            var col = hitbox != null ? hitbox.GetComponent<Collider>() : null;
+            if (col != null) { aim = col.bounds.center; via = "prop hitbox"; }
+            else { aim = target.Avatar != null ? target.Avatar.CenterPoint : target.transform.position + Vector3.up; via = "body"; }
+            var lp = Player.Local;
+            float dist = lp != null ? Vector3.Distance(lp.transform.position, aim) : -1f;
+            Core.Log.Msg($"phfire: shot at {target.PlayerName} ({id}) via {via}, {dist:0.0} m, phase={ctl.Phase} role={ctl.LocalRole}.");
+            try
+            {
+                var cam = PlayerSingleton<PlayerCamera>.Instance;
+                if (cam != null && cam.Camera != null)
+                {
+                    Vector3 from = cam.Camera.transform.position;
+                    var ray = new Ray(from, (aim - from).normalized);
+                    string box = "no hitbox collider";
+                    if (col != null)
+                    {
+                        bool direct = col.Raycast(ray, out var dh, 500f);
+                        box = $"hitbox enabled={col.enabled} active={col.gameObject.activeInHierarchy} layer={col.gameObject.layer} " +
+                              $"centre={col.bounds.center} size={col.bounds.size} directRay={(direct ? dh.distance.ToString("0.00") + " m" : "miss")}";
+                    }
+                    RaycastHit[] all = Physics.RaycastAll(ray, 500f, ~0, QueryTriggerInteraction.Collide);
+                    System.Array.Sort(all, (System.Comparison<RaycastHit>)((a, b) => a.distance.CompareTo(b.distance)));
+                    var names = new System.Text.StringBuilder();
+                    for (int i = 0; i < all.Length && i < 5; i++) names.Append($" '{all[i].transform.name}'@{all[i].distance:0.00}");
+                    Core.Log.Msg($"phfire: camera {from} to aim {aim} ({Vector3.Distance(from, aim):0.00} m); {box}; thin ray hits:{(names.Length > 0 ? names.ToString() : " none")}.");
+                }
+                else Core.Log.Warning("phfire: no player camera for the aim diagnostics.");
+            }
+            catch (Exception e) { Core.Log.Warning("phfire: aim diagnostics failed: " + e.Message); }
+            Catch.CatchController.DebugAimPoint = aim;
+            ctl.OnLocalHunterFired(150f);
+            Catch.CatchController.DebugAimPoint = null;
+        }
+
+        internal static void Probe()
+        {
+            var ctl = Core.Session;
+            var list = Player.PlayerList;
+            if (list == null) { Core.Log.Warning("phprobe: no player list."); return; }
+            Core.Log.Msg($"phprobe: {list.Count} players, phase={(ctl != null ? ctl.Phase.ToString() : "no session")}.");
+            for (int i = 0; i < list.Count; i++)
+            {
+                var pl = list[i];
+                if (pl == null) continue;
+                ulong id = Game.PlayerRegistry.IdForPlayer(pl);
+                Game.PlayerState st = null;
+                if (ctl != null) ctl.State.Players.TryGetValue(id, out st);
+                string layer = "?";
+                bool ragdolled = false;
+                try
+                {
+                    if (pl.Avatar != null) { layer = LayerMask.LayerToName(pl.Avatar.gameObject.layer); ragdolled = pl.Avatar.Ragdolled; }
+                }
+                catch (Exception e) { Core.Log.Warning("phprobe: avatar read failed: " + e.Message); }
+                Core.Log.Msg($"phprobe: {pl.PlayerName} id={id} local={pl.IsOwner} role={(ctl != null ? ctl.RoleOf(id).ToString() : "-")} " +
+                             $"prop={(st != null ? st.PropId : -99)} clone={GameObject.Find("ph_prop_" + id) != null} layer={layer} " +
+                             $"meshesVisible={pl.ThirdPersonMeshesVisibleToLocalPlayer} ragdolled={ragdolled} " +
+                             $"downed={(st != null && st.Downed)} eliminated={(st != null && st.Eliminated)} " +
+                             $"pos=({pl.transform.position.x:0.0},{pl.transform.position.y:0.0},{pl.transform.position.z:0.0}) " +
+                             $"worn={WornCount(pl)}");
+            }
+        }
+
+        /// <summary>Worn outfit objects on a player's avatar, or -1 when the appearance is not readable.</summary>
+        private static int WornCount(Player pl)
+        {
+            try
+            {
+                var app = pl.Avatar != null ? pl.Avatar.Appearance : null;
+                var worn = app != null ? app._wornObjects : null;
+                return worn != null ? worn.Count : -1;
+            }
+            catch (Exception e) { Core.Log.Warning("phprobe: worn objects read failed: " + e.Message); return -1; }
+        }
+
+        /// <summary>phredress: what vanilla does on every clothing-slot change. A stripped hider must be stripped
+        /// again by the next disguise tick ("stripped again" line).</summary>
+        internal static void Redress(bool remote)
+        {
+            var pl = remote ? FindOther("") : Player.Local;
+            if (pl == null) { Core.Log.Warning($"phredress: no {(remote ? "remote" : "local")} player."); return; }
+            if (pl.Clothing == null) { Core.Log.Warning($"phredress: {pl.PlayerName} has no clothing component."); return; }
+            int before = WornCount(pl);
+            pl.Clothing.RefreshAppearance();
+            Core.Log.Msg($"phredress: {pl.PlayerName} worn before={before} after={WornCount(pl)}.");
+        }
+
+        /// <summary>phtrash: spawn a trash item through the networked TrashManager path (every client gets it, and the
+        /// Initialize postfix sees it), thrown forward and up, then report how far it fell and its gap to the ground.</summary>
+        internal static void ThrowTrash(string want)
+        {
+            var tm = NetworkSingleton<Il2CppScheduleOne.Trash.TrashManager>.Instance;
+            if (tm == null || tm.TrashPrefabs == null) { Core.Log.Warning("phtrash: no TrashManager or trash prefabs."); return; }
+            if (want == "list")
+            {
+                var ids = new System.Text.StringBuilder();
+                foreach (var p in tm.TrashPrefabs) if (p != null) ids.Append(' ').Append(p.ID);
+                Core.Log.Msg($"phtrash: prefabs:{ids}");
+                return;
+            }
+            Il2CppScheduleOne.Trash.TrashItem prefab = null;
+            foreach (var p in tm.TrashPrefabs)
+            {
+                if (p == null) continue;
+                if (string.IsNullOrEmpty(want) ? p.TryCast<Il2CppScheduleOne.Trash.TrashBag>() == null
+                                               : string.Equals(p.ID, want, StringComparison.OrdinalIgnoreCase)) { prefab = p; break; }
+            }
+            if (prefab == null) { Core.Log.Warning($"phtrash: no trash prefab '{want}' (phtrash list names them)."); return; }
+            // From the player's body, not the camera: a client that never finished the character creator has its camera
+            // in the creator room off the map.
+            var lp = Player.Local;
+            if (lp == null) { Core.Log.Warning("phtrash: no local player."); return; }
+            var t = lp.transform;
+            Vector3 fwd = new Vector3(t.forward.x, 0f, t.forward.z).normalized;
+            Vector3 pos = t.position + Vector3.up * 2f + fwd * 1f;
+            var item = tm.CreateTrashItem(prefab.ID, pos, Quaternion.identity, fwd * 2f + Vector3.up * 2f, "");
+            if (item == null) { Core.Log.Warning($"phtrash: CreateTrashItem({prefab.ID}) returned nothing."); return; }
+            Core.Log.Msg($"phtrash: threw {prefab.ID} from ({pos.x:0.0},{pos.y:0.00},{pos.z:0.0}), round freeze={Patches.TrashFreeze.Frozen}.");
+            LogTrashPhysics(item, pos);
+            MelonLoader.MelonCoroutines.Start(ReportTrash(item, pos.y));
+        }
+
+        /// <summary>Colliders of a spawned trash item and whether the layer matrix lets it hit the ground below.</summary>
+        private static void LogTrashPhysics(Il2CppScheduleOne.Trash.TrashItem item, Vector3 from)
+        {
+            try
+            {
+                var rb = item.GetComponent<Rigidbody>();
+                var sb = new System.Text.StringBuilder();
+                foreach (var c in item.GetComponentsInChildren<Collider>(true))
+                    sb.Append($" [{c.name} {c.GetIl2CppType().Name} enabled={c.enabled} active={c.gameObject.activeInHierarchy} " +
+                              $"trigger={c.isTrigger} layer={LayerMask.LayerToName(c.gameObject.layer)}]");
+                Core.Log.Msg($"phtrash: body kinematic={(rb != null && rb.isKinematic)} gravity={(rb != null && rb.useGravity)} " +
+                             $"detect={(rb != null && rb.detectCollisions)} colliders:{(sb.Length > 0 ? sb.ToString() : " none")}");
+                int trashLayer = item.gameObject.layer;
+                RaycastHit[] hits = Physics.RaycastAll(from, Vector3.down, 50f, ~0, QueryTriggerInteraction.Ignore);
+                System.Array.Sort(hits, (System.Comparison<RaycastHit>)((a, b) => a.distance.CompareTo(b.distance)));
+                var g = new System.Text.StringBuilder();
+                foreach (var h in hits)
+                {
+                    if (h.collider == null || h.collider.transform.IsChildOf(item.transform)) continue;
+                    int l = h.collider.gameObject.layer;
+                    g.Append($" ['{h.collider.name}'@{h.distance:0.00} layer={LayerMask.LayerToName(l)} ignoredByTrash={Physics.GetIgnoreLayerCollision(trashLayer, l)}]");
+                    if (g.Length > 600) break;
+                }
+                Core.Log.Msg($"phtrash: below (trash layer {LayerMask.LayerToName(trashLayer)}):{(g.Length > 0 ? g.ToString() : " nothing")}");
+            }
+            catch (Exception e) { Core.Log.Warning("phtrash: physics dump failed: " + e.Message); }
+        }
+
+        private static System.Collections.IEnumerator ReportTrash(Il2CppScheduleOne.Trash.TrashItem item, float startY)
+        {
+            float end = Time.time + 4f;
+            while (Time.time < end) yield return null;
+            try
+            {
+                if (item == null) { Core.Log.Warning("phtrash: the thrown item is gone."); yield break; }
+                var rb = item.GetComponent<Rigidbody>();
+                Core.Log.Msg($"phtrash: RESULT fell {startY - item.transform.position.y:0.00} m, " +
+                             $"{Patches.TrashFreeze.AboveGround(item):0.00} m above ground, kinematic={(rb != null && rb.isKinematic)}.");
+            }
+            catch (Exception e) { Core.Log.Warning("phtrash: report failed: " + e.Message); }
+        }
+
+        private static Player FindOther(string name)
+        {
+            var list = Player.PlayerList;
+            if (list == null) return null;
+            for (int i = 0; i < list.Count; i++)
+            {
+                var pl = list[i];
+                if (pl == null || pl.IsOwner) continue;
+                if (string.IsNullOrEmpty(name) || (pl.PlayerName != null && pl.PlayerName.IndexOf(name, StringComparison.OrdinalIgnoreCase) >= 0)) return pl;
+            }
+            return null;
         }
     }
 }

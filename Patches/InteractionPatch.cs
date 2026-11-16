@@ -10,6 +10,19 @@ namespace PropHunt.Patches
     internal static class RoundInteractionGate
     {
         internal static bool RoundActive { get { var c = GameModeController.Active; return c != null && c.RoundActive; } }
+
+        /// <summary>The local player holds the trash grabber. Game 0.4.7 dropped the static
+        /// <c>Equippable_TrashGrabber.IsEquipped</c>; vanilla's own check is the equipped item's type
+        /// (<c>TrashItemDraggable.IsTrashGrabberEquipped</c>).</summary>
+        internal static bool TrashGrabberEquipped
+        {
+            get
+            {
+                var inv = PlayerSingleton<PlayerInventory>.Instance;
+                var eq = inv != null ? inv.Equippable : null;
+                return eq != null && eq.TryCast<Equippable_TrashGrabber>() != null;
+            }
+        }
     }
 
     /// <summary>
@@ -42,14 +55,14 @@ namespace PropHunt.Patches
                 var hovered = __instance.HoveredInteractableObject;
                 if (hovered == null) return true;
                 // A hunter holding the trash grabber MUST be able to grab trash (it clears hiding spots). Trash pickup
-                // runs through the trash's Draggable interaction (TrashItem.Interacted -> PickupTrash), which IsPickup
+                // runs through the trash's draggable interaction (TrashItemDraggable.Interacted -> PickupTrash), which IsPickup
                 // would otherwise block. Allow it when the grabber is equipped AND the hovered object is REAL trash.
                 // A disguised hider is a prop clone, NOT a TrashItem, so this never grabs a hider (they're still caught
                 // with the gun); and the prompt stays hidden below, so a missing prompt can't out a hider.
-                if (Equippable_TrashGrabber.IsEquipped && IsTrash(hovered)) return true;
+                if (RoundInteractionGate.TrashGrabberEquipped && IsTrash(hovered)) return true;
                 if (IsPickup(hovered)) return false;   // block picking up a prop; doors / others still interact
             }
-            catch { }
+            catch (System.Exception e) { Core.WarnOnce("pickup-block", "pickup block check failed, interaction allowed: " + e.Message); }
             return true;
         }
 
@@ -58,7 +71,7 @@ namespace PropHunt.Patches
         private static bool IsTrash(InteractableObject io)
         {
             try { return io.GetComponentInParent<Il2CppScheduleOne.Trash.TrashItem>() != null; }
-            catch { return false; }
+            catch (System.Exception e) { Core.WarnOnce("pickup-istrash", "trash check failed, treated as not trash: " + e.Message); return false; }
         }
 
         /// <summary>True if the interactable belongs to a pickup or draggable world item (vs a door, switch, etc.).</summary>
@@ -71,7 +84,7 @@ namespace PropHunt.Patches
                 if (io.GetComponentInParent<CashPickup>() != null) return true;
                 if (io.GetComponentInParent<Draggable>() != null) return true;
             }
-            catch { }
+            catch (System.Exception e) { Core.WarnOnce("pickup-ispickup", "pickup check failed, treated as not a pickup: " + e.Message); }
             return false;
         }
     }
