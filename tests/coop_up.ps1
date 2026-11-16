@@ -23,6 +23,31 @@ Write-Host "client slot: $name port $($client.port) root $($client.root)"
 $clientRoot = $client.root
 $exe = Join-Path $clientRoot 'Schedule I.exe'
 
+# Host and client must load the same Personnel NPC packs, or the client hangs on "Spawning player..."
+# (Workspace#102). The client gets a copy of the host's pack folder before its restart; its own packs move aside.
+$hostPacks = Join-Path $lease.table.$hostName.root 'UserData\Personnel\Packs'
+$clientPacks = Join-Path $clientRoot 'UserData\Personnel\Packs'
+function Get-PackDigest($folder) {
+    if (-not (Test-Path $folder)) { return '' }
+    $lines = Get-ChildItem $folder -Recurse -File | Sort-Object FullName | ForEach-Object {
+        $_.FullName.Substring($folder.Length) + '|' + (Get-FileHash $_.FullName -Algorithm MD5).Hash
+    }
+    return ($lines -join "`n")
+}
+if ((Test-Path $hostPacks) -and (Get-PackDigest $hostPacks) -eq (Get-PackDigest $clientPacks)) {
+    Write-Host "client packs already match the host: $((Get-ChildItem $clientPacks -Directory).Name -join ', ')"
+} elseif (Test-Path $hostPacks) {
+    if (Test-Path $clientPacks) {
+        $aside = "$clientPacks.aside-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+        Move-Item $clientPacks $aside
+        Write-Host "client packs moved aside to $aside"
+    }
+    Copy-Item $hostPacks $clientPacks -Recurse
+    Write-Host "client packs copied from host: $((Get-ChildItem $clientPacks -Directory).Name -join ', ')"
+} else {
+    Write-Host "host has no NPC pack folder at $hostPacks - client packs left as they are"
+}
+
 Get-CimInstance Win32_Process -Filter "Name='Schedule I.exe'" |
     Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($clientRoot, [StringComparison]::OrdinalIgnoreCase) } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force; Write-Host "stopped client pid $($_.ProcessId)" }

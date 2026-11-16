@@ -262,13 +262,37 @@ namespace PropHunt.Patches
             ulong id = Game.PlayerRegistry.IdForPlayer(target);
             Vector3 aim;
             string via;
-            var hitbox = GameObject.Find("ph_prop_" + id);
-            var col = hitbox != null ? hitbox.GetComponentInChildren<Collider>() : null;
+            // The hitbox hangs under the player; the render clone carries the same name in world space but no collider.
+            var hitbox = target.transform.Find("ph_prop_" + id);
+            var col = hitbox != null ? hitbox.GetComponent<Collider>() : null;
             if (col != null) { aim = col.bounds.center; via = "prop hitbox"; }
             else { aim = target.Avatar != null ? target.Avatar.CenterPoint : target.transform.position + Vector3.up; via = "body"; }
             var lp = Player.Local;
             float dist = lp != null ? Vector3.Distance(lp.transform.position, aim) : -1f;
             Core.Log.Msg($"phfire: shot at {target.PlayerName} ({id}) via {via}, {dist:0.0} m, phase={ctl.Phase} role={ctl.LocalRole}.");
+            try
+            {
+                var cam = PlayerSingleton<PlayerCamera>.Instance;
+                if (cam != null && cam.Camera != null)
+                {
+                    Vector3 from = cam.Camera.transform.position;
+                    var ray = new Ray(from, (aim - from).normalized);
+                    string box = "no hitbox collider";
+                    if (col != null)
+                    {
+                        bool direct = col.Raycast(ray, out var dh, 500f);
+                        box = $"hitbox enabled={col.enabled} active={col.gameObject.activeInHierarchy} layer={col.gameObject.layer} " +
+                              $"centre={col.bounds.center} size={col.bounds.size} directRay={(direct ? dh.distance.ToString("0.00") + " m" : "miss")}";
+                    }
+                    RaycastHit[] all = Physics.RaycastAll(ray, 500f, ~0, QueryTriggerInteraction.Collide);
+                    System.Array.Sort(all, (System.Comparison<RaycastHit>)((a, b) => a.distance.CompareTo(b.distance)));
+                    var names = new System.Text.StringBuilder();
+                    for (int i = 0; i < all.Length && i < 5; i++) names.Append($" '{all[i].transform.name}'@{all[i].distance:0.00}");
+                    Core.Log.Msg($"phfire: camera {from} to aim {aim} ({Vector3.Distance(from, aim):0.00} m); {box}; thin ray hits:{(names.Length > 0 ? names.ToString() : " none")}.");
+                }
+                else Core.Log.Warning("phfire: no player camera for the aim diagnostics.");
+            }
+            catch (Exception e) { Core.Log.Warning("phfire: aim diagnostics failed: " + e.Message); }
             Catch.CatchController.DebugAimPoint = aim;
             ctl.OnLocalHunterFired(150f);
             Catch.CatchController.DebugAimPoint = null;

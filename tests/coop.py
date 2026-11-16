@@ -11,13 +11,16 @@ the hider's concussion.
 """
 import argparse
 import hashlib
+import math
 import os
 import re
 import time
 
 from check import Results, Slot, first
 
-TRAVEL = (1.0, 4.0)
+# The slide depends on the ground: about 2 m on grass, 4.6 to 5.2 m on the asphalt of KNOCK_SPOT.
+TRAVEL = (1.0, 6.0)
+KNOCK_SPOT = (-41.0, 0.2, 91.0)
 SETTINGS = [("hide", 25), ("hunt", 240), ("end", 8), ("stun", 4), ("conc", 3), ("concr", 6), ("round", "Single"),
             ("area", 120)]
 
@@ -41,6 +44,36 @@ def packs(game):
                     digest.update(handle.read())
         found[name] = digest.hexdigest()
     return found
+
+
+def camera_gap(game):
+    """Metres between the player and the camera, or None when the bridge reports neither."""
+    where = (game.g.world("player_position", {}, timeout_ms=5000) or {}).get("result") or {}
+    pos, cam = where.get("position"), (where.get("camera") or {}).get("position")
+    return math.dist(pos, cam) if pos and cam else None
+
+
+def free_camera(res, game, quiet=False):
+    """The template save holds no player data for the test accounts, so a joining client runs the vanilla intro and
+    sits in the character creator, which holds the camera in its room far off the map (IntroManager parents the
+    camera container there, CharacterCreator.Open overrides the transform). It takes the camera back now and then
+    until the creator is finished, and every shot would start in that room. Hand the camera back to the player when
+    it is far from them. quiet=True only notes a release and records no check."""
+    d = camera_gap(game)
+    if d is None:
+        res.check("%s reports player and camera position" % game.label, False)
+        return
+    if d <= 50:
+        if not quiet:
+            res.note("%s camera is with the player (%.1f m)" % (game.label, d))
+        return
+    res.note("%s camera is %.0f m from the player (character creator) - releasing it" % (game.label, d))
+    game.g.world("camera_release", {}, timeout_ms=5000)
+    time.sleep(1)
+    d2 = camera_gap(game)
+    if not quiet:
+        res.check("%s camera is back with the player" % game.label, d2 is not None and d2 <= 50,
+                  "%.1f m" % d2 if d2 is not None else "no position")
 
 
 def state(game):
@@ -75,6 +108,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", required=True)
     ap.add_argument("--client", required=True)
+    ap.add_argument("--hunter", choices=("any", "host", "client"), default="any",
+                    help="restart the match (up to 8 times) until this side hunts")
     a = ap.parse_args()
     res = Results()
     host, client = Slot(a.host, "host"), Slot(a.client, "client")
@@ -90,7 +125,33 @@ def main():
         m = first(out, r"status: Ready=(\w+) InLobby=(\w+) IsHost=(\w+) members=(\d+)")
         res.check("%s is in the Steam lobby with 2 members" % g.label, m is not None and m.group(2) == "True" and m.group(4) == "2",
                   m.group(0) if m else out[-2:])
+    for g in both:
+        free_camera(res, g)
 
+    roles = None
+    for attempt in range(1, 9):
+        roles = start_match(res, host, client)
+        if roles is None:
+            return res.summary()
+        if a.hunter == "any" or roles[a.hunter] == "Hunter":
+            break
+        res.note("attempt %d: %s hunts, want %s - restarting the match" % (attempt, "host" if roles["host"] == "Hunter" else "client", a.hunter))
+        for g in both:
+            g.cmd("phstop", wait=2)
+    else:
+        res.check("%s hunts within 8 matches" % a.hunter, False, roles)
+        return res.summary()
+    hunter = host if roles["host"] == "Hunter" else client
+    hider = client if hunter is host else host
+    res.note("hunter=%s hider=%s" % (hunter.label, hider.label))
+    run_round(res, host, client, hunter, hider)
+    for g in both:
+        g.cmd("phstop", wait=1)
+    return res.summary()
+
+
+def start_match(res, host, client):
+    """Host a session, join it, start the match and the first round. Returns {label: role}, or None on failure."""
     res.begin("lobby")
     hm, cm = host.mark(), client.mark()
     host.cmd("phhost", wait=2)
@@ -102,19 +163,29 @@ def main():
     hm, cm = host.mark(), client.mark()
     host.cmd("phstart", wait=2)
     res.check("host begins the match", host.wait_line(hm, r"match begun", 15) is not None, host.lines(hm)[-3:])
+    # A match opens in the Safehouse lobby (round 0), which waits for the host's "start next round".
+    for g, m in ((host, hm), (client, cm)):
+        line = g.wait_line(m, r"phase -> Safehouse", 15)
+        res.check("%s enters the Safehouse" % g.label, line is not None, line or g.lines(m)[-3:])
+    time.sleep(2)
+    hm, cm = host.mark(), client.mark()
+    host.cmd("phnextround", wait=1)
+    res.check("host starts the first round", host.wait_line(hm, r"host starting next round", 10) is not None,
+              host.lines(hm)[-3:])
     roles = {}
     for g, m in ((host, hm), (client, cm)):
         line = g.wait_line(m, r"phase -> Hiding .*you=(\w+)", 30)
         r = re.search(r"you=(\w+)", line) if line else None
         roles[g.label] = r.group(1) if r else None
         res.check("%s enters Hiding" % g.label, line is not None, line or g.lines(m)[-3:])
-    res.check("one hunter and one hider", sorted(roles.values()) == ["Hider", "Hunter"], roles)
-    if sorted(roles.values()) != ["Hider", "Hunter"]:
-        return res.summary()
-    hunter = host if roles["host"] == "Hunter" else client
-    hider = client if hunter is host else host
-    res.note("hunter=%s hider=%s" % (hunter.label, hider.label))
+    paired = sorted(str(r) for r in roles.values()) == ["Hider", "Hunter"]
+    res.check("one hunter and one hider", paired, roles)
+    return roles if paired else None
 
+
+def run_round(res, host, client, hunter, hider):
+    """Disguise, concussion knockdown, catch and round end of one round already in Hiding."""
+    both = (host, client)
     res.begin("disguise")
     hm = hider.mark()
     hider.cmd("phbecome", wait=3)
@@ -135,9 +206,10 @@ def main():
         res.check("%s enters Hunting" % g.label, wait_phase(g, "Hunting", 60) is not None)
 
     res.begin("concussion knockdown")
-    hx, hy, hz = hunter.position()
-    hider.tp(hx + 2.5, hy + 0.2, hz)
-    time.sleep(2)
+    # Open flat road inside the play area (centre -69,83, r 120): the blast pushes the hunter -x along the road.
+    hunter.tp(*KNOCK_SPOT)
+    hider.tp(KNOCK_SPOT[0] + 2.5, KNOCK_SPOT[1] + 0.2, KNOCK_SPOT[2], yaw=270)   # facing the hunter (-x)
+    time.sleep(3)
     marks = {g.label: g.mark() for g in both}
     hider.cmd("phconcuss", wait=1)
     hostm = marks["host"]
@@ -166,20 +238,18 @@ def main():
     marks = {g.label: g.mark() for g in both}
     caught = None
     for _ in range(12):
+        free_camera(res, hunter, quiet=True)
         hunter.cmd("phfire", wait=0.6)
         caught = host.wait_line(marks["host"], r"CAUGHT", 1.0)
         if caught:
             break
     res.check("the hunter's shot catches the hider", caught is not None,
-              caught or host.lines(marks["host"], r"hit |CAUGHT|phfire")[-4:])
+              caught or (host.lines(marks["host"], r"hit |CAUGHT|catch claim")[-3:]
+                         + hunter.lines(marks[hunter.label], r"phfire|shot ")[-3:]))
     for g in both:
         end = g.wait_line(marks[g.label], r"phase -> (RoundEnd|MatchEnd)", 20)
         res.check("%s sees the round end" % g.label, end is not None, end or g.lines(marks[g.label])[-3:])
     hunter.shot("coop-round-end-hunter")
-
-    for g in both:
-        g.cmd("phstop", wait=1)
-    return res.summary()
 
 
 if __name__ == "__main__":
